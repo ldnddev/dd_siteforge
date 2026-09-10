@@ -80,7 +80,7 @@ conversion of `parent_copy`.
 ## Conditional Markup
 
 - `[parent_class]` class token is appended to `.dd-rich_text` only when `parent_class` is non-empty
-- `parent_copy` supports Markdown paragraphs, inline formatting (`**bold**`, `*italic*`, `` `code` ``, `[text](url)`), and raw HTML blocks; conversion is the same one used by `dd-hero.copy`
+- `parent_copy` is CommonMark (plus strikethrough, tables, and task lists): headings (`#`–`######`, setext `=`/`-`), lists (`-`/`*`/`+` and `1.`), thematic breaks (`---`/`***`), blockquotes, fenced code, paragraphs, inline (`**bold**`, `*italic*`, `` `code` ``, `~~strike~~`, `[text](url)`), and raw HTML; conversion is the same one used by every Expand textarea (`dd-hero.copy`, `dd-cta`, `dd-alert`, `dd-modal`, `dd-blockquote`, and item `child_copy` on card / accordion / alternating / milestones / slider)
 
 ## Validation Rules
 

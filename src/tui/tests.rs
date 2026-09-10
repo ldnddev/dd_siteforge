@@ -567,6 +567,70 @@ use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, Mous
     }
 
     #[test]
+    fn textarea_expand_home_end_move_to_visual_line_ends() {
+        let mut app = app_with_component(ComponentKind::RichText);
+        open_form_edit_on_page_component(&mut app);
+        focus_rich_text_copy(&mut app);
+        if let Some(Modal::FormEdit { state, cursor_pos, .. }) = &mut app.modal {
+            state.set("parent_copy", "hello\nworld");
+            *cursor_pos = 8; // 'r' in "world"
+        }
+        send_key(&mut app, KeyCode::Char('e'), KeyModifiers::CONTROL);
+        send_key(&mut app, KeyCode::Home, KeyModifiers::NONE);
+        assert_eq!(form_cursor_pos(&app), 6);
+        send_key(&mut app, KeyCode::End, KeyModifiers::NONE);
+        assert_eq!(form_cursor_pos(&app), 11);
+
+        seed_focused_textarea_box(
+            &app,
+            Rect {
+                x: 0,
+                y: 0,
+                width: 7,
+                height: 8,
+            },
+        );
+        if let Some(Modal::FormEdit { state, cursor_pos, .. }) = &mut app.modal {
+            state.set("parent_copy", "abcdefghij");
+            *cursor_pos = 7;
+        }
+        send_key(&mut app, KeyCode::Home, KeyModifiers::NONE);
+        assert_eq!(form_cursor_pos(&app), 5);
+        send_key(&mut app, KeyCode::End, KeyModifiers::NONE);
+        assert_eq!(form_cursor_pos(&app), 10);
+    }
+
+    #[test]
+    fn textarea_expand_click_places_caret() {
+        let mut app = app_with_component(ComponentKind::RichText);
+        open_form_edit_on_page_component(&mut app);
+        focus_rich_text_copy(&mut app);
+        send_key(&mut app, KeyCode::Char('e'), KeyModifiers::CONTROL);
+        if let Some(Modal::FormEdit { state, cursor_pos, .. }) = &mut app.modal {
+            state.set("parent_copy", "abcdefghij");
+            *cursor_pos = 0;
+        }
+        seed_focused_textarea_box(
+            &app,
+            Rect {
+                x: 0,
+                y: 0,
+                width: 7,
+                height: 5,
+            },
+        );
+        send_mouse(
+            &mut app,
+            MouseEventKind::Down(MouseButton::Left),
+            3,
+            2,
+        );
+        assert_eq!(form_cursor_pos(&app), 7);
+        assert!(app.form_textarea_expanded);
+        assert_eq!(form_focused_field_id(&app), Some("parent_copy"));
+    }
+
+    #[test]
     fn tier_a_alert_form_edit_round_trip() {
         let mut app = app_with_component(ComponentKind::Alert);
         open_form_edit_on_page_component(&mut app);
@@ -940,9 +1004,11 @@ use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, Mous
             width: 7,
             height: 5,
         };
-        let (_, _, ch) = form_input_cursor_cell(&textarea, "abcdefghij", 10, ta_box)
-            .expect("textarea caret past inner width");
-        assert_eq!(ch, 'e');
+        // Inner width 5 wraps "abcdefghij" onto two visual rows; caret at
+        // the end overlays the last glyph of the second row.
+        let (x, y, ch) = form_input_cursor_cell(&textarea, "abcdefghij", 10, ta_box)
+            .expect("textarea caret past inner width wraps");
+        assert_eq!((x, y, ch), (5, 2, 'j'));
 
         let value = "one\ntwo\nhi";
         let (x, y, ch) =
@@ -993,13 +1059,82 @@ use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, Mous
         let cursor = cursor_from_row_col(&input_lines_preserve(value), 1, 4);
 
         assert_eq!(
-            textarea_move_cursor_vertical(value, cursor, -1),
+            textarea_move_cursor_vertical(value, cursor, -1, None),
             cursor_from_row_col(&input_lines_preserve(value), 0, 3)
         );
         assert_eq!(
-            textarea_move_cursor_vertical(value, cursor, 1),
+            textarea_move_cursor_vertical(value, cursor, 1, None),
             cursor_from_row_col(&input_lines_preserve(value), 2, 2)
         );
+    }
+
+    #[test]
+    fn textarea_wraps_long_lines_to_width() {
+        let (display, first, total) =
+            render_textarea_display_window("abcdefghij", 0, true, 4, Some(5));
+        assert_eq!(first, 0);
+        assert_eq!(total, 2);
+        let lines: Vec<&str> = display.lines().take(2).collect();
+        assert_eq!(lines, vec!["abcde", "fghij"]);
+    }
+
+    #[test]
+    fn textarea_home_end_use_visual_line() {
+        let value = "abcdefghij";
+        assert_eq!(textarea_line_home(value, 7, Some(5)), 5);
+        assert_eq!(textarea_line_end(value, 7, Some(5)), 10);
+        assert_eq!(textarea_line_home(value, 2, Some(5)), 0);
+        assert_eq!(textarea_line_end(value, 2, Some(5)), 5);
+        assert_eq!(textarea_line_home(value, 7, None), 0);
+        assert_eq!(textarea_line_end(value, 7, None), 10);
+
+        let wrapped = "ab\ncd";
+        assert_eq!(textarea_line_home(wrapped, 4, None), 3);
+        assert_eq!(textarea_line_end(wrapped, 3, None), 5);
+    }
+
+    #[test]
+    fn textarea_vertical_movement_follows_wrapped_rows() {
+        let value = "abcdefghij";
+        // wrap 5: "abcde" / "fghij". Cursor on 'h' (index 7, visual row 1 col 2).
+        assert_eq!(textarea_move_cursor_vertical(value, 7, -1, Some(5)), 2);
+        assert_eq!(textarea_move_cursor_vertical(value, 2, 1, Some(5)), 7);
+    }
+
+    #[test]
+    fn textarea_click_sets_cursor_on_visual_cell() {
+        let box_rect = Rect {
+            x: 0,
+            y: 0,
+            width: 7,
+            height: 5,
+        };
+        let value = "abcdefghij";
+        // Inner starts at (1, 1). Click visual row 1 col 2 → 'h' at index 7.
+        let pos = textarea_cursor_from_click(value, box_rect, 0, true, 3, 2)
+            .expect("click inside wrapped textarea");
+        assert_eq!(pos, 7);
+        // Click past the end of a short last line clamps to line end.
+        let short = "ab\ncd";
+        let end = textarea_cursor_from_click(short, box_rect, 0, true, 5, 2)
+            .expect("click past end of line");
+        assert_eq!(end, 5);
+    }
+
+    fn form_cursor_pos(app: &App) -> usize {
+        match &app.modal {
+            Some(Modal::FormEdit { cursor_pos, .. }) => *cursor_pos,
+            _ => panic!("expected FormEdit"),
+        }
+    }
+
+    fn seed_focused_textarea_box(app: &App, rect: Rect) {
+        let focused = match &app.modal {
+            Some(Modal::FormEdit { state, .. }) => state.focused_field,
+            _ => panic!("expected FormEdit"),
+        };
+        app.modal_field_areas.borrow_mut().clear();
+        app.modal_field_areas.borrow_mut().push((focused, rect));
     }
 
     fn open_form_edit_on_selected_cta(app: &mut App) {

@@ -56,6 +56,8 @@ fields:
   - id: parent_copy
     required: true
     type: string
+    accepts: ["markdown", "html"]
+    export_transform: "render markdown to html (raw html passthrough)"
     maps_to: ".dd-cta__copy"
     ui:
       control: textarea
@@ -141,7 +143,7 @@ blueprint:
       <div class="dd-cta__subtitle">
         <strong>[parent_subtitle]</strong>
       </div>
-      <p>[parent_copy]</p>
+      [[parent_copy_html]]
       <div class="dd-cta__links dd-g -x-center">
         <div class="dd-cta__link">
           <a href="[parent_link_url]" class="dd-button -primary" target="[parent_link_target]">[parent_link_label]</a>

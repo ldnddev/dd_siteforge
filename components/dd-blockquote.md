@@ -43,6 +43,8 @@ fields:
   - id: parent_copy
     required: true
     type: string
+    accepts: ["markdown", "html"]
+    export_transform: "render markdown to html (raw html passthrough)"
     maps_to: ".dd-blockquote__copy"
     ui:
       control: textarea
@@ -102,7 +104,7 @@ blueprint:
         <span class="dd-blockquote__title">, [parent_title]</span>
       </div>
       <div class="dd-blockquote__comment">
-        [parent_copy]
+        [[parent_copy_html]]
       </div>
     </div>
   </div>

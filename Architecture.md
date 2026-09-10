@@ -72,7 +72,7 @@ Each component spec lives in `components/dd-*.md` (single source of truth for fi
   - `dd-blockquote` emits Quotation JSON-LD.
   - `dd-modal` derives `parent_modal_id` from `parent_title` (HTML-id-safe).
   - `dd-slider` derives `parent_uid` from `parent_title`; `uid-<random6>` fallback.
-  - `dd-hero.copy` accepts Markdown or HTML, converted at export.
+  - Copy textareas with the Expand control (`dd-hero.copy`, `dd-rich_text.parent_copy`, `dd-cta.parent_copy`, `dd-alert.parent_copy`, `dd-modal.parent_copy`, `dd-blockquote.parent_copy`, and `child_copy` on card / accordion / alternating / milestones / slider items) accept CommonMark (headings, lists, thematic breaks, code, tables, strikethrough) or raw HTML, converted at export. JSON-LD `text` fields keep the authored source.
 - Static export: `crate::export::export_site(&site, &out, site_root)`. Writes `{slug}.html`, copies Grunt `web/assets/{css,js,webfonts,favicon,vendors}` when the dest is not already `web/` (does not clobber a local `grunt build`), fills missing webfonts/favicon from `source/`, copies `<site_dir>/source/images/` → `<out>/assets/images/`, plus `sitemap.xml`, `robots.txt`, and `404.html` when no author 404 page exists.
 - Asset and page hrefs are same-directory relative (`assets/css/style.min.css`, `contact.html`). `p` / `serve` start a local HTTP server so those paths resolve.
 

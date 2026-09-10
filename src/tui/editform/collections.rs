@@ -34,7 +34,7 @@ pub static CARD_ITEM_FORM: EditForm = EditForm {
         },
         FormField {
             id: "child_copy",
-            label: "Copy",
+            label: "Copy (Markdown)",
             kind: FieldKind::Textarea { rows: 4, default: "" },
             required: true,
             visible_when: None,
@@ -116,7 +116,7 @@ pub static MILESTONES_ITEM_FORM: EditForm = EditForm {
         },
         FormField {
             id: "child_copy",
-            label: "Copy",
+            label: "Copy (Markdown)",
             kind: FieldKind::Textarea { rows: 4, default: "" },
             required: true,
             visible_when: None,
@@ -157,7 +157,7 @@ pub static SLIDER_ITEM_FORM: EditForm = EditForm {
         },
         FormField {
             id: "child_copy",
-            label: "Copy",
+            label: "Copy (Markdown)",
             kind: FieldKind::Textarea { rows: 4, default: "" },
             required: true,
             visible_when: None,
@@ -212,7 +212,7 @@ pub static ACCORDION_ITEM_FORM: EditForm = EditForm {
         },
         FormField {
             id: "child_copy",
-            label: "Content",
+            label: "Content (Markdown)",
             kind: FieldKind::Textarea { rows: 5, default: "" },
             required: true,
             visible_when: None,
@@ -253,7 +253,7 @@ pub static ALTERNATING_ITEM_FORM: EditForm = EditForm {
         },
         FormField {
             id: "child_copy",
-            label: "Copy",
+            label: "Copy (Markdown)",
             kind: FieldKind::Textarea { rows: 5, default: "" },
             required: true,
             visible_when: None,

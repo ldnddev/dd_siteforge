@@ -190,6 +190,7 @@ impl App {
         }
 
         let expanded = self.form_textarea_expanded;
+        let wrap_width = self.focused_textarea_wrap_width();
         let Some(Modal::FormEdit {
             state,
             cursor_pos,
@@ -421,8 +422,12 @@ impl App {
             }
             KeyCode::Up => {
                 if is_textarea {
-                    *cursor_pos =
-                        textarea_move_cursor_vertical(state.get(field_id), *cursor_pos, -1);
+                    *cursor_pos = textarea_move_cursor_vertical(
+                        state.get(field_id),
+                        *cursor_pos,
+                        -1,
+                        wrap_width,
+                    );
                 } else {
                     state.focus_prev();
                     *scroll_offset = auto_scroll_for_focus(state, *scroll_offset);
@@ -431,8 +436,12 @@ impl App {
             }
             KeyCode::Down => {
                 if is_textarea {
-                    *cursor_pos =
-                        textarea_move_cursor_vertical(state.get(field_id), *cursor_pos, 1);
+                    *cursor_pos = textarea_move_cursor_vertical(
+                        state.get(field_id),
+                        *cursor_pos,
+                        1,
+                        wrap_width,
+                    );
                 } else {
                     state.focus_next();
                     *scroll_offset = auto_scroll_for_focus(state, *scroll_offset);
@@ -440,12 +449,34 @@ impl App {
                 }
             }
             KeyCode::PageUp if is_textarea => {
-                *cursor_pos =
-                    textarea_move_cursor_vertical(state.get(field_id), *cursor_pos, -10);
+                *cursor_pos = textarea_move_cursor_vertical(
+                    state.get(field_id),
+                    *cursor_pos,
+                    -10,
+                    wrap_width,
+                );
             }
             KeyCode::PageDown if is_textarea => {
-                *cursor_pos =
-                    textarea_move_cursor_vertical(state.get(field_id), *cursor_pos, 10);
+                *cursor_pos = textarea_move_cursor_vertical(
+                    state.get(field_id),
+                    *cursor_pos,
+                    10,
+                    wrap_width,
+                );
+            }
+            KeyCode::Home if accepts_text => {
+                if is_textarea {
+                    *cursor_pos = textarea_line_home(state.get(field_id), *cursor_pos, wrap_width);
+                } else {
+                    *cursor_pos = 0;
+                }
+            }
+            KeyCode::End if accepts_text => {
+                if is_textarea {
+                    *cursor_pos = textarea_line_end(state.get(field_id), *cursor_pos, wrap_width);
+                } else {
+                    *cursor_pos = state.get(field_id).len();
+                }
             }
             KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
                 if accepts_text {

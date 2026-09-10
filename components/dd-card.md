@@ -76,6 +76,8 @@ fields:
       - id: child_copy
         required: true
         type: string
+        accepts: ["markdown", "html"]
+        export_transform: "render markdown to html (raw html passthrough)"
         maps_to: ".dd-card__copy"
         ui:
           control: textarea
@@ -179,7 +181,7 @@ blueprint:
         <div class="dd-card__copy l-box">
           <div class="dd-card__title"><h3>[child_title]</h3></div>
           <div class="dd-card__subtitle"><strong>[child_subtitle]</strong></div>
-          <p>[child_copy]</p>
+          [[child_copy_html]]
           <div class="dd-card__links dd-g">
             <div class="dd-card__link">
               <a href="[child_link_url]" target="[child_link_target]" class="dd-button -primary">[child_link_label]</a>
@@ -206,7 +208,7 @@ blueprint:
           <div class="dd-card__subtitle">
             <strong>[child_subtitle]</strong>
           </div>
-          <p>[child_copy]</p>
+          [[child_copy_html]]
           <div class="dd-card__links dd-g">
             <div class="dd-card__link">
               <a href="[child_image_url]" target="[child_link_target]" class="dd-button -primary">[child_link_label]</a>

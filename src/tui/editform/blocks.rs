@@ -64,7 +64,7 @@ pub static CTA_FORM: EditForm = EditForm {
         },
         FormField {
             id: "parent_copy",
-            label: "Copy",
+            label: "Copy (Markdown)",
             kind: FieldKind::Textarea {
                 rows: 5,
                 default: "",
@@ -324,7 +324,7 @@ pub static ALERT_FORM: EditForm = EditForm {
         },
         FormField {
             id: "parent_copy",
-            label: "Copy",
+            label: "Copy (Markdown)",
             kind: FieldKind::Textarea {
                 rows: 4,
                 default: "",
@@ -347,7 +347,7 @@ pub static MODAL_FORM: EditForm = EditForm {
         },
         FormField {
             id: "parent_copy",
-            label: "Copy",
+            label: "Copy (Markdown)",
             kind: FieldKind::Textarea {
                 rows: 5,
                 default: "",
@@ -401,7 +401,7 @@ pub static BLOCKQUOTE_FORM: EditForm = EditForm {
         },
         FormField {
             id: "parent_copy",
-            label: "Quote",
+            label: "Quote (Markdown)",
             kind: FieldKind::Textarea {
                 rows: 5,
                 default: "",

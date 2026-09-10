@@ -17,7 +17,9 @@ fields:
   - id: parent_copy
     required: true
     type: string
-    maps_to: ".dd-modal__copy p"
+    accepts: ["markdown", "html"]
+    export_transform: "render markdown to html (raw html passthrough)"
+    maps_to: ".dd-modal__copy"
     ui:
       control: textarea
       rows: 5
@@ -78,7 +80,7 @@ blueprint:
 <dialog data-modal id="[parent_modal_id]" class="dd-modal">
   <button class="dd-modal__button-close" data-modal-close data-id="[parent_modal_id]" aria-label="close modal window">X</button>
   <div class="dd-modal__copy">
-    <p>[parent_copy]</p>
+    [[parent_copy_html]]
   </div>
 </dialog>
 ```

@@ -41,6 +41,8 @@ fields:
   - id: parent_copy
     required: true
     type: string
+    accepts: ["markdown", "html"]
+    export_transform: "render markdown to html (raw html passthrough)"
     maps_to: ".dd-alert__copy"
     ui:
       control: textarea
@@ -93,7 +95,7 @@ blueprint:
           [parent_title]
         </div>
         <div class="dd-alert__copy">
-          <p>[parent_copy]</p>
+          [[parent_copy_html]]
         </div>
       </div>
     </div>

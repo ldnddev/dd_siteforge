@@ -63,6 +63,8 @@ fields:
       - id: child_copy
         required: true
         type: string
+        accepts: ["markdown", "html"]
+        export_transform: "render markdown to html (raw html passthrough)"
         maps_to: ".dd-milestones__copy"
         ui:
           control: textarea
@@ -161,7 +163,7 @@ blueprint:
           <div>
             <div class="dd-milestones__title"><h2>[child_title]</h2></div>
             <div class="dd-milestones__subtitle"><strong>[child_subtitle]</strong></div>
-            <div class="dd-milestones__copy">[child_copy]</div>
+            <div class="dd-milestones__copy">[[child_copy_html]]</div>
             <div class="dd-milestones__links">
               <div class="dd-milestones__link">
                 <a href="[child_link_url]" target="[child_link_target]" class="dd-button -primary">[child_link_label]</a>

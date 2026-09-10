@@ -351,7 +351,10 @@ impl App {
 
         let help_rect = Rect::new(inner.x, inner.y, inner.width, 1);
         frame.render_widget(
-            Paragraph::new("Esc: back to form | Ctrl+S: save | Enter: newline").style(
+            Paragraph::new(
+                "Esc: back to form | Ctrl+S: save | Enter: newline | Home/End: line | click: caret",
+            )
+            .style(
                 Style::default()
                     .fg(self.theme.modal_labels)
                     .bg(self.theme.modal_background)
@@ -411,10 +414,14 @@ impl App {
             }
             editform::FieldKind::Textarea { .. } => {
                 let value = state.get(field.id);
-                let visible_rows = rect.height as usize;
-                let (display, first_visible_row, total_rows) =
-                    render_textarea_display_window(value, cursor_pos, focused, visible_rows);
-                let text_rect = if total_rows > visible_rows {
+                let layout = textarea_layout(
+                    value,
+                    cursor_pos,
+                    focused,
+                    rect.width,
+                    rect.height,
+                );
+                let text_rect = if layout.has_scrollbar {
                     Rect {
                         width: rect.width.saturating_sub(1),
                         ..rect
@@ -423,11 +430,10 @@ impl App {
                     rect
                 };
                 frame.render_widget(
-                    Paragraph::new(display)
-                        .style(value_style),
+                    Paragraph::new(layout.display).style(value_style),
                     text_rect,
                 );
-                if total_rows > visible_rows {
+                if layout.has_scrollbar {
                     render_textarea_scrollbar(
                         frame,
                         Rect {
@@ -436,9 +442,9 @@ impl App {
                             width: 1,
                             height: rect.height,
                         },
-                        first_visible_row,
-                        visible_rows,
-                        total_rows,
+                        layout.first_visible_row,
+                        layout.visible_rows,
+                        layout.total_rows,
                         self.theme.scrollbar,
                         self.theme.modal_background,
                     );

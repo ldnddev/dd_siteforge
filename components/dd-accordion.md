@@ -64,6 +64,8 @@ fields:
       - id: child_copy
         required: true
         type: string
+        accepts: ["markdown", "html"]
+        export_transform: "render markdown to html (raw html passthrough)"
         maps_to: ".dd-accordion__copy"
         ui:
           control: textarea
@@ -135,7 +137,7 @@ blueprint:
       <summary class="dd-accordion__header dd-g -y-center">
         <div class="dd-accordion__title dd-u-1-1"><h3>[child_title]</h3></div>
       </summary>
-      <div class="dd-accordion__copy"><p>[child_copy]</p></div>
+      <div class="dd-accordion__copy">[[child_copy_html]]</div>
     </details>
   </div>
 </div>

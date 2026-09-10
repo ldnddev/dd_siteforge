@@ -74,6 +74,8 @@ fields:
       - id: child_copy
         required: true
         type: string
+        accepts: ["markdown", "html"]
+        export_transform: "render markdown to html (raw html passthrough)"
         maps_to: ".dd-alternating__copy"
         ui:
           control: textarea
@@ -156,7 +158,7 @@ blueprint:
           <div class="dd-alternating__subtitle"><div>[child_subtitle]</div></div>
           <!-- endif -->
           <div class="dd-alternating__body">
-            <p>[child_copy]</p>
+            [[child_copy_html]]
           </div>
         </div>
       </div>

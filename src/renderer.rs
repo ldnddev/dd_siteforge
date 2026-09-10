@@ -2,6 +2,7 @@ use std::fs;
 use std::path::Path;
 
 use anyhow::Context;
+use pulldown_cmark::{Options, Parser, html};
 use serde_json::{Value, json};
 
 use crate::model::{
@@ -316,6 +317,7 @@ fn render_alternating(r: &Renderer, alternating: &DdAlternating) -> anyhow::Resu
         );
         if let Some(items) = obj.get_mut("items").and_then(|v| v.as_array_mut()) {
             attach_sal_stagger(items);
+            inject_item_copy_html(items);
         }
     }
     r.render("dd-alternating", &v)
@@ -349,6 +351,7 @@ fn render_card(r: &Renderer, card: &DdCard) -> anyhow::Result<String> {
             "child_title": item.child_title,
             "child_subtitle": item.child_subtitle,
             "child_copy": item.child_copy,
+            "child_copy_html": markdown_to_html(&item.child_copy),
             "child_link_url": link_url.unwrap_or_default(),
             "child_link_target": link_target,
             "child_link_label": link_label.unwrap_or_default(),
@@ -417,6 +420,7 @@ fn render_cta(r: &Renderer, cta: &DdCta) -> anyhow::Result<String> {
         "parent_title": cta.parent_title,
         "parent_subtitle": cta.parent_subtitle,
         "parent_copy": cta.parent_copy,
+        "parent_copy_html": markdown_to_html(&cta.parent_copy),
         "parent_link_url": link_url.unwrap_or_default(),
         "parent_link_target": link_target,
         "parent_link_label": link_label.unwrap_or_default(),
@@ -461,6 +465,7 @@ fn render_milestones(r: &Renderer, milestones: &DdMilestones) -> anyhow::Result<
             "child_title": item.child_title,
             "child_subtitle": item.child_subtitle,
             "child_copy": item.child_copy,
+            "child_copy_html": markdown_to_html(&item.child_copy),
             "child_link_url": link_url.unwrap_or_default(),
             "child_link_target": link_target,
             "child_link_label": link_label.unwrap_or_default(),
@@ -480,6 +485,7 @@ fn render_modal(r: &Renderer, modal: &DdModal) -> anyhow::Result<String> {
     let data = json!({
         "parent_title": modal.parent_title,
         "parent_copy": modal.parent_copy,
+        "parent_copy_html": markdown_to_html(&modal.parent_copy),
         "parent_modal_id": html_id_safe_from_title(&modal.parent_title, "modal")
     });
     r.render("dd-modal", &data)
@@ -512,6 +518,7 @@ fn render_slider(r: &Renderer, slider: &DdSlider) -> anyhow::Result<String> {
         items.push(json!({
             "child_title": item.child_title,
             "child_copy": item.child_copy,
+            "child_copy_html": markdown_to_html(&item.child_copy),
             "child_link_url": link_url.unwrap_or_default(),
             "child_link_target": link_target,
             "child_link_label": link_label.unwrap_or_default(),
@@ -578,6 +585,9 @@ fn render_accordion(r: &Renderer, accordion: &DdAccordion) -> anyhow::Result<Str
             )),
         );
         obj.insert("faq_schema_json".to_string(), Value::String(faq_schema));
+        if let Some(items) = obj.get_mut("items").and_then(|v| v.as_array_mut()) {
+            inject_item_copy_html(items);
+        }
     }
     r.render("dd-accordion", &v)
 }
@@ -609,6 +619,10 @@ fn render_blockquote(r: &Renderer, blockquote: &DdBlockquote) -> anyhow::Result<
             "blockquote_schema_json".to_string(),
             Value::String(blockquote_schema_json),
         );
+        obj.insert(
+            "parent_copy_html".to_string(),
+            Value::String(markdown_to_html(&blockquote.parent_copy)),
+        );
     }
     r.render("dd-blockquote", &v)
 }
@@ -620,7 +634,8 @@ fn render_alert(r: &Renderer, alert: &DdAlert) -> anyhow::Result<String> {
         "sal": serde_json::to_value(alert.sal).map(|raw| stringify_json(&raw)).unwrap_or_else(|_| "fade".to_string()),
         "parent_title": alert.parent_title.as_deref().unwrap_or(""),
         "has_title": alert.parent_title.as_ref().map(|t| !t.trim().is_empty()).unwrap_or(false),
-        "parent_copy": alert.parent_copy
+        "parent_copy": alert.parent_copy,
+        "parent_copy_html": markdown_to_html(&alert.parent_copy)
     });
     r.render("dd-alert", &data)
 }
@@ -886,87 +901,26 @@ fn public_url(stored: &str) -> String {
 }
 
 fn markdown_to_html(input: &str) -> String {
-    let blocks = input.split("\n\n");
+    let mut options = Options::empty();
+    options.insert(Options::ENABLE_STRIKETHROUGH);
+    options.insert(Options::ENABLE_TABLES);
+    options.insert(Options::ENABLE_TASKLISTS);
+    let parser = Parser::new_ext(input, options);
     let mut out = String::new();
-    for block in blocks {
-        let trimmed = block.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        if looks_like_html_block(trimmed) {
-            out.push_str(trimmed);
-            out.push('\n');
-            continue;
-        }
-        let inline = inline_markdown_to_html(trimmed).replace('\n', "<br/>\n");
-        out.push_str("<p>");
-        out.push_str(&inline);
-        out.push_str("</p>\n");
-    }
+    html::push_html(&mut out, parser);
     out
 }
 
-fn looks_like_html_block(input: &str) -> bool {
-    input.starts_with('<') && input.ends_with('>')
-}
-
-fn inline_markdown_to_html(input: &str) -> String {
-    let mut escaped = input.to_string();
-    escaped = replace_md_link(&escaped);
-    escaped = replace_md_wrapped(&escaped, "**", "<strong>", "</strong>");
-    escaped = replace_md_wrapped(&escaped, "*", "<em>", "</em>");
-    replace_md_wrapped(&escaped, "`", "<code>", "</code>")
-}
-
-fn replace_md_wrapped(input: &str, token: &str, open: &str, close: &str) -> String {
-    let mut out = String::new();
-    let mut rest = input;
-    let mut open_state = false;
-    while let Some(pos) = rest.find(token) {
-        out.push_str(&rest[..pos]);
-        out.push_str(if open_state { close } else { open });
-        open_state = !open_state;
-        rest = &rest[pos + token.len()..];
-    }
-    out.push_str(rest);
-    out
-}
-
-fn replace_md_link(input: &str) -> String {
-    let mut out = String::new();
-    let mut rest = input;
-    loop {
-        let Some(lb) = rest.find('[') else {
-            out.push_str(rest);
-            break;
-        };
-        out.push_str(&rest[..lb]);
-        let after_lb = &rest[lb + 1..];
-        let Some(rb) = after_lb.find(']') else {
-            out.push_str(&rest[lb..]);
-            break;
-        };
-        let link_text = &after_lb[..rb];
-        let after_rb = &after_lb[rb + 1..];
-        if !after_rb.starts_with('(') {
-            out.push('[');
-            rest = after_lb;
+fn inject_item_copy_html(items: &mut [Value]) {
+    for item in items {
+        let Some(obj) = item.as_object_mut() else {
             continue;
-        }
-        let after_paren = &after_rb[1..];
-        let Some(cp) = after_paren.find(')') else {
-            out.push_str(&rest[lb..]);
-            break;
         };
-        let href = &after_paren[..cp];
-        out.push_str("<a href=\"");
-        out.push_str(href);
-        out.push_str("\">");
-        out.push_str(link_text);
-        out.push_str("</a>");
-        rest = &after_paren[cp + 1..];
+        if let Some(Value::String(copy)) = obj.get("child_copy") {
+            let html = markdown_to_html(copy);
+            obj.insert("child_copy_html".to_string(), Value::String(html));
+        }
     }
-    out
 }
 
 fn stringify_json(value: &Value) -> String {
@@ -1312,5 +1266,245 @@ mod tests {
         assert!(html.contains(r#"<span class="" role="presentation">More &amp; Extra</span>"#));
         assert!(html.contains(r#"<ul class="sub-menu">"#));
         assert!(html.contains(r#"<a href="/about.html" target="_self" class="">About</a>"#));
+    }
+
+    #[test]
+    fn markdown_renders_headings_lists_rules_and_inline() {
+        let html = super::markdown_to_html(
+            "# Hello\n\n## World\n\n### Three\n\n#### Four\n\n##### Five\n\n###### Six\n\n- a\n- b\n\n1. one\n2. two\n\n---\n\n**bold** *italic* `code` [x](https://example.com)\n\n~~strike~~",
+        );
+        assert!(html.contains("<h1>Hello</h1>"), "{html}");
+        assert!(html.contains("<h2>World</h2>"), "{html}");
+        assert!(html.contains("<h3>Three</h3>"), "{html}");
+        assert!(html.contains("<h4>Four</h4>"), "{html}");
+        assert!(html.contains("<h5>Five</h5>"), "{html}");
+        assert!(html.contains("<h6>Six</h6>"), "{html}");
+        assert!(html.contains("<ul>"), "{html}");
+        assert!(html.contains("<li>a</li>"), "{html}");
+        assert!(html.contains("<ol>"), "{html}");
+        assert!(html.contains("<li>one</li>"), "{html}");
+        assert!(html.contains("<hr"), "{html}");
+        assert!(html.contains("<strong>bold</strong>"), "{html}");
+        assert!(html.contains("<em>italic</em>"), "{html}");
+        assert!(html.contains("<code>code</code>"), "{html}");
+        assert!(
+            html.contains(r#"<a href="https://example.com">x</a>"#),
+            "{html}"
+        );
+        assert!(html.contains("<del>strike</del>"), "{html}");
+    }
+
+    #[test]
+    fn markdown_renders_setext_headings_plus_lists_and_rules_without_blank_lines() {
+        let html = super::markdown_to_html(
+            "This is a copy block for you.  \n# h1\n## h2\n### h3\nh1  \n==\nh2  \n--\n**bold**\n*italic*\n`code`\n- item 1\n- item 2\n+ item 5\n1. item 7\n2. item 8\n---  \n[test](https://www.google.com/)  \n***\n",
+        );
+        assert!(html.contains("<h1>h1</h1>"), "{html}");
+        assert!(html.contains("<h2>h2</h2>"), "{html}");
+        assert!(html.contains("<h3>h3</h3>"), "{html}");
+        assert!(html.contains("<ul>"), "{html}");
+        assert!(html.contains("<li>item 1</li>"), "{html}");
+        assert!(html.contains("<li>item 5</li>"), "{html}");
+        assert!(html.contains("<ol>"), "{html}");
+        assert!(html.contains("<li>item 7</li>"), "{html}");
+        assert!(html.contains("<hr"), "{html}");
+        assert!(
+            html.contains(r#"<a href="https://www.google.com/">test</a>"#),
+            "{html}"
+        );
+        assert!(!html.contains("<p># h1</p>"), "{html}");
+    }
+
+    #[test]
+    fn markdown_passthrough_html_blocks() {
+        let html = super::markdown_to_html("<div class=\"note\">raw</div>\n\nNext");
+        assert!(html.contains(r#"<div class="note">raw</div>"#), "{html}");
+        assert!(html.contains("<p>Next</p>"), "{html}");
+    }
+
+    fn page_with_component(component: crate::model::SectionComponent) -> crate::model::Page {
+        use crate::model::{
+            DdSection, Page, PageNode, SectionClass, SectionColumn, SectionItemBoxClass,
+        };
+        Page {
+            id: "p".to_string(),
+            slug: "index".to_string(),
+            slug_locked: false,
+            head: crate::model::Site::starter().pages[0].head.clone(),
+            nodes: vec![PageNode::Section(DdSection {
+                id: "s1".to_string(),
+                section_title: None,
+                section_class: Some(SectionClass::FullContained),
+                item_box_class: Some(SectionItemBoxClass::LBox),
+                columns: vec![SectionColumn {
+                    id: "c1".to_string(),
+                    width_class: "dd-u-1-1".to_string(),
+                    components: vec![component],
+                }],
+            })],
+        }
+    }
+
+    fn assert_unescaped_markdown_copy(html: &str, label: &str) {
+        assert!(
+            html.contains("<h1>Hello</h1>"),
+            "{label} missing heading: {html}"
+        );
+        assert!(html.contains("<ul>"), "{label} missing list: {html}");
+        assert!(html.contains("<li>one</li>"), "{label} missing item: {html}");
+        assert!(
+            !html.contains("&lt;h1&gt;"),
+            "{label} escaped markdown HTML: {html}"
+        );
+    }
+
+    #[test]
+    fn rich_text_copy_emits_unescaped_markdown_html() {
+        use crate::model::{DdRichText, SalAnimation, SectionComponent};
+        let html = render_page_html(&page_with_component(SectionComponent::RichText(
+            DdRichText {
+                parent_class: None,
+                sal: SalAnimation::Fade,
+                parent_copy: "# Hello\n\n- one\n- two\n\n---\n".to_string(),
+            },
+        )))
+        .expect("rich text page should render");
+        assert!(html.contains(r#"<div class="dd-rich_text__copy">"#), "{html}");
+        assert_unescaped_markdown_copy(&html, "dd-rich_text");
+        assert!(html.contains("<hr"), "{html}");
+    }
+
+    #[test]
+    fn expand_textarea_components_render_markdown_copy() {
+        use crate::model::*;
+        let md = "# Hello\n\n- one\n".to_string();
+        let components = [
+            (
+                "dd-cta",
+                SectionComponent::Cta(DdCta {
+                    parent_class: CtaClass::TopLeft,
+                    parent_image_url: "/a.jpg".to_string(),
+                    parent_image_alt: "alt".to_string(),
+                    sal: SalAnimation::Fade,
+                    parent_title: "Title".to_string(),
+                    parent_subtitle: "Subtitle".to_string(),
+                    parent_copy: md.clone(),
+                    parent_link_url: None,
+                    parent_link_target: None,
+                    parent_link_label: None,
+                }),
+            ),
+            (
+                "dd-card",
+                SectionComponent::Card(DdCard {
+                    parent_type: CardType::Default,
+                    sal: SalAnimation::Fade,
+                    parent_width: "dd-u-1-1".to_string(),
+                    items: vec![CardItem {
+                        child_image_url: "/a.jpg".to_string(),
+                        child_image_alt: "alt".to_string(),
+                        child_title: "Title".to_string(),
+                        child_subtitle: "Subtitle".to_string(),
+                        child_copy: md.clone(),
+                        child_link_url: None,
+                        child_link_target: None,
+                        child_link_label: None,
+                    }],
+                }),
+            ),
+            (
+                "dd-alert",
+                SectionComponent::Alert(DdAlert {
+                    parent_type: AlertType::Default,
+                    parent_class: AlertClass::Default,
+                    sal: SalAnimation::Fade,
+                    parent_title: Some("Title".to_string()),
+                    parent_copy: md.clone(),
+                }),
+            ),
+            (
+                "dd-modal",
+                SectionComponent::Modal(DdModal {
+                    parent_title: "Title".to_string(),
+                    parent_copy: md.clone(),
+                }),
+            ),
+            (
+                "dd-blockquote",
+                SectionComponent::Blockquote(DdBlockquote {
+                    sal: SalAnimation::Fade,
+                    parent_image_url: "/a.jpg".to_string(),
+                    parent_image_alt: "alt".to_string(),
+                    parent_name: "Name".to_string(),
+                    parent_role: "Role".to_string(),
+                    parent_copy: md.clone(),
+                }),
+            ),
+            (
+                "dd-accordion",
+                SectionComponent::Accordion(DdAccordion {
+                    parent_type: AccordionType::Default,
+                    parent_class: AccordionClass::Primary,
+                    sal: SalAnimation::Fade,
+                    parent_group_name: "group1".to_string(),
+                    items: vec![AccordionItem {
+                        child_title: "Title".to_string(),
+                        child_copy: md.clone(),
+                    }],
+                    multiple: Some(false),
+                }),
+            ),
+            (
+                "dd-alternating",
+                SectionComponent::Alternating(DdAlternating {
+                    parent_type: AlternatingType::Default,
+                    parent_class: "-default".to_string(),
+                    sal: SalAnimation::Fade,
+                    items: vec![AlternatingItem {
+                        child_image_url: "/a.jpg".to_string(),
+                        child_image_alt: "alt".to_string(),
+                        child_title: "Title".to_string(),
+                        child_subtitle: "Subtitle".to_string(),
+                        child_copy: md.clone(),
+                    }],
+                }),
+            ),
+            (
+                "dd-milestones",
+                SectionComponent::Milestones(DdMilestones {
+                    sal: SalAnimation::Fade,
+                    parent_width: "dd-u-1-1".to_string(),
+                    items: vec![MilestonesItem {
+                        child_percentage: "70".to_string(),
+                        child_title: "Title".to_string(),
+                        child_subtitle: "Subtitle".to_string(),
+                        child_copy: md.clone(),
+                        child_link_url: None,
+                        child_link_target: None,
+                        child_link_label: None,
+                    }],
+                }),
+            ),
+            (
+                "dd-slider",
+                SectionComponent::Slider(DdSlider {
+                    parent_title: "Title".to_string(),
+                    items: vec![SliderItem {
+                        child_title: "Title".to_string(),
+                        child_copy: md.clone(),
+                        child_link_url: None,
+                        child_link_target: None,
+                        child_link_label: None,
+                        child_image_url: "/a.jpg".to_string(),
+                        child_image_alt: "alt".to_string(),
+                    }],
+                }),
+            ),
+        ];
+        for (label, component) in components {
+            let html = render_page_html(&page_with_component(component))
+                .unwrap_or_else(|e| panic!("{label} should render: {e}"));
+            assert_unescaped_markdown_copy(&html, label);
+        }
     }
 }

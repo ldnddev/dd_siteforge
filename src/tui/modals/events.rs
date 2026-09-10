@@ -115,6 +115,45 @@ impl App {
                     self.form_textarea_expanded = true;
                     return Some(ModalResult::Continue);
                 }
+                let textarea_click = {
+                    let areas = self.modal_field_areas.borrow();
+                    if let Some(Modal::FormEdit {
+                        state, cursor_pos, ..
+                    }) = &self.modal
+                    {
+                        areas.iter().find_map(|(idx, rect)| {
+                            if !contains(*rect, col, row) {
+                                return None;
+                            }
+                            let field = state.form.fields.get(*idx)?;
+                            if !matches!(field.kind, editform::FieldKind::Textarea { .. }) {
+                                return None;
+                            }
+                            let focused = *idx == state.focused_field;
+                            let pos = textarea_cursor_from_click(
+                                state.get(field.id),
+                                *rect,
+                                *cursor_pos,
+                                focused,
+                                col,
+                                row,
+                            )?;
+                            Some((*idx, pos))
+                        })
+                    } else {
+                        None
+                    }
+                };
+                if let Some((idx, pos)) = textarea_click {
+                    if let Some(Modal::FormEdit {
+                        state, cursor_pos, ..
+                    }) = self.modal.as_mut()
+                    {
+                        state.focused_field = idx;
+                        *cursor_pos = pos;
+                    }
+                    return Some(ModalResult::Continue);
+                }
                 if self.form_textarea_expanded {
                     return Some(ModalResult::Continue);
                 }
@@ -153,6 +192,7 @@ impl App {
                 MouseEventKind::ScrollUp | MouseEventKind::ScrollDown => {
                     let delta: i32 = if matches!(kind, MouseEventKind::ScrollUp) { -3 } else { 3 };
                     if self.form_textarea_expanded {
+                        let wrap_width = self.focused_textarea_wrap_width();
                         if let Some(Modal::FormEdit {
                             state, cursor_pos, ..
                         }) = self.modal.as_mut()
@@ -170,6 +210,7 @@ impl App {
                                     state.get(field_id),
                                     *cursor_pos,
                                     delta as isize,
+                                    wrap_width,
                                 );
                             }
                         }

@@ -62,6 +62,7 @@ Edit forms: Tab between fields, click-to-focus, mouse wheel, `Ctrl+P` image or p
 
 ### Export + assets
 
+- Copy textareas with Expand (`dd-hero`, `dd-rich_text`, `dd-cta`, `dd-alert`, `dd-modal`, `dd-blockquote`, plus card / accordion / alternating / milestones / slider item copy) render CommonMark to HTML at export (headings, lists, thematic breaks, code, tables, strikethrough, raw HTML passthrough). JSON-LD `text` keeps the authored source.
 - Handlebars from crate `templates/` plus `source/templates/` overrides. Seed on `init-site` only. Re-seed with `init-templates --force`. Export never writes templates.
 - Build kit (Gruntfile, package.json, `.lando.yml`, `.ddev/`, `source/` except author images and templates) is embedded in the binary. `init-site` copies it once (skip existing). Optional house overlay: `~/.config/ldnddev/dd_siteforge/` (dump with `init-scaffold --global`). Re-seed a site with `init-scaffold --force`.
 - `init-site` asks for a project name (or `--name` / folder default when stdin is not a TTY) and stamps that slug into Lando, DDEV, and `package.json`.

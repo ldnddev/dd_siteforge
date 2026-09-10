@@ -43,6 +43,8 @@ fields:
       - id: child_copy
         required: true
         type: string
+        accepts: ["markdown", "html"]
+        export_transform: "render markdown to html (raw html passthrough)"
         maps_to: ".dd-slider__copy"
         ui:
           control: textarea
@@ -175,7 +177,7 @@ blueprint:
               [child_title]
             </div>
             <div class="dd-slider__copy">
-              [child_copy]
+              [[child_copy_html]]
               <div class="dd-slider__links">
                 <div class="dd-slider__link">
                   <a href="[child_link_url]" target="[child_link_target]" class="dd-button -primary">[child_link_label]</a>
