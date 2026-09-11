@@ -55,6 +55,7 @@ pub(in crate::tui) fn input_lines_preserve(s: &str) -> Vec<String> {
     s.split('\n').map(|line| line.to_string()).collect()
 }
 
+#[cfg(test)]
 pub(in crate::tui) fn cursor_from_row_col(lines: &[String], target_row: usize, target_col: usize) -> usize {
     let row = target_row.min(lines.len().saturating_sub(1));
     let mut cursor = 0usize;
