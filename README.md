@@ -6,15 +6,25 @@ Terminal-UI CMS for authoring framework-native static pages. Single Rust binary:
 
 ## Install
 
+Picks the Linux or macOS binary for this machine (x86_64 or aarch64) from GitHub Releases:
+
 ```bash
-./install.sh
+curl -fsSL https://raw.githubusercontent.com/ldnddev/dd_siteforge/master/install.sh | bash
 ```
 
-Builds release, installs `$HOME/.local/bin/dd_siteforge`, and writes the default theme to `$HOME/.config/ldnddev/dd_siteforge_theme.yml` only when that file is missing. Override with `PREFIX`, `BIN_DIR`, or `CONFIG_DIR`.
+Installs `$HOME/.local/bin/dd_siteforge` and writes the default theme to `$HOME/.config/ldnddev/dd_siteforge_theme.yml` only when that file is missing. Pin a version with `--version`, or override `PREFIX` / `BIN_DIR` / `CONFIG_DIR`.
 
 ```bash
+curl -fsSL https://raw.githubusercontent.com/ldnddev/dd_siteforge/master/install.sh | bash -s -- --version v1.8.0
+curl -fsSL https://raw.githubusercontent.com/ldnddev/dd_siteforge/master/install.sh | bash -s -- uninstall
+```
+
+From a clone, `./install.sh` builds with cargo. Use `--from-release` to download a binary instead.
+
+```bash
+./install.sh                      # cargo build --release
+./install.sh --from-release       # same as the curl one-liner
 cargo install --path .            # ~/.cargo/bin
-cargo build --release             # ./target/release/dd_siteforge
 ./install.sh uninstall
 ```
 

@@ -161,14 +161,18 @@
     <p class="muted">Workflow: <code>init-site</code> → drop images in <code>source/images/</code> → TUI → <code>npx grunt build</code> → export or preview.</p>
 
     <h2 id="install">Install</h2>
-    <p>You need a Rust toolchain (<code>cargo</code>) and, for CSS/JS, Node.js. From a clone of the repo:</p>
-<pre><code>./install.sh</code></pre>
-    <p>Builds a release binary, installs it to <code>$HOME/.local/bin/dd_siteforge</code>, and copies the default theme to <code>$HOME/.config/ldnddev/dd_siteforge_theme.yml</code> only if that file is not already there. Override with <code>PREFIX</code>, <code>BIN_DIR</code>, or <code>CONFIG_DIR</code>.</p>
-<pre><code># alternatives
-cargo install --path .              # ~/.cargo/bin
-cargo build --release               # ./target/release/dd_siteforge
+    <p>The installer detects Linux or macOS and x86_64 or aarch64, then downloads that binary from GitHub Releases. You do not need Rust for this path. Node.js is still required later for CSS/JS.</p>
+<pre><code>curl -fsSL https://raw.githubusercontent.com/ldnddev/dd_siteforge/master/install.sh | bash</code></pre>
+    <p>Installs <code>$HOME/.local/bin/dd_siteforge</code> and copies the default theme to <code>$HOME/.config/ldnddev/dd_siteforge_theme.yml</code> only if that file is not already there. Override with <code>PREFIX</code>, <code>BIN_DIR</code>, or <code>CONFIG_DIR</code>. Pin a release with <code>--version v1.8.0</code>.</p>
+<pre><code># pin / uninstall (piped)
+curl -fsSL https://raw.githubusercontent.com/ldnddev/dd_siteforge/master/install.sh | bash -s -- --version v1.8.0
+curl -fsSL https://raw.githubusercontent.com/ldnddev/dd_siteforge/master/install.sh | bash -s -- uninstall
 
-./install.sh uninstall              # remove binary + theme</code></pre>
+# from a clone
+./install.sh                        # cargo build --release
+./install.sh --from-release         # download instead of building
+cargo install --path .              # ~/.cargo/bin
+./install.sh uninstall</code></pre>
     <p>Confirm:</p>
 <pre><code>dd_siteforge --version
 # dd_siteforge 1.8.0</code></pre>
