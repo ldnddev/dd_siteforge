@@ -2361,12 +2361,13 @@ use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, Mous
     #[test]
     fn footer_details_are_not_a_stub() {
         let app = App::new(Site::starter(), None, AppTheme::default(), "default".to_string(), None);
-        let (text, _) = app.details_text(40);
+        let text = app.details_text(40).as_str();
         // default region is Page; switch check via footer helper
-        let (footer, footer_hits) = app.footer_details_text(40);
+        let footer_view = app.footer_details_text(40);
+        let footer = footer_view.as_str();
         assert!(footer.contains("dd-footer"), "{footer}");
         assert!(!footer.to_lowercase().contains("not yet implemented"));
-        assert_eq!(footer.lines().count(), footer_hits.len());
+        assert_eq!(footer.lines().count(), footer_view.hits.len());
         let _ = text;
     }
 
@@ -2910,31 +2911,33 @@ use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, Mous
     #[test]
     fn header_and_footer_details_hits_align_with_lines() {
         let app = App::new(Site::starter(), None, AppTheme::default(), "default".to_string(), None);
-        let (header, header_hits) = app.header_details_text(40);
-        assert_eq!(header.lines().count(), header_hits.len());
+        let header_view = app.header_details_text(40);
+        let header = header_view.as_str();
+        assert_eq!(header.lines().count(), header_view.hits.len());
         let header_lines: Vec<&str> = header.lines().collect();
         let search_line = header_lines
             .iter()
             .position(|l| l.contains("dd-header-search"))
             .expect("starter header has dd-header-search");
         assert!(
-            !header_hits[search_line].is_empty(),
+            !header_view.hits[search_line].is_empty(),
             "component line should carry hit segments"
         );
         let decl = header_lines
             .iter()
             .position(|l| l.contains("[01] dd-header"))
             .expect("header decl");
-        assert!(header_hits[decl].is_empty(), "decl lines keep empty hit rows");
+        assert!(header_view.hits[decl].is_empty(), "decl lines keep empty hit rows");
 
-        let (footer, footer_hits) = app.footer_details_text(40);
-        assert_eq!(footer.lines().count(), footer_hits.len());
+        let footer_view = app.footer_details_text(40);
+        let footer = footer_view.as_str();
+        assert_eq!(footer.lines().count(), footer_view.hits.len());
         let footer_lines: Vec<&str> = footer.lines().collect();
         let col = footer_lines
             .iter()
             .position(|l| l.contains("column: "))
             .expect("footer column decl");
-        assert!(footer_hits[col].is_empty(), "column decl uses string fallback");
+        assert!(footer_view.hits[col].is_empty(), "column decl uses string fallback");
     }
 
     #[test]
@@ -2952,8 +2955,9 @@ use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, Mous
             ..Default::default()
         };
         let detail_w = app.details_area.width.saturating_sub(2) as usize;
-        let (content, hits) = app.details_text(detail_w);
-        app.details_hits = hits;
+        let view = app.details_text(detail_w);
+        app.details_hits = view.hits.clone();
+        let content = view.as_str();
         let lines: Vec<&str> = content.lines().collect();
         let line = lines
             .iter()
@@ -2987,8 +2991,9 @@ use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, Mous
             ..Default::default()
         };
         let detail_w = app.details_area.width.saturating_sub(2) as usize;
-        let (content, hits) = app.details_text(detail_w);
-        app.details_hits = hits;
+        let view = app.details_text(detail_w);
+        app.details_hits = view.hits.clone();
+        let content = view.as_str();
         let lines: Vec<&str> = content.lines().collect();
         let line = lines
             .iter()
@@ -3030,8 +3035,9 @@ use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, Mous
             ..Default::default()
         };
         let detail_w = app.details_area.width.saturating_sub(2) as usize;
-        let (content, hits) = app.details_text(detail_w);
-        app.details_hits = hits;
+        let view = app.details_text(detail_w);
+        app.details_hits = view.hits.clone();
+        let content = view.as_str();
         let lines: Vec<&str> = content.lines().collect();
         let line = lines
             .iter()
@@ -3075,8 +3081,9 @@ use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, Mous
         app.details_scroll_row = 0;
         app.selected_node = 0;
         let detail_w = app.details_area.width.saturating_sub(2) as usize;
-        let (content, hits) = app.details_text(detail_w);
-        app.details_hits = hits;
+        let view = app.details_text(detail_w);
+        app.details_hits = view.hits.clone();
+        let content = view.as_str();
         let lines: Vec<&str> = content.lines().collect();
         let line = lines
             .iter()
@@ -3094,8 +3101,9 @@ use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, Mous
             .push(ComponentKind::Cta.default_component());
         app.selected_header_column = 0;
         app.selected_header_component = 0;
-        let (footer_content, footer_hits) = app.details_text(detail_w);
-        app.details_hits = footer_hits;
+        let footer_view = app.details_text(detail_w);
+        app.details_hits = footer_view.hits.clone();
+        let footer_content = footer_view.as_str();
         let footer_lines: Vec<&str> = footer_content.lines().collect();
         let f_line = footer_lines
             .iter()
@@ -3138,15 +3146,16 @@ use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, Mous
             });
         }
         let detail_w = app.details_area.width.saturating_sub(2) as usize;
-        let (content, mut hits) = app.details_text(detail_w);
+        let mut view = app.details_text(detail_w);
+        let content = view.as_str();
         let lines: Vec<&str> = content.lines().collect();
         let line = lines
             .iter()
             .position(|l| l.contains("dd-cta"))
             .expect("cta component line");
         // Overwrite the stored segment so a click must be reading details_hits, not a regenerated map.
-        hits[line] = vec![(0, 80, 7, 3)];
-        app.details_hits = hits;
+        view.hits[line] = vec![(0, 80, 7, 3)];
+        app.details_hits = view.hits;
         app.selected_node = 0;
         app.selected_column = 0;
         app.selected_component = 0;
@@ -3154,6 +3163,127 @@ use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, Mous
         assert_eq!(app.selected_node, 1);
         assert_eq!(app.selected_column, 7);
         assert_eq!(app.selected_component, 3);
+    }
+
+    fn line_has_style(view: &DetailsView, line: usize, want: BlueprintStyle) -> bool {
+        view.styles
+            .get(line)
+            .map(|spans| spans.iter().any(|&(_, _, s)| s == want))
+            .unwrap_or(false)
+    }
+
+    #[test]
+    fn blueprint_paints_focus_on_selected_hero() {
+        let mut app = App::new(Site::starter(), None, AppTheme::default(), "default".to_string(), None);
+        app.selected_node = 0;
+        app.page_head_selected = false;
+        app.sync_tree_row_with_selection();
+        let view = app.details_text(60);
+        let decl = view
+            .lines
+            .iter()
+            .position(|l| l.contains("[01] dd-hero"))
+            .expect("hero decl");
+        assert!(
+            line_has_style(&view, decl, BlueprintStyle::FocusFill),
+            "selected hero decl should be FocusFill, styles={:?}",
+            view.styles.get(decl)
+        );
+        let box_line = view
+            .lines
+            .iter()
+            .position(|l| l.contains("HERO"))
+            .expect("HERO title");
+        assert!(
+            line_has_style(&view, box_line, BlueprintStyle::FocusFill)
+                || line_has_style(&view, box_line, BlueprintStyle::Focus),
+            "selected hero box title should be focused, styles={:?}",
+            view.styles.get(box_line)
+        );
+        let other = view
+            .lines
+            .iter()
+            .position(|l| l.contains("[02] dd-section"))
+            .expect("section decl");
+        assert!(
+            !line_has_style(&view, other, BlueprintStyle::FocusFill),
+            "unselected section decl should not be FocusFill"
+        );
+    }
+
+    #[test]
+    fn blueprint_paints_brand_on_primary_accordion() {
+        let mut app = App::new(Site::starter(), None, AppTheme::default(), "default".to_string(), None);
+        app.selected_node = 1;
+        app.set_section_expanded(1, true);
+        if let PageNode::Section(section) = &mut app.site.pages[0].nodes[1] {
+            normalize_section_columns(section);
+            section.columns[0]
+                .components
+                .push(ComponentKind::Accordion.default_component());
+        }
+        let view = app.details_text(60);
+        let line = view
+            .lines
+            .iter()
+            .position(|l| l.contains("dd-accordion"))
+            .expect("accordion line");
+        let brand = brand_from_hex(&app.site.theme.primary_color).expect("primary hex");
+        assert!(
+            line_has_style(&view, line, brand),
+            "accordion -primary should paint site primary_color, styles={:?}",
+            view.styles.get(line)
+        );
+    }
+
+    #[test]
+    fn blueprint_paints_site_theme_hex_as_brand() {
+        let mut app = App::new(Site::starter(), None, AppTheme::default(), "default".to_string(), None);
+        app.selected_region = SelectedRegion::Site;
+        let view = app.site_details_text();
+        let line = view
+            .lines
+            .iter()
+            .position(|l| l.contains("primary_color:"))
+            .expect("primary_color line");
+        let brand = brand_from_hex(&app.site.theme.primary_color).expect("primary hex");
+        assert!(
+            line_has_style(&view, line, brand),
+            "site primary_color value should be painted, styles={:?}",
+            view.styles.get(line)
+        );
+    }
+
+    #[test]
+    fn blueprint_paints_focus_on_selected_column_box() {
+        let mut app = App::new(Site::starter(), None, AppTheme::default(), "default".to_string(), None);
+        app.selected_node = 1;
+        app.selected_column = 0;
+        app.set_section_expanded(1, true);
+        let rows = app.build_tree_rows();
+        app.selected_tree_row = rows
+            .iter()
+            .position(|r| {
+                matches!(
+                    r.kind,
+                    TreeRowKind::Column {
+                        node_idx: 1,
+                        column_idx: 0
+                    }
+                )
+            })
+            .expect("column row");
+        let view = app.details_text(60);
+        let item = view
+            .lines
+            .iter()
+            .position(|l| l.contains("item: "))
+            .expect("column item line");
+        assert!(
+            line_has_style(&view, item, BlueprintStyle::Focus),
+            "selected column box should be Focus, styles={:?}",
+            view.styles.get(item)
+        );
     }
 
     #[test]

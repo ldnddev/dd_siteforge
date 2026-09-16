@@ -6,13 +6,13 @@ pub(in crate::tui) fn section_ascii_map(
     section: &crate::model::DdSection,
     selected_column: usize,
     panel_width: usize,
-) -> (String, Vec<Vec<(usize, usize, usize, usize)>>) {
+) -> AsciiMap {
     const MAX_COMPONENT_ROWS: usize = 4;
 
     let inner_width = panel_width.saturating_sub(4).max(12);
     let columns = section_columns_ref(section);
     if columns.is_empty() {
-        return ("(no columns)".to_string(), vec![]);
+        return AsciiMap::from_lines(vec!["(no columns)".to_string()], vec![vec![]], vec![vec![]]);
     }
     let active = selected_column.min(columns.len().saturating_sub(1));
 
@@ -90,6 +90,7 @@ pub(in crate::tui) fn section_ascii_map(
     // Each inner line will have segments for components: (x0, x1, col, comp)
     let mut inner_composed_lines: Vec<String> = vec![];
     let mut inner_line_segments: Vec<Vec<(usize, usize, usize, usize)>> = vec![]; // x0,x1,col,comp per inner line
+    let mut inner_line_boxes: Vec<Vec<(usize, usize, usize)>> = vec![]; // x0,x1,col per inner line
 
     // section header lines (inside the section ascii border)
     let section_header_lines = vec![
@@ -118,6 +119,7 @@ pub(in crate::tui) fn section_ascii_map(
     for hl in section_header_lines {
         inner_composed_lines.push(hl);
         inner_line_segments.push(vec![]);
+        inner_line_boxes.push(vec![]);
     }
 
     let item_box_widths = column_data
@@ -152,6 +154,7 @@ pub(in crate::tui) fn section_ascii_map(
         if row_idx > 0 {
             inner_composed_lines.push("".to_string());
             inner_line_segments.push(vec![]);
+            inner_line_boxes.push(vec![]);
         }
         let max_height = row
             .iter()
@@ -161,6 +164,7 @@ pub(in crate::tui) fn section_ascii_map(
         for line_idx in 0..max_height {
             let mut composed = String::new();
             let mut segs: Vec<(usize, usize, usize, usize)> = vec![];
+            let mut boxes: Vec<(usize, usize, usize)> = vec![];
             let mut cur_x = 0usize;
             for (pos, &col_idx) in row.iter().enumerate() {
                 if pos > 0 {
@@ -176,6 +180,7 @@ pub(in crate::tui) fn section_ascii_map(
                 let part_start = cur_x;
                 composed.push_str(&part);
                 cur_x += part.chars().count();
+                boxes.push((part_start, cur_x, col_idx));
                 if let Some(cp) = box_comps.get(line_idx).copied().flatten() {
                     segs.push((part_start, cur_x, col_idx, cp));
                 }
@@ -183,27 +188,36 @@ pub(in crate::tui) fn section_ascii_map(
             let fitted = fit_ascii_cell(&composed, inner_width);
             inner_composed_lines.push(fitted);
             inner_line_segments.push(segs);
+            inner_line_boxes.push(boxes);
         }
     }
 
     let border = format!("+{}+", "-".repeat(inner_width + 2));
     let mut out = Vec::new();
-    let mut out_hits: Vec<Vec<(usize, usize, usize, usize)>> = vec![]; // final hits per out line
+    let mut out_hits: Vec<Vec<(usize, usize, usize, usize)>> = vec![];
+    let mut out_boxes: Vec<Vec<(usize, usize, usize)>> = vec![];
     out.push(border.clone());
     out_hits.push(vec![]);
+    out_boxes.push(vec![]);
     for (i, line) in inner_composed_lines.into_iter().enumerate() {
         let final_line = format!("| {} |", line);
         // adjust the inner segs x by +2 for the leading "| "
-        let adjusted: Vec<(usize,usize,usize,usize)> = inner_line_segments[i]
+        let adjusted: Vec<(usize, usize, usize, usize)> = inner_line_segments[i]
             .iter()
-            .map(|(x0,x1,c,cp)| (x0 + 2, x1 + 2, *c, *cp))
+            .map(|(x0, x1, c, cp)| (x0 + 2, x1 + 2, *c, *cp))
+            .collect();
+        let adjusted_boxes: Vec<(usize, usize, usize)> = inner_line_boxes[i]
+            .iter()
+            .map(|(x0, x1, c)| (x0 + 2, x1 + 2, *c))
             .collect();
         out.push(final_line);
         out_hits.push(adjusted);
+        out_boxes.push(adjusted_boxes);
     }
-    out.push(border.clone());
+    out.push(border);
     out_hits.push(vec![]);
-    (out.join("\n"), out_hits)
+    out_boxes.push(vec![]);
+    AsciiMap::from_lines(out, out_hits, out_boxes)
 }
 
 pub(in crate::tui) fn header_ascii_map(
@@ -211,7 +225,7 @@ pub(in crate::tui) fn header_ascii_map(
     selected_section: usize,
     selected_column: usize,
     panel_width: usize,
-) -> (String, Vec<Vec<(usize, usize, usize, usize)>>) {
+) -> AsciiMap {
     let inner_width = panel_width.saturating_sub(4).max(12);
 
     let mut lines = vec![
@@ -296,7 +310,7 @@ pub(in crate::tui) fn footer_ascii_map(
     selected_section: usize,
     selected_column: usize,
     panel_width: usize,
-) -> (String, Vec<Vec<(usize, usize, usize, usize)>>) {
+) -> AsciiMap {
     let inner_width = panel_width.saturating_sub(4).max(12);
     let mut lines = vec![
         fit_ascii_cell("FOOTER", inner_width),
@@ -369,7 +383,7 @@ fn wrap_ascii_block(
     lines: Vec<String>,
     line_hits: Vec<Vec<(usize, usize, usize, usize)>>,
     inner_width: usize,
-) -> (String, Vec<Vec<(usize, usize, usize, usize)>>) {
+) -> AsciiMap {
     let border = format!("+{}+", "-".repeat(inner_width + 2));
     let mut out = Vec::new();
     let mut out_hits: Vec<Vec<(usize, usize, usize, usize)>> = vec![];
@@ -389,7 +403,8 @@ fn wrap_ascii_block(
     }
     out.push(border);
     out_hits.push(vec![]);
-    (out.join("\n"), out_hits)
+    let boxes = vec![vec![]; out.len()];
+    AsciiMap::from_lines(out, out_hits, boxes)
 }
 
 pub(in crate::tui) fn card_items_ascii_lines(
@@ -577,7 +592,7 @@ pub(in crate::tui) fn breakpoint_for_panel_chars(panel_chars: usize) -> Responsi
     }
 }
 
-pub(in crate::tui) fn hero_ascii_map(hero: &crate::model::DdHero, panel_width: usize) -> String {
+pub(in crate::tui) fn hero_ascii_map(hero: &crate::model::DdHero, panel_width: usize) -> AsciiMap {
     let inner_width = panel_width.saturating_sub(4).max(8);
     let border = format!("+{}+", "-".repeat(inner_width + 2));
     let lines = [
@@ -632,7 +647,12 @@ pub(in crate::tui) fn hero_ascii_map(hero: &crate::model::DdHero, panel_width: u
         out.push(format!("| {} |", line));
     }
     out.push(border);
-    out.join("\n")
+    let hits = vec![vec![]; out.len()];
+    let boxes = out
+        .iter()
+        .map(|l| vec![(0, l.chars().count(), 0)])
+        .collect();
+    AsciiMap::from_lines(out, hits, boxes)
 }
 
 pub(in crate::tui) fn fit_ascii_cell(value: &str, width: usize) -> String {

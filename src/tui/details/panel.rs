@@ -114,7 +114,7 @@ impl App {
         }
         format!("{prefix}{}", parts.join("  "))
     }
-    pub(in crate::tui) fn details_text(&self, detail_width: usize) -> (String, Vec<Vec<(usize, usize, usize, usize)>>) {
+    pub(in crate::tui) fn details_text(&self, detail_width: usize) -> DetailsView {
         match self.selected_region {
             SelectedRegion::Site => self.site_details_text(),
             SelectedRegion::Header => self.header_details_text(detail_width),
@@ -122,115 +122,156 @@ impl App {
             SelectedRegion::Page => self.page_details_text(detail_width),
         }
     }
-    pub(in crate::tui) fn site_details_text(&self) -> (String, Vec<Vec<(usize, usize, usize, usize)>>) {
-        let lines = vec![
-            "Site settings".to_string(),
-            String::new(),
-            format!("name: {}", self.site.name),
-            format!("lang: {}", self.site.lang),
-            format!(
-                "base_url: {}",
-                self.site.base_url.as_deref().unwrap_or("")
-            ),
-            format!(
-                "export_dir: {}",
-                self.site.export_dir.as_deref().unwrap_or("")
-            ),
-            format!("primary_color: {}", self.site.theme.primary_color),
-            format!("secondary_color: {}", self.site.theme.secondary_color),
-            format!("tertiary_color: {}", self.site.theme.tertiary_color),
-            format!("support_color: {}", self.site.theme.support_color),
-        ];
-        let hits = vec![Vec::new(); lines.len()];
-        (lines.join("\n"), hits)
+    pub(in crate::tui) fn site_details_text(&self) -> DetailsView {
+        let mut view = DetailsView::new();
+        let site_focus = matches!(self.blueprint_focus(), BlueprintFocus::Site);
+        view.push_styled("Site settings", if site_focus {
+            BlueprintStyle::FocusFill
+        } else {
+            BlueprintStyle::Label
+        });
+        view.push_plain("");
+        view.push_plain(format!("name: {}", self.site.name));
+        view.push_plain(format!("lang: {}", self.site.lang));
+        view.push_plain(format!(
+            "base_url: {}",
+            self.site.base_url.as_deref().unwrap_or("")
+        ));
+        view.push_plain(format!(
+            "export_dir: {}",
+            self.site.export_dir.as_deref().unwrap_or("")
+        ));
+        paint_theme_color_line(&mut view, "primary_color", &self.site.theme.primary_color);
+        paint_theme_color_line(&mut view, "secondary_color", &self.site.theme.secondary_color);
+        paint_theme_color_line(&mut view, "tertiary_color", &self.site.theme.tertiary_color);
+        paint_theme_color_line(&mut view, "support_color", &self.site.theme.support_color);
+        view
     }
-    pub(in crate::tui) fn header_details_text(&self, detail_width: usize) -> (String, Vec<Vec<(usize, usize, usize, usize)>>) {
-        let mut out = Vec::new();
-        let mut out_hits: Vec<Vec<(usize, usize, usize, usize)>> = vec![];
-        out.push("Site header".to_string());
-        out_hits.push(vec![]);
-        out.push(String::new());
-        out_hits.push(vec![]);
+    pub(in crate::tui) fn header_details_text(&self, detail_width: usize) -> DetailsView {
+        let mut view = DetailsView::new();
+        view.push_styled("Site header", BlueprintStyle::Label);
+        view.push_plain("");
         let marker = if matches!(self.selected_region, SelectedRegion::Header) {
             "*"
         } else {
             " "
         };
-        out.push(format!("{}[01] dd-header {}", marker, self.site.header.id));
-        out_hits.push(vec![]);
-        let (hmap, h_hits) = header_ascii_map(
+        let decl = format!("{}[01] dd-header {}", marker, self.site.header.id);
+        view.push_plain(decl);
+        let decl_idx = view.lines.len() - 1;
+        let map = header_ascii_map(
             &self.site.header,
             self.selected_header_section,
             self.selected_header_column,
             detail_width,
         );
-        for (i, l) in hmap.lines().enumerate() {
-            out.push(l.to_string());
-            out_hits.push(h_hits.get(i).cloned().unwrap_or_default());
-        }
-        out.push(String::new());
-        out_hits.push(vec![]);
-        out.push(format!(
-            "Selected: {} | Insert mode: {}",
-            self.header_selection_summary(),
-            self.component_kind.label()
-        ));
-        out_hits.push(vec![]);
-        (out.join("\n"), out_hits)
+        let (map_start, map_end, _) = view.extend_map(map);
+        paint_header_region(
+            &mut view,
+            decl_idx,
+            map_start,
+            map_end,
+            &self.site.header.sections,
+            self.blueprint_focus(),
+            true,
+            &self.site.theme,
+        );
+        view.push_plain("");
+        view.push_styled(
+            format!(
+                "Selected: {} | Insert mode: {}",
+                self.header_selection_summary(),
+                self.component_kind.label()
+            ),
+            BlueprintStyle::Label,
+        );
+        view
     }
-    pub(in crate::tui) fn footer_details_text(&self, detail_width: usize) -> (String, Vec<Vec<(usize, usize, usize, usize)>>) {
-        let mut out = Vec::new();
-        let mut out_hits: Vec<Vec<(usize, usize, usize, usize)>> = vec![];
-        out.push("Site footer".to_string());
-        out_hits.push(vec![]);
-        out.push(String::new());
-        out_hits.push(vec![]);
+    pub(in crate::tui) fn footer_details_text(&self, detail_width: usize) -> DetailsView {
+        let mut view = DetailsView::new();
+        view.push_styled("Site footer", BlueprintStyle::Label);
+        view.push_plain("");
         let marker = if matches!(self.selected_region, SelectedRegion::Footer) {
             "*"
         } else {
             " "
         };
-        out.push(format!("{}[01] dd-footer {}", marker, self.site.footer.id));
-        out_hits.push(vec![]);
-        let (fmap, f_hits) = footer_ascii_map(
+        view.push_plain(format!("{}[01] dd-footer {}", marker, self.site.footer.id));
+        let decl_idx = view.lines.len() - 1;
+        let map = footer_ascii_map(
             &self.site.footer,
             self.selected_header_section,
             self.selected_header_column,
             detail_width,
         );
-        for (i, l) in fmap.lines().enumerate() {
-            out.push(l.to_string());
-            out_hits.push(f_hits.get(i).cloned().unwrap_or_default());
-        }
-        (out.join("\n"), out_hits)
+        let (map_start, map_end, _) = view.extend_map(map);
+        paint_header_region(
+            &mut view,
+            decl_idx,
+            map_start,
+            map_end,
+            &self.site.footer.sections,
+            self.blueprint_focus(),
+            false,
+            &self.site.theme,
+        );
+        view
     }
-    pub(in crate::tui) fn page_details_text(&self, detail_width: usize) -> (String, Vec<Vec<(usize, usize, usize, usize)>>) {
+    pub(in crate::tui) fn page_details_text(&self, detail_width: usize) -> DetailsView {
         let page = self.current_page();
         if page.nodes.is_empty() {
-            return ("No nodes on this page.".to_string(), vec![]);
+            let mut view = DetailsView::new();
+            view.push_plain("No nodes on this page.");
+            return view;
         }
-        let mut out = Vec::new();
-        let mut out_hits: Vec<Vec<(usize, usize, usize, usize)>> = vec![];
-        out.push(format!("Page blueprint: {}", page.head.title));
-        out_hits.push(vec![]);
-        out.push(String::new());
-        out_hits.push(vec![]);
+        let focus = self.blueprint_focus();
+        let mut view = DetailsView::new();
+        view.push_styled(
+            format!("Page blueprint: {}", page.head.title),
+            BlueprintStyle::Label,
+        );
+        view.push_plain("");
         for (idx, node) in page.nodes.iter().enumerate() {
             let marker = if idx == self.selected_node { "*" } else { " " };
+            let node_focus = match focus {
+                BlueprintFocus::Page { node, depth } if node == idx => Some(depth),
+                _ => None,
+            };
             match node {
                 PageNode::Hero(v) => {
-                    out.push(format!("{marker}[{:02}] dd-hero", idx + 1,));
-                    out_hits.push(vec![]);
-                    let hmap = hero_ascii_map(v, detail_width);
-                    for l in hmap.lines() {
-                        out.push(l.to_string());
-                        out_hits.push(vec![]);
+                    view.push_plain(format!("{marker}[{:02}] dd-hero", idx + 1));
+                    let decl_idx = view.lines.len() - 1;
+                    if node_focus.is_some() {
+                        let style = if matches!(node_focus, Some(FocusDepth::Root)) {
+                            BlueprintStyle::FocusFill
+                        } else {
+                            BlueprintStyle::Focus
+                        };
+                        view.paint_line(decl_idx, style);
+                    }
+                    let map = hero_ascii_map(v, detail_width);
+                    let (map_start, map_end, _) = view.extend_map(map);
+                    if node_focus.is_some() {
+                        for i in map_start..map_end {
+                            view.paint_line(i, BlueprintStyle::Focus);
+                        }
+                        if map_start + 1 < map_end {
+                            view.paint_line(map_start + 1, BlueprintStyle::FocusFill);
+                        }
                     }
                 }
                 PageNode::Section(v) => {
-                    out.push(format!("{marker}[{:02}] dd-section {}", idx + 1, v.id));
-                    out_hits.push(vec![]);
-                    let (sec_str, sec_hits) = section_ascii_map(
+                    view.push_plain(format!("{marker}[{:02}] dd-section {}", idx + 1, v.id));
+                    let decl_idx = view.lines.len() - 1;
+                    if node_focus.is_some() {
+                        let style = if matches!(node_focus, Some(FocusDepth::Root)) {
+                            BlueprintStyle::FocusFill
+                        } else {
+                            BlueprintStyle::Focus
+                        };
+                        view.paint_line(decl_idx, style);
+                    }
+                    let map = section_ascii_map(
                         v,
                         if idx == self.selected_node {
                             self.selected_column
@@ -239,22 +280,29 @@ impl App {
                         },
                         detail_width,
                     );
-                    for (i, l) in sec_str.lines().enumerate() {
-                        out.push(l.to_string());
-                        out_hits.push(sec_hits.get(i).cloned().unwrap_or_default());
-                    }
+                    let (map_start, map_end, boxes) = view.extend_map(map);
+                    paint_section_map(
+                        &mut view,
+                        map_start,
+                        map_end,
+                        &boxes,
+                        v,
+                        node_focus,
+                        &self.site.theme,
+                    );
                 }
             }
-            out.push(String::new());
-            out_hits.push(vec![]);
+            view.push_plain("");
         }
-        out.push(format!(
-            "Selected: {} | Insert mode: {}",
-            self.selection_summary(),
-            self.component_kind.label()
-        ));
-        out_hits.push(vec![]);
-        (out.join("\n"), out_hits)
+        view.push_styled(
+            format!(
+                "Selected: {} | Insert mode: {}",
+                self.selection_summary(),
+                self.component_kind.label()
+            ),
+            BlueprintStyle::Label,
+        );
+        view
     }
     pub(in crate::tui) fn details_max_scroll(&self) -> usize {
         let visible_rows = self.details_area.height.saturating_sub(2) as usize;
@@ -265,8 +313,8 @@ impl App {
         if detail_width == 0 {
             return 0;
         }
-        let (dtxt, _dhits) = self.details_text(detail_width);
-        let total_rows = dtxt.lines().count().max(1);
+        let view = self.details_text(detail_width);
+        let total_rows = view.lines.len().max(1);
         total_rows.saturating_sub(visible_rows)
     }
     pub(in crate::tui) fn scroll_details_by(&mut self, delta: isize) {
@@ -280,18 +328,18 @@ impl App {
         if detail_w == 0 {
             return;
         }
-        let (content, generated_hits) = self.details_text(detail_w);
-        let lines: Vec<&str> = content.lines().collect();
-        if text_line >= lines.len() {
+        let generated = self.details_text(detail_w);
+        if text_line >= generated.lines.len() {
             return;
         }
         // Prefer draw-time hits; regenerate only when the stored map is missing this line.
         let line_segs = self
             .details_hits
             .get(text_line)
-            .or_else(|| generated_hits.get(text_line))
+            .or_else(|| generated.hits.get(text_line))
             .cloned()
             .unwrap_or_default();
+        let lines: Vec<&str> = generated.lines.iter().map(|s| s.as_str()).collect();
         match self.selected_region {
             SelectedRegion::Site => return,
             SelectedRegion::Header | SelectedRegion::Footer => {
@@ -468,5 +516,244 @@ impl App {
         self.selected_header_section = sec_idx;
         self.selected_header_column = col_idx;
         self.selected_header_component = comp_idx;
+    }
+}
+
+fn paint_theme_color_line(view: &mut DetailsView, label: &str, hex: &str) {
+    let line = format!("{label}: {hex}");
+    view.push_plain(line);
+    let idx = view.lines.len() - 1;
+    let label_len = label.chars().count();
+    view.paint(idx, 0, label_len, BlueprintStyle::Label);
+    if let Some(style) = brand_from_hex(hex) {
+        let start = view.lines[idx].find(hex).unwrap_or(label_len + 2);
+        view.paint(idx, start, start + hex.chars().count(), style);
+    }
+}
+
+fn paint_section_map(
+    view: &mut DetailsView,
+    map_start: usize,
+    map_end: usize,
+    boxes: &[Vec<(usize, usize, usize)>],
+    section: &crate::model::DdSection,
+    node_focus: Option<FocusDepth>,
+    theme: &crate::model::ThemeSettings,
+) {
+    let columns = section_columns_ref(section);
+    match node_focus {
+        Some(FocusDepth::Root) => {
+            for i in map_start..map_end {
+                view.paint_line(i, BlueprintStyle::Focus);
+            }
+            if map_start + 1 < map_end {
+                view.paint_line(map_start + 1, BlueprintStyle::FocusFill);
+            }
+        }
+        Some(FocusDepth::Column(col)) => {
+            paint_column_boxes(view, map_start, boxes, col, BlueprintStyle::Focus);
+        }
+        Some(FocusDepth::Component { column, component }) => {
+            paint_column_boxes(view, map_start, boxes, column, BlueprintStyle::Focus);
+            let fills: Vec<(usize, usize, usize)> = view.hits
+                .iter()
+                .enumerate()
+                .skip(map_start)
+                .take(map_end.saturating_sub(map_start))
+                .flat_map(|(offset, segs)| {
+                    segs.iter().filter_map(move |&(x0, x1, c, cp)| {
+                        (c == column && cp == component).then_some((offset, x0, x1))
+                    })
+                })
+                .collect();
+            for (offset, x0, x1) in fills {
+                view.paint(offset, x0, x1, BlueprintStyle::FocusFill);
+            }
+        }
+        None => {}
+    }
+
+    let mut brands = Vec::new();
+    for offset in map_start..map_end {
+        if let Some(segs) = view.hits.get(offset) {
+            for &(x0, x1, c, cp) in segs {
+                if let Some(style) = columns
+                    .get(c)
+                    .and_then(|col| col.components.get(cp))
+                    .and_then(|component| component_token_style(component, theme))
+                {
+                    brands.push((offset, x0, x1, style));
+                }
+            }
+        }
+    }
+    for (offset, x0, x1, style) in brands {
+        view.paint(offset, x0, x1, style);
+    }
+}
+
+fn paint_column_boxes(
+    view: &mut DetailsView,
+    map_start: usize,
+    boxes: &[Vec<(usize, usize, usize)>],
+    column: usize,
+    style: BlueprintStyle,
+) {
+    for (i, segs) in boxes.iter().enumerate() {
+        let line = map_start + i;
+        for &(x0, x1, c) in segs {
+            if c == column {
+                view.paint(line, x0, x1, style);
+            }
+        }
+    }
+}
+
+fn paint_header_region(
+    view: &mut DetailsView,
+    decl_idx: usize,
+    map_start: usize,
+    map_end: usize,
+    sections: &[crate::model::DdSection],
+    focus: BlueprintFocus,
+    is_header: bool,
+    theme: &crate::model::ThemeSettings,
+) {
+    let depth = match (focus, is_header) {
+        (BlueprintFocus::Header { depth }, true) => Some(depth),
+        (BlueprintFocus::Footer { depth }, false) => Some(depth),
+        _ => None,
+    };
+    if let Some(d) = depth {
+        let decl_style = if matches!(d, HeaderFocusDepth::Root) {
+            BlueprintStyle::FocusFill
+        } else {
+            BlueprintStyle::Focus
+        };
+        view.paint_line(decl_idx, decl_style);
+        if matches!(d, HeaderFocusDepth::Root) {
+            for i in map_start..map_end {
+                view.paint_line(i, BlueprintStyle::Focus);
+            }
+            if map_start + 1 < map_end {
+                view.paint_line(map_start + 1, BlueprintStyle::FocusFill);
+            }
+        }
+    }
+
+    let mut sec = 0usize;
+    let mut col = 0usize;
+    let mut secs = 0usize;
+    let mut cols = 0usize;
+    let mut comps = 0usize;
+    for i in map_start..map_end {
+        let line = view.lines[i].clone();
+        let t = line.trim();
+        if t.contains("section: ") {
+            sec = secs;
+            secs += 1;
+            cols = 0;
+            comps = 0;
+            col = 0;
+            if let Some(style) = header_line_style(depth, HeaderFocusDepth::Section(sec)) {
+                view.paint_line(i, style);
+            }
+        } else if t.contains("column: ") {
+            col = cols;
+            cols += 1;
+            comps = 0;
+            if let Some(style) = header_line_style(
+                depth,
+                HeaderFocusDepth::Column {
+                    section: sec,
+                    column: col,
+                },
+            ) {
+                view.paint_line(i, style);
+            }
+        } else if t.contains("dd-") && !t.contains("section:") {
+            let comp = comps;
+            comps += 1;
+            if let Some(style) = header_line_style(
+                depth,
+                HeaderFocusDepth::Component {
+                    section: sec,
+                    column: col,
+                    component: comp,
+                },
+            ) {
+                view.paint_line(i, style);
+            }
+            if let Some(component) = sections
+                .get(sec)
+                .and_then(|s| s.columns.get(col))
+                .and_then(|c| c.components.get(comp))
+            {
+                if let Some(style) = component_token_style(component, theme) {
+                    view.paint_line(i, style);
+                }
+            }
+        }
+    }
+}
+
+fn header_line_style(
+    focus: Option<HeaderFocusDepth>,
+    line: HeaderFocusDepth,
+) -> Option<BlueprintStyle> {
+    let focus = focus?;
+    let exact = match (focus, line) {
+        (HeaderFocusDepth::Root, HeaderFocusDepth::Root) => true,
+        (HeaderFocusDepth::Section(a), HeaderFocusDepth::Section(b)) => a == b,
+        (
+            HeaderFocusDepth::Column {
+                section: fs,
+                column: fc,
+            },
+            HeaderFocusDepth::Column {
+                section: ls,
+                column: lc,
+            },
+        ) => fs == ls && fc == lc,
+        (
+            HeaderFocusDepth::Component {
+                section: fs,
+                column: fc,
+                component: fp,
+            },
+            HeaderFocusDepth::Component {
+                section: ls,
+                column: lc,
+                component: lp,
+            },
+        ) => fs == ls && fc == lc && fp == lp,
+        _ => false,
+    };
+    if exact {
+        return Some(BlueprintStyle::FocusFill);
+    }
+    let ancestor = match (focus, line) {
+        (
+            HeaderFocusDepth::Column { section: fs, .. }
+            | HeaderFocusDepth::Component { section: fs, .. },
+            HeaderFocusDepth::Section(ls),
+        ) => fs == ls,
+        (
+            HeaderFocusDepth::Component {
+                section: fs,
+                column: fc,
+                ..
+            },
+            HeaderFocusDepth::Column {
+                section: ls,
+                column: lc,
+            },
+        ) => fs == ls && fc == lc,
+        _ => false,
+    };
+    if ancestor {
+        Some(BlueprintStyle::Focus)
+    } else {
+        None
     }
 }
