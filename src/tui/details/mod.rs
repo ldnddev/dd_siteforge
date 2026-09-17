@@ -1,6 +1,6 @@
 //! Details panel ASCII maps and text.
-mod labels;
 mod ascii;
+mod labels;
 mod panel;
 mod style;
 

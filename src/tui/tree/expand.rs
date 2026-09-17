@@ -6,7 +6,11 @@ impl App {
         self.expanded_sections.contains(&(usize::MAX, section_idx))
     }
 
-    pub(in crate::tui) fn set_header_section_expanded(&mut self, section_idx: usize, expanded: bool) {
+    pub(in crate::tui) fn set_header_section_expanded(
+        &mut self,
+        section_idx: usize,
+        expanded: bool,
+    ) {
         let key = (usize::MAX, section_idx);
         if expanded {
             self.expanded_sections.insert(key);

@@ -49,7 +49,10 @@ impl App {
             Modal::ConfirmPrompt { message, .. } => {
                 self.render_confirm_prompt(frame, message);
             }
-            Modal::ValidationErrors { errors, scroll_offset } => {
+            Modal::ValidationErrors {
+                errors,
+                scroll_offset,
+            } => {
                 self.render_validation_errors_modal(frame, errors, *scroll_offset);
             }
             Modal::ImagePicker { state } => self.render_image_picker_modal(frame, state),
@@ -117,10 +120,13 @@ impl App {
         }
         let content_top = inner.y.saturating_add(2);
         let content_height = inner.height.saturating_sub(2);
-        let scrollbar_col = inner
-            .x
-            .saturating_add(inner.width.saturating_sub(1));
-        let content_rect = Rect::new(inner.x, content_top, inner.width.saturating_sub(1), content_height);
+        let scrollbar_col = inner.x.saturating_add(inner.width.saturating_sub(1));
+        let content_rect = Rect::new(
+            inner.x,
+            content_top,
+            inner.width.saturating_sub(1),
+            content_height,
+        );
 
         // Build virtual field layout: each entry holds (field_idx, label_y, box_y, box_height).
         #[derive(Clone, Copy)]
@@ -147,11 +153,7 @@ impl App {
                     )
                 }
                 editform::FieldKind::SubForm { .. } => {
-                    let items_len = state
-                        .sub_state
-                        .get(field.id)
-                        .map(|v| v.len())
-                        .unwrap_or(0);
+                    let items_len = state.sub_state.get(field.id).map(|v| v.len()).unwrap_or(0);
                     // header line + one row per item (at least 1 placeholder row)
                     (1 + items_len.max(1)) as u16
                 }
@@ -283,21 +285,18 @@ impl App {
                 );
                 let field_block = Block::default()
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(border_color).bg(self.theme.modal_background))
+                    .border_style(
+                        Style::default()
+                            .fg(border_color)
+                            .bg(self.theme.modal_background),
+                    )
                     .style(Style::default().bg(self.theme.modal_background));
                 let inner_rect = field_block.inner(box_rect);
                 frame.render_widget(field_block, box_rect);
                 self.modal_field_areas
                     .borrow_mut()
                     .push((slot.idx, box_rect));
-                self.render_form_field_value(
-                    frame,
-                    field,
-                    state,
-                    cursor_pos,
-                    focused,
-                    inner_rect,
-                );
+                self.render_form_field_value(frame, field, state, cursor_pos, focused, inner_rect);
             }
         }
 
@@ -414,13 +413,7 @@ impl App {
             }
             editform::FieldKind::Textarea { .. } => {
                 let value = state.get(field.id);
-                let layout = textarea_layout(
-                    value,
-                    cursor_pos,
-                    focused,
-                    rect.width,
-                    rect.height,
-                );
+                let layout = textarea_layout(value, cursor_pos, focused, rect.width, rect.height);
                 let text_rect = if layout.has_scrollbar {
                     Rect {
                         width: rect.width.saturating_sub(1),
@@ -429,10 +422,7 @@ impl App {
                 } else {
                     rect
                 };
-                frame.render_widget(
-                    Paragraph::new(layout.display).style(value_style),
-                    text_rect,
-                );
+                frame.render_widget(Paragraph::new(layout.display).style(value_style), text_rect);
                 if layout.has_scrollbar {
                     render_textarea_scrollbar(
                         frame,
@@ -468,11 +458,7 @@ impl App {
                 summary_field_id, ..
             } => {
                 let items = state.sub_state.get(field.id).cloned().unwrap_or_default();
-                let selected = state
-                    .selected_sub_item
-                    .get(field.id)
-                    .copied()
-                    .unwrap_or(0);
+                let selected = state.selected_sub_item.get(field.id).copied().unwrap_or(0);
                 let mut lines: Vec<String> = Vec::new();
                 lines.push(format!(
                     "{} item(s) — A add · X remove · Enter edit",

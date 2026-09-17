@@ -2,13 +2,14 @@
 use super::super::*;
 
 impl App {
-    pub(in crate::tui) fn handle_form_edit_event(&mut self, key: event::KeyEvent) -> Option<ModalResult> {
+    pub(in crate::tui) fn handle_form_edit_event(
+        &mut self,
+        key: event::KeyEvent,
+    ) -> Option<ModalResult> {
         use crossterm::event::{KeyCode, KeyModifiers};
 
         // Ctrl+E: expand the focused textarea to a full-size editor.
-        if matches!(key.code, KeyCode::Char('e'))
-            && key.modifiers.contains(KeyModifiers::CONTROL)
-        {
+        if matches!(key.code, KeyCode::Char('e')) && key.modifiers.contains(KeyModifiers::CONTROL) {
             let is_textarea = matches!(
                 self.modal.as_ref(),
                 Some(Modal::FormEdit { state, .. })
@@ -26,9 +27,7 @@ impl App {
         // Ctrl+P: open image picker on image_url fields, page picker on
         // link_url fields. Heuristic on field id since both kinds are
         // FieldKind::Url today.
-        if matches!(key.code, KeyCode::Char('p'))
-            && key.modifiers.contains(KeyModifiers::CONTROL)
-        {
+        if matches!(key.code, KeyCode::Char('p')) && key.modifiers.contains(KeyModifiers::CONTROL) {
             let Some(Modal::FormEdit { state, .. }) = self.modal.as_ref() else {
                 return Some(ModalResult::Continue);
             };
@@ -74,10 +73,7 @@ impl App {
                     .map(|p| (p.slug.clone(), p.head.title.clone()))
                     .collect();
                 if pages.is_empty() {
-                    self.push_toast(
-                        ToastLevel::Warning,
-                        "No pages to pick from.".to_string(),
-                    );
+                    self.push_toast(ToastLevel::Warning, "No pages to pick from.".to_string());
                     return Some(ModalResult::Continue);
                 }
                 let paused = self.modal.take();
@@ -203,25 +199,22 @@ impl App {
 
         // Snapshot the focused field's id and kind (to satisfy borrow rules before mutation).
         let focused_idx = state.focused_field;
-        let (field_id, is_enum, is_textarea, is_subform, accepts_text) = match state
-            .form
-            .fields
-            .get(focused_idx)
-        {
-            Some(f) => (
-                f.id,
-                matches!(f.kind, editform::FieldKind::Enum { .. }),
-                matches!(f.kind, editform::FieldKind::Textarea { .. }),
-                matches!(f.kind, editform::FieldKind::SubForm { .. }),
-                matches!(
-                    f.kind,
-                    editform::FieldKind::Text { .. }
-                        | editform::FieldKind::Url { .. }
-                        | editform::FieldKind::Textarea { .. }
+        let (field_id, is_enum, is_textarea, is_subform, accepts_text) =
+            match state.form.fields.get(focused_idx) {
+                Some(f) => (
+                    f.id,
+                    matches!(f.kind, editform::FieldKind::Enum { .. }),
+                    matches!(f.kind, editform::FieldKind::Textarea { .. }),
+                    matches!(f.kind, editform::FieldKind::SubForm { .. }),
+                    matches!(
+                        f.kind,
+                        editform::FieldKind::Text { .. }
+                            | editform::FieldKind::Url { .. }
+                            | editform::FieldKind::Textarea { .. }
+                    ),
                 ),
-            ),
-            None => return Some(ModalResult::CloseCancel),
-        };
+                None => return Some(ModalResult::CloseCancel),
+            };
 
         // SubForm collection handling: A/X/Enter/Up/Down operate on items list.
         if is_subform {
@@ -229,11 +222,7 @@ impl App {
                 KeyCode::Char('A') => {
                     if let Some(new_item) = state.new_sub_item(field_id) {
                         let items = state.sub_state.entry(field_id.to_string()).or_default();
-                        let selected = state
-                            .selected_sub_item
-                            .get(field_id)
-                            .copied()
-                            .unwrap_or(0);
+                        let selected = state.selected_sub_item.get(field_id).copied().unwrap_or(0);
                         let insert_at = if items.is_empty() {
                             0
                         } else {
@@ -254,11 +243,7 @@ impl App {
                     };
                     let items = state.sub_state.entry(field_id.to_string()).or_default();
                     if items.len() > min_items {
-                        let selected = state
-                            .selected_sub_item
-                            .get(field_id)
-                            .copied()
-                            .unwrap_or(0);
+                        let selected = state.selected_sub_item.get(field_id).copied().unwrap_or(0);
                         if selected < items.len() {
                             items.remove(selected);
                             let new_sel = selected.min(items.len().saturating_sub(1));
@@ -268,31 +253,24 @@ impl App {
                             self.push_toast(ToastLevel::Info, "Item removed.");
                         }
                     } else {
-                        self.push_toast(ToastLevel::Warning, format!("Must keep at least {min_items} item(s)."));
+                        self.push_toast(
+                            ToastLevel::Warning,
+                            format!("Must keep at least {min_items} item(s)."),
+                        );
                     }
                     return Some(ModalResult::Continue);
                 }
                 KeyCode::Up | KeyCode::Char('k') => {
-                    let selected = state
-                        .selected_sub_item
-                        .get(field_id)
-                        .copied()
-                        .unwrap_or(0);
-                    let items_len = state
-                        .sub_state
-                        .get(field_id)
-                        .map(|v| v.len())
-                        .unwrap_or(0);
+                    let selected = state.selected_sub_item.get(field_id).copied().unwrap_or(0);
+                    let items_len = state.sub_state.get(field_id).map(|v| v.len()).unwrap_or(0);
                     if items_len == 0 {
                         state.focus_prev();
-                    *scroll_offset = auto_scroll_for_focus(state, *scroll_offset);
-                        *cursor_pos =
-                            state.get(state.form.fields[state.focused_field].id).len();
+                        *scroll_offset = auto_scroll_for_focus(state, *scroll_offset);
+                        *cursor_pos = state.get(state.form.fields[state.focused_field].id).len();
                     } else if selected == 0 {
                         state.focus_prev();
-                    *scroll_offset = auto_scroll_for_focus(state, *scroll_offset);
-                        *cursor_pos =
-                            state.get(state.form.fields[state.focused_field].id).len();
+                        *scroll_offset = auto_scroll_for_focus(state, *scroll_offset);
+                        *cursor_pos = state.get(state.form.fields[state.focused_field].id).len();
                     } else {
                         state
                             .selected_sub_item
@@ -301,25 +279,16 @@ impl App {
                     return Some(ModalResult::Continue);
                 }
                 KeyCode::Down | KeyCode::Char('j') => {
-                    let selected = state
-                        .selected_sub_item
-                        .get(field_id)
-                        .copied()
-                        .unwrap_or(0);
-                    let items_len = state
-                        .sub_state
-                        .get(field_id)
-                        .map(|v| v.len())
-                        .unwrap_or(0);
+                    let selected = state.selected_sub_item.get(field_id).copied().unwrap_or(0);
+                    let items_len = state.sub_state.get(field_id).map(|v| v.len()).unwrap_or(0);
                     if selected + 1 < items_len {
                         state
                             .selected_sub_item
                             .insert(field_id.to_string(), selected + 1);
                     } else {
                         state.focus_next();
-                    *scroll_offset = auto_scroll_for_focus(state, *scroll_offset);
-                        *cursor_pos =
-                            state.get(state.form.fields[state.focused_field].id).len();
+                        *scroll_offset = auto_scroll_for_focus(state, *scroll_offset);
+                        *cursor_pos = state.get(state.form.fields[state.focused_field].id).len();
                     }
                     return Some(ModalResult::Continue);
                 }
@@ -334,22 +303,12 @@ impl App {
                         scroll_offset,
                     }) = taken
                     {
-                        let selected = state
-                            .selected_sub_item
-                            .get(field_id)
-                            .copied()
-                            .unwrap_or(0);
-                        let items_len = state
-                            .sub_state
-                            .get(field_id)
-                            .map(|v| v.len())
-                            .unwrap_or(0);
+                        let selected = state.selected_sub_item.get(field_id).copied().unwrap_or(0);
+                        let items_len = state.sub_state.get(field_id).map(|v| v.len()).unwrap_or(0);
                         if selected < items_len {
                             let template = match &state.form.fields[focused_idx].kind {
                                 editform::FieldKind::SubForm { template, .. } => *template,
-                                _ => unreachable!(
-                                    "is_subform was true but kind is not SubForm"
-                                ),
+                                _ => unreachable!("is_subform was true but kind is not SubForm"),
                             };
                             let placeholder = editform::EditFormState::new(template);
                             let items = state
@@ -374,7 +333,10 @@ impl App {
                                 drill_stack,
                                 scroll_offset: 0,
                             });
-                            self.push_toast(ToastLevel::Info, "Editing item. Ctrl+S returns to parent.");
+                            self.push_toast(
+                                ToastLevel::Info,
+                                "Editing item. Ctrl+S returns to parent.",
+                            );
                         } else {
                             // Nothing to drill into; restore modal unchanged.
                             self.modal = Some(Modal::FormEdit {
@@ -395,12 +357,12 @@ impl App {
         match key.code {
             KeyCode::Tab if !expanded => {
                 state.focus_next();
-                    *scroll_offset = auto_scroll_for_focus(state, *scroll_offset);
+                *scroll_offset = auto_scroll_for_focus(state, *scroll_offset);
                 *cursor_pos = state.get(state.form.fields[state.focused_field].id).len();
             }
             KeyCode::BackTab if !expanded => {
                 state.focus_prev();
-                    *scroll_offset = auto_scroll_for_focus(state, *scroll_offset);
+                *scroll_offset = auto_scroll_for_focus(state, *scroll_offset);
                 *cursor_pos = state.get(state.form.fields[state.focused_field].id).len();
             }
             KeyCode::Left => {
@@ -457,12 +419,8 @@ impl App {
                 );
             }
             KeyCode::PageDown if is_textarea => {
-                *cursor_pos = textarea_move_cursor_vertical(
-                    state.get(field_id),
-                    *cursor_pos,
-                    10,
-                    wrap_width,
-                );
+                *cursor_pos =
+                    textarea_move_cursor_vertical(state.get(field_id), *cursor_pos, 10, wrap_width);
             }
             KeyCode::Home if accepts_text => {
                 if is_textarea {

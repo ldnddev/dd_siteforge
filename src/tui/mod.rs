@@ -3,49 +3,51 @@ use std::io;
 use std::path::PathBuf;
 use std::time::Duration;
 
+pub(super) use crate::model::{PageNode, SectionColumn, Site};
 pub(super) use crossterm::event::{
     self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers, MouseButton,
     MouseEventKind,
 };
 use crossterm::execute;
 use crossterm::terminal::{
-    disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
+    EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
+use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 pub(super) use ratatui::layout::{Constraint, Direction, Layout, Rect};
 pub(super) use ratatui::style::{Color, Modifier, Style};
-pub(super) use ratatui::widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap};
-use ratatui::Terminal;
-pub(super) use crate::model::{PageNode, SectionColumn, Site};
+pub(super) use ratatui::widgets::{
+    Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap,
+};
 pub(super) const AUTOSAVE_DEBOUNCE: std::time::Duration = std::time::Duration::from_secs(2);
 pub(super) const TEXTAREA_MAX_DISPLAY_ROWS: u16 = 35;
 pub(super) const DOUBLE_CLICK_THRESHOLD_MS: u128 = 420;
 
-pub mod cursor;
-pub mod editform;
-mod theme;
-mod help;
 mod component_kind;
-mod form_textarea;
-mod scrollbar;
-mod util;
+pub mod cursor;
 mod details;
-mod tree;
-mod modals;
 mod draw;
+pub mod editform;
 mod events;
+mod form_textarea;
+mod help;
+mod modals;
+mod scrollbar;
 #[cfg(test)]
 mod tests;
+mod theme;
+mod tree;
+mod util;
 
-use theme::*;
-use help::*;
 use component_kind::*;
-use form_textarea::*;
-use scrollbar::*;
-use util::*;
 use details::*;
-use tree::*;
+use form_textarea::*;
+use help::*;
 use modals::*;
+use scrollbar::*;
+use theme::*;
+use tree::*;
+use util::*;
 
 pub fn run_tui(site: Site, path: Option<PathBuf>) -> anyhow::Result<()> {
     let (theme, theme_source, load_warning) = AppTheme::load();
@@ -160,6 +162,7 @@ pub(super) struct App {
     modal: Option<Modal>,
     component_kind: ComponentKind,
     overlay: Option<Overlay>,
+    theme_editor: Option<ldnddev_theme::ThemeEditor>,
     /// Maximum legal overlay scroll, recomputed every render from the
     /// current overlay area + line count so key/wheel handlers can clamp.
     overlay_scroll_max: u16,
@@ -187,9 +190,14 @@ pub(super) struct App {
     header_column_expanded: bool,
 }
 
-
 impl App {
-    pub(super) fn new(mut site: Site, path: Option<PathBuf>, theme: AppTheme, theme_source: String, theme_status: Option<String>) -> Self {
+    pub(super) fn new(
+        mut site: Site,
+        path: Option<PathBuf>,
+        theme: AppTheme,
+        theme_source: String,
+        theme_status: Option<String>,
+    ) -> Self {
         for page in &mut site.pages {
             ensure_page_section_ids(page);
         }
@@ -239,6 +247,7 @@ impl App {
             modal: None,
             component_kind: ComponentKind::Banner,
             overlay: None,
+            theme_editor: None,
             overlay_scroll_max: 0,
             theme_status,
             modal_field_areas: std::cell::RefCell::new(Vec::new()),
@@ -261,23 +270,17 @@ impl App {
         if let Some(p) = app.path.as_ref() {
             let backup = backup_path_for(p);
             if backup.exists() && p.exists() {
-                if let (Ok(main), Ok(bak)) = (
-                    std::fs::read_to_string(p),
-                    std::fs::read_to_string(&backup),
-                ) {
+                if let (Ok(main), Ok(bak)) =
+                    (std::fs::read_to_string(p), std::fs::read_to_string(&backup))
+                {
                     if main != bak {
-                        let mtime = std::fs::metadata(&backup)
-                            .and_then(|m| m.modified())
-                            .ok();
+                        let mtime = std::fs::metadata(&backup).and_then(|m| m.modified()).ok();
                         let when = mtime
                             .and_then(chrono_like_format)
                             .unwrap_or_else(|| "unknown".into());
                         app.push_toast(
                             ToastLevel::Info,
-                            format!(
-                                "Loaded state differs from last manual save ({}).",
-                                when
-                            ),
+                            format!("Loaded state differs from last manual save ({}).", when),
                         );
                     }
                 }
@@ -309,10 +312,7 @@ impl App {
         if let Some(path) = self.path.clone() {
             match self.commit_save_with_backup(&path) {
                 Ok(()) => {
-                    self.push_toast(
-                        ToastLevel::Success,
-                        format!("Saved {}", path.display()),
-                    );
+                    self.push_toast(ToastLevel::Success, format!("Saved {}", path.display()));
                 }
                 Err(e) => {
                     self.push_toast(ToastLevel::Error, format!("Failed to save: {}", e));
@@ -333,7 +333,10 @@ impl App {
         self.site.pages.get_mut(self.selected_page)
     }
 
-    pub(super) fn selected_index_for_page(page: &crate::model::Page, selected_node: usize) -> Option<usize> {
+    pub(super) fn selected_index_for_page(
+        page: &crate::model::Page,
+        selected_node: usize,
+    ) -> Option<usize> {
         if page.nodes.is_empty() {
             None
         } else {
@@ -394,8 +397,7 @@ impl App {
         };
         match crate::storage::save_site(&path, &self.site) {
             Ok(()) => {
-                self.last_saved_json =
-                    serde_json::to_string(&self.site).unwrap_or_default();
+                self.last_saved_json = serde_json::to_string(&self.site).unwrap_or_default();
                 self.dirty = false;
                 self.dirty_since = None;
             }
@@ -406,4 +408,3 @@ impl App {
         }
     }
 }
-

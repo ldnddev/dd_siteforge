@@ -67,7 +67,10 @@ impl App {
 
     pub(in crate::tui) fn add_column_to_header_section(&mut self) {
         if self.site.header.sections.is_empty() {
-            self.push_toast(ToastLevel::Warning, "No header section available. Add a section first with '/'.");
+            self.push_toast(
+                ToastLevel::Warning,
+                "No header section available. Add a section first with '/'.",
+            );
             return;
         }
         let section_idx = self
@@ -84,7 +87,10 @@ impl App {
         self.selected_header_column = section.columns.len() - 1;
         self.selected_header_component = 0;
         let section_id = section.id.clone();
-        self.push_toast(ToastLevel::Info, format!("Added column to header section '{}'.", section_id));
+        self.push_toast(
+            ToastLevel::Info,
+            format!("Added column to header section '{}'.", section_id),
+        );
     }
 
     pub(in crate::tui) fn remove_selected_column(&mut self) {
@@ -142,7 +148,10 @@ impl App {
         let section = &mut self.site.header.sections[section_idx];
         normalize_section_columns(section);
         if section.columns.len() <= 1 {
-            self.push_toast(ToastLevel::Warning, "Header section must keep at least one column.");
+            self.push_toast(
+                ToastLevel::Warning,
+                "Header section must keep at least one column.",
+            );
             return;
         }
         let ci = self.selected_header_column.min(section.columns.len() - 1);
@@ -166,16 +175,22 @@ impl App {
                 }
             };
             if total == 0 {
-                self.push_toast(ToastLevel::Warning, "Selected header section has no columns.");
+                self.push_toast(
+                    ToastLevel::Warning,
+                    "Selected header section has no columns.",
+                );
                 return;
             }
             self.selected_header_column = self.selected_header_column.saturating_sub(1);
             self.selected_header_component = 0;
-            self.push_toast(ToastLevel::Info, format!(
-                "Selected header column {} of {}.",
-                self.selected_header_column + 1,
-                total
-            ));
+            self.push_toast(
+                ToastLevel::Info,
+                format!(
+                    "Selected header column {} of {}.",
+                    self.selected_header_column + 1,
+                    total
+                ),
+            );
             return;
         }
 
@@ -193,7 +208,10 @@ impl App {
         self.selected_column = self.selected_column.saturating_sub(1);
         self.selected_component = 0;
         self.selected_nested_item = 0;
-        self.push_toast(ToastLevel::Info, format!("Selected column {} of {}.", self.selected_column + 1, total));
+        self.push_toast(
+            ToastLevel::Info,
+            format!("Selected column {} of {}.", self.selected_column + 1, total),
+        );
     }
 
     pub(in crate::tui) fn select_next_column(&mut self) {
@@ -210,16 +228,22 @@ impl App {
                 }
             };
             if total == 0 {
-                self.push_toast(ToastLevel::Warning, "Selected header section has no columns.");
+                self.push_toast(
+                    ToastLevel::Warning,
+                    "Selected header section has no columns.",
+                );
                 return;
             }
             self.selected_header_column = (self.selected_header_column + 1).min(total - 1);
             self.selected_header_component = 0;
-            self.push_toast(ToastLevel::Info, format!(
-                "Selected header column {} of {}.",
-                self.selected_header_column + 1,
-                total
-            ));
+            self.push_toast(
+                ToastLevel::Info,
+                format!(
+                    "Selected header column {} of {}.",
+                    self.selected_header_column + 1,
+                    total
+                ),
+            );
             return;
         }
 
@@ -237,7 +261,10 @@ impl App {
         self.selected_column = (self.selected_column + 1).min(total - 1);
         self.selected_component = 0;
         self.selected_nested_item = 0;
-        self.push_toast(ToastLevel::Info, format!("Selected column {} of {}.", self.selected_column + 1, total));
+        self.push_toast(
+            ToastLevel::Info,
+            format!("Selected column {} of {}.", self.selected_column + 1, total),
+        );
     }
 
     pub(in crate::tui) fn selected_header_section_column_total(&self) -> Option<usize> {
@@ -396,7 +423,11 @@ impl App {
         }
     }
 
-    pub(in crate::tui) fn snap_tree_row_to_header_column(&mut self, section_idx: usize, column_idx: usize) {
+    pub(in crate::tui) fn snap_tree_row_to_header_column(
+        &mut self,
+        section_idx: usize,
+        column_idx: usize,
+    ) {
         let rows = self.build_tree_rows();
         if let Some(idx) = rows.iter().position(|r| {
             matches!(

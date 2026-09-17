@@ -1,14 +1,14 @@
 //! Modal types, rendering, and event handling.
 use super::*;
 
-mod paint;
-mod prompts;
-mod picker_paint;
-mod toasts;
-mod form_edit;
-mod pickers;
 mod events;
 mod export;
+mod form_edit;
+mod paint;
+mod picker_paint;
+mod pickers;
+mod prompts;
+mod toasts;
 
 // UNIFIED MODAL SYSTEM
 // ============================================================================
@@ -25,22 +25,13 @@ pub(in crate::tui) enum Modal {
         selected: usize,
     },
     /// Title entry prompt shown before the TemplatePicker when adding a new page.
-    NewPageTitlePrompt {
-        title: String,
-    },
+    NewPageTitlePrompt { title: String },
     /// Path entry prompt shown when exporting the site to a local directory.
-    ExportPathPrompt {
-        path: String,
-    },
+    ExportPathPrompt { path: String },
     /// Path entry prompt shown when previewing the site in a browser.
-    PreviewPathPrompt {
-        path: String,
-    },
+    PreviewPathPrompt { path: String },
     /// Title-edit prompt shown when renaming an existing page.
-    RenamePagePrompt {
-        title: String,
-        page_idx: usize,
-    },
+    RenamePagePrompt { title: String, page_idx: usize },
     /// Generic yes/no confirmation prompt.
     ConfirmPrompt {
         message: String,
@@ -52,13 +43,9 @@ pub(in crate::tui) enum Modal {
         scroll_offset: usize,
     },
     /// File picker rooted at `./source/images/`.
-    ImagePicker {
-        state: ImagePickerState,
-    },
+    ImagePicker { state: ImagePickerState },
     /// Page picker — lists site pages and writes `/<slug>` to a URL field.
-    PagePicker {
-        state: PagePickerState,
-    },
+    PagePicker { state: PagePickerState },
     /// Unified form editor: all fields of a component rendered together,
     /// Tab moves between fields, Left/Right cycles enums, Ctrl+S saves via
     /// `cursor::apply_edit_form_to_component`.
@@ -173,7 +160,6 @@ impl Default for ModalConfig {
         }
     }
 }
-
 
 impl Modal {
     #[allow(dead_code)]

@@ -59,11 +59,8 @@ impl App {
             let inner_w = rect.width.saturating_sub(4);
             frame.render_widget(block, rect);
             let text = format!("{} {}", glyph, toast.message);
-            let body = Paragraph::new(text).style(
-                Style::default()
-                    .fg(accent)
-                    .bg(self.theme.modal_background),
-            );
+            let body = Paragraph::new(text)
+                .style(Style::default().fg(accent).bg(self.theme.modal_background));
             frame.render_widget(
                 body,
                 Rect {

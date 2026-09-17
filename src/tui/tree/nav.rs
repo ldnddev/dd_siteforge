@@ -36,7 +36,9 @@ impl App {
         )
     }
 
-    pub(in crate::tui) fn selected_component_owned(&self) -> Option<crate::model::SectionComponent> {
+    pub(in crate::tui) fn selected_component_owned(
+        &self,
+    ) -> Option<crate::model::SectionComponent> {
         let page = self.current_page();
         if page.nodes.is_empty() {
             return None;
@@ -101,10 +103,7 @@ impl App {
 
     pub(in crate::tui) fn warn_site_settings_unavailable(&mut self) -> bool {
         if self.selected_region == SelectedRegion::Site {
-            self.push_toast(
-                ToastLevel::Warning,
-                "Not available on Site settings.",
-            );
+            self.push_toast(ToastLevel::Warning, "Not available on Site settings.");
             true
         } else {
             false

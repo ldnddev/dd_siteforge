@@ -23,7 +23,10 @@ impl App {
             }
             Some(crate::model::SectionComponent::Slider(_)) => self.add_selected_slider_item(),
             Some(_) => {
-                self.push_toast(ToastLevel::Warning, "Selected component does not support collection items.");
+                self.push_toast(
+                    ToastLevel::Warning,
+                    "Selected component does not support collection items.",
+                );
             }
             None => {
                 self.push_toast(ToastLevel::Warning, "No selected collection component.");
@@ -52,7 +55,10 @@ impl App {
             }
             Some(crate::model::SectionComponent::Slider(_)) => self.remove_selected_slider_item(),
             Some(_) => {
-                self.push_toast(ToastLevel::Warning, "Selected component does not support collection items.");
+                self.push_toast(
+                    ToastLevel::Warning,
+                    "Selected component does not support collection items.",
+                );
             }
             None => {
                 self.push_toast(ToastLevel::Warning, "No selected collection component.");
@@ -212,7 +218,8 @@ impl App {
                         alt.items.insert(
                             insert_idx,
                             crate::model::AlternatingItem {
-                                child_image_url: "https://dummyimage.com/600x400/000/fff".to_string(),
+                                child_image_url: "https://dummyimage.com/600x400/000/fff"
+                                    .to_string(),
                                 child_image_alt: format!("Alternating image {}", next_num),
                                 child_title: format!("Alternating Item {}", next_num),
                                 child_subtitle: "Subtitle".to_string(),
@@ -467,7 +474,8 @@ impl App {
                         filmstrip.items.insert(
                             insert_idx,
                             crate::model::FilmstripItem {
-                                child_image_url: "https://dummyimage.com/256x256/000/fff".to_string(),
+                                child_image_url: "https://dummyimage.com/256x256/000/fff"
+                                    .to_string(),
                                 child_image_alt: "Image alt text".to_string(),
                                 child_title: format!("Title {}", next_num),
                             },

@@ -1195,8 +1195,8 @@ mod tests {
 
     fn page_with_navigation(items: Vec<crate::model::NavigationItem>) -> crate::model::Page {
         use crate::model::{
-            DdNavigation, DdSection, NavigationClass, NavigationType, Page, PageNode,
-            SalAnimation, SectionClass, SectionColumn, SectionComponent, SectionItemBoxClass,
+            DdNavigation, DdSection, NavigationClass, NavigationType, Page, PageNode, SalAnimation,
+            SectionClass, SectionColumn, SectionComponent, SectionItemBoxClass,
         };
         Page {
             id: "p".to_string(),
@@ -1223,7 +1223,11 @@ mod tests {
         }
     }
 
-    fn nav_link(label: &str, url: &str, children: Vec<crate::model::NavigationItem>) -> crate::model::NavigationItem {
+    fn nav_link(
+        label: &str,
+        url: &str,
+        children: Vec<crate::model::NavigationItem>,
+    ) -> crate::model::NavigationItem {
         crate::model::NavigationItem {
             child_kind: crate::model::NavigationKind::Link,
             child_link_label: label.to_string(),
@@ -1234,7 +1238,10 @@ mod tests {
         }
     }
 
-    fn nav_button(label: &str, children: Vec<crate::model::NavigationItem>) -> crate::model::NavigationItem {
+    fn nav_button(
+        label: &str,
+        children: Vec<crate::model::NavigationItem>,
+    ) -> crate::model::NavigationItem {
         crate::model::NavigationItem {
             child_kind: crate::model::NavigationKind::Button,
             child_link_label: label.to_string(),
@@ -1351,7 +1358,10 @@ mod tests {
             "{label} missing heading: {html}"
         );
         assert!(html.contains("<ul>"), "{label} missing list: {html}");
-        assert!(html.contains("<li>one</li>"), "{label} missing item: {html}");
+        assert!(
+            html.contains("<li>one</li>"),
+            "{label} missing item: {html}"
+        );
         assert!(
             !html.contains("&lt;h1&gt;"),
             "{label} escaped markdown HTML: {html}"
@@ -1369,7 +1379,10 @@ mod tests {
             },
         )))
         .expect("rich text page should render");
-        assert!(html.contains(r#"<div class="dd-rich_text__copy">"#), "{html}");
+        assert!(
+            html.contains(r#"<div class="dd-rich_text__copy">"#),
+            "{html}"
+        );
         assert_unescaped_markdown_copy(&html, "dd-rich_text");
         assert!(html.contains("<hr"), "{html}");
     }

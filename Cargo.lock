@@ -360,6 +360,7 @@ dependencies = [
  "clap",
  "crossterm 0.29.0",
  "handlebars",
+ "ldnddev_theme",
  "pulldown-cmark",
  "ratatui",
  "rust-embed",
@@ -614,6 +615,15 @@ name = "itoa"
 version = "1.0.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "92ecc6618181def0457392ccd0ee51198e065e016d1d527a7ac1b6dc7c1f09d2"
+
+[[package]]
+name = "ldnddev_theme"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "serde_yaml",
+]
 
 [[package]]
 name = "libc"

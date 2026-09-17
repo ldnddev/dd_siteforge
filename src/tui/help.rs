@@ -1,7 +1,7 @@
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 
-use super::theme::{color_to_hex, AppTheme};
+use super::theme::{AppTheme, color_to_hex};
 
 fn wrap_to_lines(text: &str, width: usize) -> Vec<String> {
     let w = width.max(1);
@@ -115,10 +115,19 @@ pub(crate) fn build_help_text(theme: &AppTheme, width: usize) -> Text<'static> {
             ("F1", "Open/close this help"),
             ("F2", "Open/close theme source + color details (F2:Theme)"),
             ("F3", "Validate site (shows errors in a modal)"),
-            ("Shift+E", "Export site to HTML (validates first; prompts for output dir on first use)"),
-            ("p", "Preview current page: export, start local HTTP server, open browser"),
+            (
+                "Shift+E",
+                "Export site to HTML (validates first; prompts for output dir on first use)",
+            ),
+            (
+                "p",
+                "Preview current page: export, start local HTTP server, open browser",
+            ),
             ("Ctrl+Q", "Quit"),
-            ("s", "Open save modal and enter file path (also writes a .backup checkpoint)"),
+            (
+                "s",
+                "Open save modal and enter file path (also writes a .backup checkpoint)",
+            ),
             ("Tab / Shift+Tab", "Next/previous page"),
             ("1 / 2 / 3 / 4", "Focus Regions / Pages / Layout / Details"),
         ],
@@ -149,15 +158,33 @@ pub(crate) fn build_help_text(theme: &AppTheme, width: usize) -> Text<'static> {
         "Node navigation and edits",
         &[
             ("Up/Down or wheel", "Select row in Layout tree"),
-            ("PageUp/PageDown", "Page the focused pane (Layout tree / Pages list / Details)"),
+            (
+                "PageUp/PageDown",
+                "Page the focused pane (Layout tree / Pages list / Details)",
+            ),
             ("Enter", "Edit selected row"),
-            ("Space", "Expand/collapse selected section or accordion/alternating/card/filmstrip/milestones/slider items"),
-            ("/", "Open insert fuzzy finder (hero/section/cta/.../slider); inserts after the selected row"),
-            ("A / X", "Add/remove dd-accordion, dd-alternating, dd-card, dd-filmstrip, dd-milestones, or dd-slider item"),
-            ("d", "Delete selected row (node, component, or collection item)"),
+            (
+                "Space",
+                "Expand/collapse selected section or accordion/alternating/card/filmstrip/milestones/slider items",
+            ),
+            (
+                "/",
+                "Open insert fuzzy finder (hero/section/cta/.../slider); inserts after the selected row",
+            ),
+            (
+                "A / X",
+                "Add/remove dd-accordion, dd-alternating, dd-card, dd-filmstrip, dd-milestones, or dd-slider item",
+            ),
+            (
+                "d",
+                "Delete selected row (node, component, or collection item)",
+            ),
             ("y", "Duplicate selected row after the current one"),
             ("u", "Undo last tree edit (session snapshots, cap 20)"),
-            ("J / K", "Move selected row down / up (node, component, item, or column)"),
+            (
+                "J / K",
+                "Move selected row down / up (node, component, item, or column)",
+            ),
         ],
         "•",
         h_style,
@@ -171,12 +198,24 @@ pub(crate) fn build_help_text(theme: &AppTheme, width: usize) -> Text<'static> {
         &mut lines,
         "Pages panel ([2] Pages)",
         &[
-            ("Shift+A", "Add page (title prompt → template picker: Blank / Hero only / Hero + Section / Duplicate)"),
-            ("Shift+X", "Delete current page (confirms; refuses if only 1 page)"),
+            (
+                "Shift+A",
+                "Add page (title prompt → template picker: Blank / Hero only / Hero + Section / Duplicate)",
+            ),
+            (
+                "Shift+X",
+                "Delete current page (confirms; refuses if only 1 page)",
+            ),
             ("u", "Undo last page deletion (session trash)"),
-            ("Shift+J / Shift+K", "Move current page down / up (also = sitemap order)"),
+            (
+                "Shift+J / Shift+K",
+                "Move current page down / up (also = sitemap order)",
+            ),
             ("PageUp/PageDown", "Jump ±5 pages (clamped, no wrap)"),
-            ("r", "Rename page label (auto-slug until first disk save). [HEAD] edits Title, Slug, Meta Title, Meta Description, SEO"),
+            (
+                "r",
+                "Rename page label (auto-slug until first disk save). [HEAD] edits Title, Slug, Meta Title, Meta Description, SEO",
+            ),
         ],
         "•",
         h_style,
@@ -192,7 +231,10 @@ pub(crate) fn build_help_text(theme: &AppTheme, width: usize) -> Text<'static> {
         &[
             ("C / V", "Add/remove selected column"),
             ("c / v", "Select previous/next column"),
-            ("J / K", "Move selected grain down/up (column when a column row is selected)"),
+            (
+                "J / K",
+                "Move selected grain down/up (column when a column row is selected)",
+            ),
             ("r / f", "Edit selected column id / width class"),
         ],
         "•",
@@ -230,12 +272,21 @@ pub(crate) fn build_help_text(theme: &AppTheme, width: usize) -> Text<'static> {
             ("Ctrl+P (link)", "Open page picker (lists site pages)"),
             ("Ctrl+E", "Expand focused textarea to a full-size editor"),
             ("←/→ (options)", "Cycle choices for type/option fields"),
-            ("Enter", "Newline in textarea / next field / drill into SubForm item"),
-            ("Home / End", "Start/end of the current wrapped line in a textarea"),
+            (
+                "Enter",
+                "Newline in textarea / next field / drill into SubForm item",
+            ),
+            (
+                "Home / End",
+                "Start/end of the current wrapped line in a textarea",
+            ),
             ("Ctrl+S", "Save"),
             ("Esc", "Close expanded textarea, or cancel edit"),
             ("Backspace", "Delete character"),
-            ("multiline ↑/↓/Enter", "Move/copy lines; Enter newline; Ctrl+S saves"),
+            (
+                "multiline ↑/↓/Enter",
+                "Move/copy lines; Enter newline; Ctrl+S saves",
+            ),
         ],
         "•",
         h_style,
@@ -249,13 +300,34 @@ pub(crate) fn build_help_text(theme: &AppTheme, width: usize) -> Text<'static> {
         &mut lines,
         "Mouse controls",
         &[
-            ("Click panel/list", "Select the row/item (Regions/Pages/Layout/Details); Details click focuses and selects the matching tree grain"),
-            ("Double-click item", "Edit (unified modal; works on page-head, header/footer roots, sections, columns, components)"),
-            ("Click modal field", "Focus that input (click-to-focus in all FormEdit + legacy)"),
-            ("Click textarea", "Place the caret at the click (compact or expanded)"),
-            ("Wheel over pane", "Scroll the pane under the cursor (Regions/Pages/Layout/Details)"),
-            ("Scrollbar track/thumb", "Jump/scroll via custom painted │/█ scrollbar"),
-            ("Wheel / drag scroll", "Scroll lists, Details, help modal, long form content"),
+            (
+                "Click panel/list",
+                "Select the row/item (Regions/Pages/Layout/Details); Details click focuses and selects the matching tree grain",
+            ),
+            (
+                "Double-click item",
+                "Edit (unified modal; works on page-head, header/footer roots, sections, columns, components)",
+            ),
+            (
+                "Click modal field",
+                "Focus that input (click-to-focus in all FormEdit + legacy)",
+            ),
+            (
+                "Click textarea",
+                "Place the caret at the click (compact or expanded)",
+            ),
+            (
+                "Wheel over pane",
+                "Scroll the pane under the cursor (Regions/Pages/Layout/Details)",
+            ),
+            (
+                "Scrollbar track/thumb",
+                "Jump/scroll via custom painted │/█ scrollbar",
+            ),
+            (
+                "Wheel / drag scroll",
+                "Scroll lists, Details, help modal, long form content",
+            ),
         ],
         "•",
         h_style,
@@ -267,7 +339,12 @@ pub(crate) fn build_help_text(theme: &AppTheme, width: usize) -> Text<'static> {
     Text::from(lines)
 }
 
-pub(crate) fn build_theme_text(theme: &AppTheme, source: &str, status: &Option<String>, width: usize) -> Text<'static> {
+pub(crate) fn build_theme_text(
+    theme: &AppTheme,
+    source: &str,
+    status: &Option<String>,
+    width: usize,
+) -> Text<'static> {
     let h_style = Style::default()
         .fg(theme.modal_header)
         .add_modifier(Modifier::BOLD);
@@ -285,7 +362,10 @@ pub(crate) fn build_theme_text(theme: &AppTheme, source: &str, status: &Option<S
     ]));
     lines.push(Line::from(vec![
         Span::styled("  Source: ", k_style),
-        Span::raw(format!("{}   (./dd_siteforge_theme.yml or equivalent)", source)),
+        Span::raw(format!(
+            "{}   (./dd_siteforge_theme.yml or equivalent)",
+            source
+        )),
     ]));
     let status_str = status.as_deref().unwrap_or("OK (loaded cleanly)");
     lines.push(Line::from(vec![
@@ -301,18 +381,29 @@ pub(crate) fn build_theme_text(theme: &AppTheme, source: &str, status: &Option<S
     lines.push(Line::from(""));
 
     // Color tokens section
-    lines.push(Line::from(Span::styled("Loaded color tokens (sampled)", h_style)));
+    lines.push(Line::from(Span::styled(
+        "Loaded color tokens (sampled)",
+        h_style,
+    )));
     lines.push(Line::from(""));
 
     let tokens: Vec<(&str, Color, &str)> = vec![
         ("base_background", theme.base_background, "app_shell base"),
         ("body_background", theme.body_background, "content panes"),
-        ("modal_background", theme.modal_background, "modals & popups"),
+        (
+            "modal_background",
+            theme.modal_background,
+            "modals & popups",
+        ),
         ("text_primary", theme.text_primary, "primary text"),
         ("modal_header", theme.modal_header, "section titles bold"),
         ("text_labels", theme.text_labels, "labels default"),
         ("text_active_focus", theme.text_active_focus, "focus + keys"),
-        ("input_border_focus", theme.input_border_focus, "focused inputs"),
+        (
+            "input_border_focus",
+            theme.input_border_focus,
+            "focused inputs",
+        ),
         ("cursor", theme.cursor, "caret overlay"),
         ("success", theme.success, "success toasts"),
         ("warning", theme.warning, "warning toasts"),
@@ -336,7 +427,9 @@ pub(crate) fn build_theme_text(theme: &AppTheme, source: &str, status: &Option<S
     // final divider
     lines.push(Line::from(Span::styled(format!("  {}", rule), div_style)));
     lines.push(Line::from(""));
-    lines.push(Line::from(Span::raw("  (All colors from self.theme.*. No hardcodes.)")));
+    lines.push(Line::from(Span::raw(
+        "  (All colors from self.theme.*. No hardcodes.)",
+    )));
 
     Text::from(lines)
 }

@@ -135,8 +135,6 @@ pub(super) fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect 
         .split(popup_layout[1])[1]
 }
 
-
-
 pub(super) fn backup_path_for(path: &std::path::Path) -> std::path::PathBuf {
     let mut s = path.as_os_str().to_owned();
     s.push(".backup");
@@ -144,10 +142,7 @@ pub(super) fn backup_path_for(path: &std::path::Path) -> std::path::PathBuf {
 }
 
 pub(super) fn chrono_like_format(t: std::time::SystemTime) -> Option<String> {
-    let secs = t
-        .duration_since(std::time::UNIX_EPOCH)
-        .ok()?
-        .as_secs();
+    let secs = t.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs();
     Some(format!("{}s since epoch", secs))
 }
 
@@ -191,7 +186,6 @@ pub(super) fn open_in_browser(target: &str) -> std::io::Result<()> {
         .spawn()?;
     Ok(())
 }
-
 
 #[derive(Debug, Clone)]
 pub(super) struct DirEntryRow {
@@ -280,4 +274,3 @@ pub(super) fn display_relative_path(
         format!("./{}/", normalized)
     }
 }
-

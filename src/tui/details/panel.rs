@@ -80,11 +80,7 @@ impl App {
                         parts.push("Ctrl+Q:Quit");
                         parts.push("j/k:Scroll");
                     } else {
-                        parts.extend_from_slice(&[
-                            "j/k:Scroll",
-                            "Enter:Edit",
-                            "Ctrl+Q:Quit",
-                        ]);
+                        parts.extend_from_slice(&["j/k:Scroll", "Enter:Edit", "Ctrl+Q:Quit"]);
                     }
                 }
             }
@@ -125,11 +121,14 @@ impl App {
     pub(in crate::tui) fn site_details_text(&self) -> DetailsView {
         let mut view = DetailsView::new();
         let site_focus = matches!(self.blueprint_focus(), BlueprintFocus::Site);
-        view.push_styled("Site settings", if site_focus {
-            BlueprintStyle::FocusFill
-        } else {
-            BlueprintStyle::Label
-        });
+        view.push_styled(
+            "Site settings",
+            if site_focus {
+                BlueprintStyle::FocusFill
+            } else {
+                BlueprintStyle::Label
+            },
+        );
         view.push_plain("");
         view.push_plain(format!("name: {}", self.site.name));
         view.push_plain(format!("lang: {}", self.site.lang));
@@ -142,7 +141,11 @@ impl App {
             self.site.export_dir.as_deref().unwrap_or("")
         ));
         paint_theme_color_line(&mut view, "primary_color", &self.site.theme.primary_color);
-        paint_theme_color_line(&mut view, "secondary_color", &self.site.theme.secondary_color);
+        paint_theme_color_line(
+            &mut view,
+            "secondary_color",
+            &self.site.theme.secondary_color,
+        );
         paint_theme_color_line(&mut view, "tertiary_color", &self.site.theme.tertiary_color);
         paint_theme_color_line(&mut view, "support_color", &self.site.theme.support_color);
         view
@@ -323,7 +326,11 @@ impl App {
         self.details_scroll_row = next.clamp(0, max_scroll) as usize;
     }
 
-    pub(in crate::tui) fn select_item_from_details_click(&mut self, text_line: usize, char_x: usize) {
+    pub(in crate::tui) fn select_item_from_details_click(
+        &mut self,
+        text_line: usize,
+        char_x: usize,
+    ) {
         let detail_w = self.details_area.width.saturating_sub(2) as usize;
         if detail_w == 0 {
             return;
@@ -386,24 +393,41 @@ impl App {
         }
         let matches = |r: &TreeRow| -> bool {
             match r.kind {
-                TreeRowKind::SiteRoot | TreeRowKind::HeaderRoot { .. } | TreeRowKind::FooterRoot => true,
+                TreeRowKind::SiteRoot
+                | TreeRowKind::HeaderRoot { .. }
+                | TreeRowKind::FooterRoot => true,
                 TreeRowKind::HeaderSection { section_idx }
                 | TreeRowKind::FooterSection { section_idx } => section_idx == hsec,
-                TreeRowKind::HeaderColumn { section_idx, column_idx }
-                | TreeRowKind::FooterColumn { section_idx, column_idx } => {
-                    section_idx == hsec && column_idx == hcol
+                TreeRowKind::HeaderColumn {
+                    section_idx,
+                    column_idx,
                 }
-                TreeRowKind::HeaderComponent { section_idx, column_idx, component_idx }
-                | TreeRowKind::FooterComponent { section_idx, column_idx, component_idx } => {
-                    section_idx == hsec && column_idx == hcol && component_idx == hcomp
+                | TreeRowKind::FooterColumn {
+                    section_idx,
+                    column_idx,
+                } => section_idx == hsec && column_idx == hcol,
+                TreeRowKind::HeaderComponent {
+                    section_idx,
+                    column_idx,
+                    component_idx,
                 }
-                TreeRowKind::Hero { node_idx } | TreeRowKind::Section { node_idx } => node_idx == self.selected_node,
-                TreeRowKind::Column { node_idx, column_idx } => {
-                    node_idx == self.selected_node && column_idx == tcol
+                | TreeRowKind::FooterComponent {
+                    section_idx,
+                    column_idx,
+                    component_idx,
+                } => section_idx == hsec && column_idx == hcol && component_idx == hcomp,
+                TreeRowKind::Hero { node_idx } | TreeRowKind::Section { node_idx } => {
+                    node_idx == self.selected_node
                 }
-                TreeRowKind::Component { node_idx, column_idx, component_idx } => {
-                    node_idx == self.selected_node && column_idx == tcol && component_idx == tcomp
-                }
+                TreeRowKind::Column {
+                    node_idx,
+                    column_idx,
+                } => node_idx == self.selected_node && column_idx == tcol,
+                TreeRowKind::Component {
+                    node_idx,
+                    column_idx,
+                    component_idx,
+                } => node_idx == self.selected_node && column_idx == tcol && component_idx == tcomp,
                 _ => false,
             }
         };
@@ -477,7 +501,11 @@ impl App {
         }
     }
 
-    fn apply_header_details_hits(&mut self, line_segs: &[(usize, usize, usize, usize)], char_x: usize) {
+    fn apply_header_details_hits(
+        &mut self,
+        line_segs: &[(usize, usize, usize, usize)],
+        char_x: usize,
+    ) {
         for &(x0, x1, c, cp) in line_segs {
             if char_x >= x0 && char_x < x1 {
                 self.selected_header_column = c;
@@ -487,7 +515,11 @@ impl App {
         }
     }
 
-    pub(in crate::tui) fn select_header_from_details_lines(&mut self, lines: &[&str], up_to: usize) {
+    pub(in crate::tui) fn select_header_from_details_lines(
+        &mut self,
+        lines: &[&str],
+        up_to: usize,
+    ) {
         let mut sec_idx = 0usize;
         let mut col_idx = 0usize;
         let mut comp_idx = 0usize;
@@ -555,7 +587,8 @@ fn paint_section_map(
         }
         Some(FocusDepth::Component { column, component }) => {
             paint_column_boxes(view, map_start, boxes, column, BlueprintStyle::Focus);
-            let fills: Vec<(usize, usize, usize)> = view.hits
+            let fills: Vec<(usize, usize, usize)> = view
+                .hits
                 .iter()
                 .enumerate()
                 .skip(map_start)

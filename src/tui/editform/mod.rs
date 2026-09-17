@@ -173,9 +173,7 @@ impl EditFormState {
     pub fn field_visible(&self, field: &FormField) -> bool {
         match &field.visible_when {
             None => true,
-            Some(FieldPredicate::FieldEquals { other_id, value }) => {
-                self.get(other_id) == *value
-            }
+            Some(FieldPredicate::FieldEquals { other_id, value }) => self.get(other_id) == *value,
         }
     }
 
@@ -274,7 +272,12 @@ pub(super) const LINK_TARGET_OPTIONS: &[&str] = &["_self", "_blank"];
 
 pub(super) const HERO_TARGET_OPTIONS: &[&str] = &["_self", "_blank", "_parent"];
 
-pub(super) const ROBOTS_OPTIONS: &[&str] = &["index, follow", "noindex, follow", "index, nofollow", "noindex, nofollow"];
+pub(super) const ROBOTS_OPTIONS: &[&str] = &[
+    "index, follow",
+    "noindex, follow",
+    "index, nofollow",
+    "noindex, nofollow",
+];
 
 pub(super) const SCHEMA_OPTIONS: &[&str] = &[
     "WebPage",
@@ -316,4 +319,3 @@ pub(super) const SECTION_CLASS_OPTIONS: &[&str] = &[
 ];
 
 pub(super) const ITEM_BOX_CLASS_OPTIONS: &[&str] = &["l-box", "ll-box"];
-

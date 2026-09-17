@@ -33,8 +33,7 @@ impl App {
                         column_idx,
                     },
                 });
-                for (component_idx, _) in
-                    section.columns[column_idx].components.iter().enumerate()
+                for (component_idx, _) in section.columns[column_idx].components.iter().enumerate()
                 {
                     rows.push(TreeRow {
                         kind: TreeRowKind::FooterComponent {
@@ -270,12 +269,7 @@ impl App {
                 } else {
                     "[+]"
                 };
-                format!(
-                    "  {} {} dd-section ({})",
-                    section_i + 1,
-                    marker,
-                    section.id
-                )
+                format!("  {} {} dd-section ({})", section_i + 1, marker, section.id)
             }
             TreeRowKind::HeaderColumn {
                 section_idx,

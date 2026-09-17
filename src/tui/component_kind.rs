@@ -21,8 +21,6 @@ pub(super) enum ComponentKind {
     HeaderMenu,
 }
 
-
-
 impl ComponentKind {
     pub(super) fn all() -> &'static [Self] {
         &[

@@ -713,10 +713,7 @@ fn is_valid_url(url: &str) -> bool {
             || v.ends_with(".html"))
 }
 
-pub fn validate_site_with_root(
-    site: &Site,
-    root: Option<&std::path::Path>,
-) -> Vec<String> {
+pub fn validate_site_with_root(site: &Site, root: Option<&std::path::Path>) -> Vec<String> {
     let mut errors = validate_site(site);
     let Some(root) = root else {
         return errors;
@@ -776,12 +773,7 @@ fn collect_region_image_refs(
     }
 }
 
-fn check_local_image(
-    root: &std::path::Path,
-    label: &str,
-    value: &str,
-    errors: &mut Vec<String>,
-) {
+fn check_local_image(root: &std::path::Path, label: &str, value: &str, errors: &mut Vec<String>) {
     let prefix = "assets/images/";
     let v = value.trim_start_matches('/');
     let Some(rest) = v.strip_prefix(prefix) else {
@@ -848,29 +840,46 @@ fn collect_component_image_refs(
         Cta(c) => refs.push((lbl("cta image"), c.parent_image_url.clone())),
         Image(i) => {
             refs.push((lbl("image"), i.parent_image_url.clone()));
-            if let Some(dark) = i.parent_image_url_dark.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+            if let Some(dark) = i
+                .parent_image_url_dark
+                .as_deref()
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+            {
                 refs.push((lbl("image dark"), dark.to_string()));
             }
         }
         Blockquote(b) => refs.push((lbl("blockquote image"), b.parent_image_url.clone())),
         Card(c) => {
             for (n, item) in c.items.iter().enumerate() {
-                refs.push((lbl(&format!("card item {} image", n + 1)), item.child_image_url.clone()));
+                refs.push((
+                    lbl(&format!("card item {} image", n + 1)),
+                    item.child_image_url.clone(),
+                ));
             }
         }
         Filmstrip(f) => {
             for (n, item) in f.items.iter().enumerate() {
-                refs.push((lbl(&format!("filmstrip item {} image", n + 1)), item.child_image_url.clone()));
+                refs.push((
+                    lbl(&format!("filmstrip item {} image", n + 1)),
+                    item.child_image_url.clone(),
+                ));
             }
         }
         Slider(s) => {
             for (n, item) in s.items.iter().enumerate() {
-                refs.push((lbl(&format!("slider item {} image", n + 1)), item.child_image_url.clone()));
+                refs.push((
+                    lbl(&format!("slider item {} image", n + 1)),
+                    item.child_image_url.clone(),
+                ));
             }
         }
         Alternating(a) => {
             for (n, item) in a.items.iter().enumerate() {
-                refs.push((lbl(&format!("alternating item {} image", n + 1)), item.child_image_url.clone()));
+                refs.push((
+                    lbl(&format!("alternating item {} image", n + 1)),
+                    item.child_image_url.clone(),
+                ));
             }
         }
         _ => {}
@@ -904,9 +913,11 @@ mod tests {
         let errors = validate_site(&site);
         assert!(errors.iter().any(|e| e.contains("missing parent_title")));
         assert!(!errors.iter().any(|e| e.contains("missing parent_subtitle")));
-        assert!(!errors
-            .iter()
-            .any(|e| e.contains("missing parent_image_url")));
+        assert!(
+            !errors
+                .iter()
+                .any(|e| e.contains("missing parent_image_url"))
+        );
     }
 
     #[test]

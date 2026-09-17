@@ -37,18 +37,18 @@ impl StaticServer {
     }
 
     pub fn url_for(&self, slug: &str) -> String {
-        format!(
-            "http://127.0.0.1:{}/{}",
-            self.port,
-            page_file_name(slug)
-        )
+        format!("http://127.0.0.1:{}/{}", self.port, page_file_name(slug))
     }
 }
 
 pub fn serve_dir_blocking(root: PathBuf, port: u16) -> std::io::Result<()> {
     let listener = TcpListener::bind(("127.0.0.1", port))?;
     let root = Arc::new(Mutex::new(root));
-    eprintln!("Serving {} at http://127.0.0.1:{}/", root.lock().unwrap().display(), port);
+    eprintln!(
+        "Serving {} at http://127.0.0.1:{}/",
+        root.lock().unwrap().display(),
+        port
+    );
     for stream in listener.incoming() {
         if let Ok(stream) = stream {
             let root = Arc::clone(&root);
@@ -68,7 +68,10 @@ fn handle_client(mut stream: TcpStream, root: &Arc<Mutex<PathBuf>>) -> std::io::
     }
     let req = String::from_utf8_lossy(&buf[..n]);
     let path = parse_path(&req).unwrap_or("/");
-    let root_path = root.lock().map(|g| g.clone()).unwrap_or_else(|e| e.into_inner().clone());
+    let root_path = root
+        .lock()
+        .map(|g| g.clone())
+        .unwrap_or_else(|e| e.into_inner().clone());
     let (status, body, ctype) = match resolve_file(&root_path, path) {
         Some((bytes, mime)) => ("200 OK", bytes, mime),
         None => {
@@ -111,7 +114,10 @@ fn resolve_file(root: &Path, url_path: &str) -> Option<(Vec<u8>, &'static str)> 
     } else {
         PathBuf::from(trimmed)
     };
-    if rel.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+    if rel
+        .components()
+        .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
         return None;
     }
     let mut candidate = root.join(&rel);
@@ -182,14 +188,11 @@ mod tests {
     }
 
     fn http_get(port: u16, path: &str) -> String {
-        let mut stream =
-            TcpStream::connect(("127.0.0.1", port)).expect("connect");
+        let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("connect");
         stream
             .write_all(
-                format!(
-                    "GET {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n"
-                )
-                .as_bytes(),
+                format!("GET {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n")
+                    .as_bytes(),
             )
             .unwrap();
         let mut buf = String::new();

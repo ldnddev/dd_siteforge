@@ -2,12 +2,16 @@
 use super::super::*;
 
 impl App {
-    pub(in crate::tui) fn handle_validation_errors_event(&mut self, key: event::KeyEvent) -> Option<ModalResult> {
+    pub(in crate::tui) fn handle_validation_errors_event(
+        &mut self,
+        key: event::KeyEvent,
+    ) -> Option<ModalResult> {
         use crossterm::event::KeyCode;
         let (errors_len, scroll) = match &self.modal {
-            Some(Modal::ValidationErrors { errors, scroll_offset }) => {
-                (errors.len(), *scroll_offset)
-            }
+            Some(Modal::ValidationErrors {
+                errors,
+                scroll_offset,
+            }) => (errors.len(), *scroll_offset),
             _ => return Some(ModalResult::CloseCancel),
         };
         match key.code {
@@ -59,9 +63,7 @@ impl App {
             }
             let key = *key;
             return match self.modal.as_ref()? {
-                Modal::ComponentPicker { .. } => {
-                    self.handle_component_picker_event_unified(key)
-                }
+                Modal::ComponentPicker { .. } => self.handle_component_picker_event_unified(key),
                 Modal::SavePrompt { .. } => self.handle_save_prompt_event_unified(key),
                 Modal::FormEdit { .. } => self.handle_form_edit_event(key),
                 Modal::TemplatePicker { .. } => self.handle_template_picker_event(key),
@@ -105,7 +107,10 @@ impl App {
                     .find(|(_, r)| contains(*r, col, row))
                     .map(|(idx, _)| *idx);
                 if let Some(idx) = expand_hit {
-                    if let Some(Modal::FormEdit { state, cursor_pos, .. }) = self.modal.as_mut() {
+                    if let Some(Modal::FormEdit {
+                        state, cursor_pos, ..
+                    }) = self.modal.as_mut()
+                    {
                         state.focused_field = idx;
                         let field_id = state.form.fields.get(idx).map(|f| f.id);
                         if let Some(field_id) = field_id {
@@ -170,10 +175,7 @@ impl App {
                     .borrow()
                     .iter()
                     .find(|(_, r)| {
-                        col >= r.x
-                            && col < r.x + r.width
-                            && row >= r.y
-                            && row < r.y + r.height
+                        col >= r.x && col < r.x + r.width && row >= r.y && row < r.y + r.height
                     })
                     .map(|(idx, _)| *idx);
                 if let Some(idx) = hit {
@@ -190,7 +192,11 @@ impl App {
             }
             match kind {
                 MouseEventKind::ScrollUp | MouseEventKind::ScrollDown => {
-                    let delta: i32 = if matches!(kind, MouseEventKind::ScrollUp) { -3 } else { 3 };
+                    let delta: i32 = if matches!(kind, MouseEventKind::ScrollUp) {
+                        -3
+                    } else {
+                        3
+                    };
                     if self.form_textarea_expanded {
                         let wrap_width = self.focused_textarea_wrap_width();
                         if let Some(Modal::FormEdit {
@@ -218,7 +224,10 @@ impl App {
                     }
                     if let Some(modal) = self.modal.as_mut() {
                         match modal {
-                            Modal::ValidationErrors { errors, scroll_offset } => {
+                            Modal::ValidationErrors {
+                                errors,
+                                scroll_offset,
+                            } => {
                                 let max = errors.len().saturating_sub(1);
                                 let next = (*scroll_offset as i32 + delta).max(0) as usize;
                                 *scroll_offset = next.min(max);
@@ -239,7 +248,10 @@ impl App {
         Some(ModalResult::Continue)
     }
 
-    pub(in crate::tui) fn handle_save_prompt_event_unified(&mut self, key: event::KeyEvent) -> Option<ModalResult> {
+    pub(in crate::tui) fn handle_save_prompt_event_unified(
+        &mut self,
+        key: event::KeyEvent,
+    ) -> Option<ModalResult> {
         use crossterm::event::KeyCode;
 
         let path = if let Some(Modal::SavePrompt { path }) = self.modal.take() {
@@ -291,7 +303,10 @@ impl App {
         }
     }
 
-    pub(in crate::tui) fn handle_template_picker_event(&mut self, key: event::KeyEvent) -> Option<ModalResult> {
+    pub(in crate::tui) fn handle_template_picker_event(
+        &mut self,
+        key: event::KeyEvent,
+    ) -> Option<ModalResult> {
         use crossterm::event::KeyCode;
         let Some(Modal::TemplatePicker { selected }) = self.modal.as_mut() else {
             return Some(ModalResult::CloseCancel);
@@ -323,10 +338,9 @@ impl App {
                     return Some(ModalResult::CloseCancel);
                 }
                 let mut new_page = match picked {
-                    0 => crate::model::Page::from_template(
-                        &title,
-                        crate::model::PageTemplate::Blank,
-                    ),
+                    0 => {
+                        crate::model::Page::from_template(&title, crate::model::PageTemplate::Blank)
+                    }
                     1 => crate::model::Page::from_template(
                         &title,
                         crate::model::PageTemplate::HeroOnly,
@@ -336,15 +350,15 @@ impl App {
                         crate::model::PageTemplate::HeroPlusSection,
                     ),
                     3 => {
-                        let src_idx =
-                            self.selected_page.min(self.site.pages.len().saturating_sub(1));
+                        let src_idx = self
+                            .selected_page
+                            .min(self.site.pages.len().saturating_sub(1));
                         let src = &self.site.pages[src_idx];
                         crate::model::Page::duplicate_from(src)
                     }
-                    _ => crate::model::Page::from_template(
-                        &title,
-                        crate::model::PageTemplate::Blank,
-                    ),
+                    _ => {
+                        crate::model::Page::from_template(&title, crate::model::PageTemplate::Blank)
+                    }
                 };
                 // Dedup id/slug to avoid collisions.
                 if self.site.pages.iter().any(|p| p.id == new_page.id) {
@@ -437,7 +451,10 @@ impl App {
         }
     }
 
-    pub(in crate::tui) fn handle_rename_page_prompt_event(&mut self, key: event::KeyEvent) -> Option<ModalResult> {
+    pub(in crate::tui) fn handle_rename_page_prompt_event(
+        &mut self,
+        key: event::KeyEvent,
+    ) -> Option<ModalResult> {
         use crossterm::event::KeyCode;
         let (title, page_idx) = match &self.modal {
             Some(Modal::RenamePagePrompt { title, page_idx }) => (title.clone(), *page_idx),
@@ -475,7 +492,11 @@ impl App {
         }
     }
 
-    pub(in crate::tui) fn commit_rename_page(&mut self, title: String, page_idx: usize) -> Option<ModalResult> {
+    pub(in crate::tui) fn commit_rename_page(
+        &mut self,
+        title: String,
+        page_idx: usize,
+    ) -> Option<ModalResult> {
         let trimmed = title.trim();
         if trimmed.is_empty() {
             self.push_toast(ToastLevel::Warning, "Title required.");
@@ -496,7 +517,10 @@ impl App {
         Some(ModalResult::CloseSuccess)
     }
 
-    pub(in crate::tui) fn handle_confirm_prompt_event(&mut self, key: event::KeyEvent) -> Option<ModalResult> {
+    pub(in crate::tui) fn handle_confirm_prompt_event(
+        &mut self,
+        key: event::KeyEvent,
+    ) -> Option<ModalResult> {
         use crossterm::event::KeyCode;
         let kind = match &self.modal {
             Some(Modal::ConfirmPrompt { on_confirm, .. }) => on_confirm.clone(),
@@ -544,7 +568,10 @@ impl App {
     /// Run `validate_site` on the current site. Open `Modal::ValidationErrors`
     /// if any errors; otherwise set a green status and leave no modal open.
     pub(in crate::tui) fn open_validation_modal(&mut self) {
-        let root = self.path.as_ref().and_then(|p| p.parent().map(std::path::Path::to_path_buf));
+        let root = self
+            .path
+            .as_ref()
+            .and_then(|p| p.parent().map(std::path::Path::to_path_buf));
         let errors = crate::validate::validate_site_with_root(&self.site, root.as_deref());
         if errors.is_empty() {
             self.push_toast(ToastLevel::Success, "No validation errors.");

@@ -35,7 +35,10 @@ pub static CARD_ITEM_FORM: EditForm = EditForm {
         FormField {
             id: "child_copy",
             label: "Copy (Markdown)",
-            kind: FieldKind::Textarea { rows: 4, default: "" },
+            kind: FieldKind::Textarea {
+                rows: 4,
+                default: "",
+            },
             required: true,
             visible_when: None,
         },
@@ -49,7 +52,10 @@ pub static CARD_ITEM_FORM: EditForm = EditForm {
         FormField {
             id: "child_link_target",
             label: "Link Target",
-            kind: FieldKind::Enum { options: LINK_TARGET_OPTIONS, default: "_self" },
+            kind: FieldKind::Enum {
+                options: LINK_TARGET_OPTIONS,
+                default: "_self",
+            },
             required: false,
             visible_when: None,
         },
@@ -117,7 +123,10 @@ pub static MILESTONES_ITEM_FORM: EditForm = EditForm {
         FormField {
             id: "child_copy",
             label: "Copy (Markdown)",
-            kind: FieldKind::Textarea { rows: 4, default: "" },
+            kind: FieldKind::Textarea {
+                rows: 4,
+                default: "",
+            },
             required: true,
             visible_when: None,
         },
@@ -131,7 +140,10 @@ pub static MILESTONES_ITEM_FORM: EditForm = EditForm {
         FormField {
             id: "child_link_target",
             label: "Link Target",
-            kind: FieldKind::Enum { options: LINK_TARGET_OPTIONS, default: "_self" },
+            kind: FieldKind::Enum {
+                options: LINK_TARGET_OPTIONS,
+                default: "_self",
+            },
             required: false,
             visible_when: None,
         },
@@ -158,7 +170,10 @@ pub static SLIDER_ITEM_FORM: EditForm = EditForm {
         FormField {
             id: "child_copy",
             label: "Copy (Markdown)",
-            kind: FieldKind::Textarea { rows: 4, default: "" },
+            kind: FieldKind::Textarea {
+                rows: 4,
+                default: "",
+            },
             required: true,
             visible_when: None,
         },
@@ -186,7 +201,10 @@ pub static SLIDER_ITEM_FORM: EditForm = EditForm {
         FormField {
             id: "child_link_target",
             label: "Link Target",
-            kind: FieldKind::Enum { options: LINK_TARGET_OPTIONS, default: "_self" },
+            kind: FieldKind::Enum {
+                options: LINK_TARGET_OPTIONS,
+                default: "_self",
+            },
             required: false,
             visible_when: None,
         },
@@ -213,7 +231,10 @@ pub static ACCORDION_ITEM_FORM: EditForm = EditForm {
         FormField {
             id: "child_copy",
             label: "Content (Markdown)",
-            kind: FieldKind::Textarea { rows: 5, default: "" },
+            kind: FieldKind::Textarea {
+                rows: 5,
+                default: "",
+            },
             required: true,
             visible_when: None,
         },
@@ -247,14 +268,19 @@ pub static ALTERNATING_ITEM_FORM: EditForm = EditForm {
         FormField {
             id: "child_subtitle",
             label: "Subtitle (optional)",
-            kind: FieldKind::Text { default: "Subtitle" },
+            kind: FieldKind::Text {
+                default: "Subtitle",
+            },
             required: false,
             visible_when: None,
         },
         FormField {
             id: "child_copy",
             label: "Copy (Markdown)",
-            kind: FieldKind::Textarea { rows: 5, default: "" },
+            kind: FieldKind::Textarea {
+                rows: 5,
+                default: "",
+            },
             required: true,
             visible_when: None,
         },
@@ -267,21 +293,29 @@ pub static CARD_FORM: EditForm = EditForm {
         FormField {
             id: "parent_type",
             label: "Layout",
-            kind: FieldKind::Enum { options: &["-default", "-horizontal"], default: "-default" },
+            kind: FieldKind::Enum {
+                options: &["-default", "-horizontal"],
+                default: "-default",
+            },
             required: true,
             visible_when: None,
         },
         FormField {
             id: "sal",
             label: "Animation",
-            kind: FieldKind::Enum { options: SAL_OPTIONS, default: "fade" },
+            kind: FieldKind::Enum {
+                options: SAL_OPTIONS,
+                default: "fade",
+            },
             required: true,
             visible_when: None,
         },
         FormField {
             id: "parent_width",
             label: "Width Classes",
-            kind: FieldKind::Text { default: "dd-u-1-1 dd-u-md-12-24 dd-u-lg-8-24" },
+            kind: FieldKind::Text {
+                default: "dd-u-1-1 dd-u-md-12-24 dd-u-lg-8-24",
+            },
             required: true,
             visible_when: None,
         },
@@ -305,14 +339,20 @@ pub static FILMSTRIP_FORM: EditForm = EditForm {
         FormField {
             id: "parent_type",
             label: "Direction",
-            kind: FieldKind::Enum { options: &["-default", "-reverse"], default: "-default" },
+            kind: FieldKind::Enum {
+                options: &["-default", "-reverse"],
+                default: "-default",
+            },
             required: true,
             visible_when: None,
         },
         FormField {
             id: "sal",
             label: "Animation",
-            kind: FieldKind::Enum { options: SAL_OPTIONS, default: "fade" },
+            kind: FieldKind::Enum {
+                options: SAL_OPTIONS,
+                default: "fade",
+            },
             required: true,
             visible_when: None,
         },
@@ -336,14 +376,19 @@ pub static MILESTONES_FORM: EditForm = EditForm {
         FormField {
             id: "sal",
             label: "Animation",
-            kind: FieldKind::Enum { options: SAL_OPTIONS, default: "fade" },
+            kind: FieldKind::Enum {
+                options: SAL_OPTIONS,
+                default: "fade",
+            },
             required: true,
             visible_when: None,
         },
         FormField {
             id: "parent_width",
             label: "Width Classes",
-            kind: FieldKind::Text { default: "dd-u-1-1 dd-u-md-12-24" },
+            kind: FieldKind::Text {
+                default: "dd-u-1-1 dd-u-md-12-24",
+            },
             required: true,
             visible_when: None,
         },
@@ -391,7 +436,10 @@ pub static ACCORDION_FORM: EditForm = EditForm {
         FormField {
             id: "parent_type",
             label: "Type",
-            kind: FieldKind::Enum { options: &["-default", "-faq"], default: "-default" },
+            kind: FieldKind::Enum {
+                options: &["-default", "-faq"],
+                default: "-default",
+            },
             required: true,
             visible_when: None,
         },
@@ -399,7 +447,13 @@ pub static ACCORDION_FORM: EditForm = EditForm {
             id: "parent_class",
             label: "Variant",
             kind: FieldKind::Enum {
-                options: &["-borderless", "-compact", "-primary", "-secondary", "-tertiary"],
+                options: &[
+                    "-borderless",
+                    "-compact",
+                    "-primary",
+                    "-secondary",
+                    "-tertiary",
+                ],
                 default: "-primary",
             },
             required: true,
@@ -408,7 +462,10 @@ pub static ACCORDION_FORM: EditForm = EditForm {
         FormField {
             id: "sal",
             label: "Animation",
-            kind: FieldKind::Enum { options: SAL_OPTIONS, default: "fade" },
+            kind: FieldKind::Enum {
+                options: SAL_OPTIONS,
+                default: "fade",
+            },
             required: true,
             visible_when: None,
         },
@@ -449,14 +506,19 @@ pub static ALTERNATING_FORM: EditForm = EditForm {
         FormField {
             id: "parent_class",
             label: "CSS Class",
-            kind: FieldKind::Text { default: "-default" },
+            kind: FieldKind::Text {
+                default: "-default",
+            },
             required: true,
             visible_when: None,
         },
         FormField {
             id: "sal",
             label: "Animation",
-            kind: FieldKind::Enum { options: SAL_OPTIONS, default: "fade" },
+            kind: FieldKind::Enum {
+                options: SAL_OPTIONS,
+                default: "fade",
+            },
             required: true,
             visible_when: None,
         },

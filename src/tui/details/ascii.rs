@@ -43,7 +43,9 @@ pub(in crate::tui) fn section_ascii_map(
                 ));
                 box_comps.push(None);
             } else {
-                for (comp_i, component) in col.components.iter().take(MAX_COMPONENT_ROWS).enumerate() {
+                for (comp_i, component) in
+                    col.components.iter().take(MAX_COMPONENT_ROWS).enumerate()
+                {
                     match component {
                         crate::model::SectionComponent::Card(card) => {
                             box_lines.push(format!(
@@ -241,7 +243,11 @@ pub(in crate::tui) fn header_ascii_map(
         fit_ascii_cell(
             &format!(
                 "alert: {}",
-                if header.alert.is_some() { "yes" } else { "(none)" }
+                if header.alert.is_some() {
+                    "yes"
+                } else {
+                    "(none)"
+                }
             ),
             inner_width,
         ),
@@ -415,9 +421,10 @@ pub(in crate::tui) fn card_items_ascii_lines(
         return vec![fit_ascii_cell("(empty)", container_inner_width)];
     }
 
-    let child_inner_width = section_item_ascii_inner_width(&card.parent_width, container_inner_width)
-        .min(container_inner_width.saturating_sub(4))
-        .max(10);
+    let child_inner_width =
+        section_item_ascii_inner_width(&card.parent_width, container_inner_width)
+            .min(container_inner_width.saturating_sub(4))
+            .max(10);
     let child_border = format!("+{}+", "-".repeat(child_inner_width + 2));
 
     let child_boxes = card
@@ -496,7 +503,10 @@ pub(in crate::tui) fn card_items_ascii_lines(
     lines
 }
 
-pub(in crate::tui) fn section_item_ascii_inner_width(width_class: &str, section_inner_width: usize) -> usize {
+pub(in crate::tui) fn section_item_ascii_inner_width(
+    width_class: &str,
+    section_inner_width: usize,
+) -> usize {
     let min_inner = 12usize;
     // Upper bound chosen so a full-width (ratio 1.0) box renders exactly the
     // same total row width as two half-width (ratio 0.5) boxes + 2-char gap:
@@ -515,7 +525,10 @@ pub(in crate::tui) fn section_item_ascii_inner_width(width_class: &str, section_
     (inner_target as usize).clamp(min_inner, max_inner)
 }
 
-pub(in crate::tui) fn resolve_dd_u_ratio_for_panel(width_class: &str, panel_chars: usize) -> Option<(usize, usize)> {
+pub(in crate::tui) fn resolve_dd_u_ratio_for_panel(
+    width_class: &str,
+    panel_chars: usize,
+) -> Option<(usize, usize)> {
     let current_bp = breakpoint_for_panel_chars(panel_chars);
     let mut base: Option<(usize, usize)> = None;
     let mut sm: Option<(usize, usize)> = None;
@@ -549,7 +562,9 @@ pub(in crate::tui) fn resolve_dd_u_ratio_for_panel(width_class: &str, panel_char
     None
 }
 
-pub(in crate::tui) fn parse_dd_u_token_ratio(token: &str) -> Option<(ResponsiveBp, (usize, usize))> {
+pub(in crate::tui) fn parse_dd_u_token_ratio(
+    token: &str,
+) -> Option<(ResponsiveBp, (usize, usize))> {
     let value = token.strip_prefix("dd-u-")?;
     let parts = value.split('-').collect::<Vec<_>>();
     let (bp, num_raw, den_raw) = match parts.as_slice() {

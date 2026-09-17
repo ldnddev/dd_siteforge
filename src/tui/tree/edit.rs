@@ -154,7 +154,12 @@ impl App {
         }
     }
 
-    pub(in crate::tui) fn delete_page_component(&mut self, node_idx: usize, column_idx: usize, component_idx: usize) {
+    pub(in crate::tui) fn delete_page_component(
+        &mut self,
+        node_idx: usize,
+        column_idx: usize,
+        component_idx: usize,
+    ) {
         let new_selected = {
             let Some(page) = self.current_page_mut() else {
                 return;
@@ -366,10 +371,8 @@ impl App {
             return false;
         };
         let col_i = col_i.min(section.columns.len().saturating_sub(1));
-        let ci = match component_index(
-            section.columns[col_i].components.len(),
-            selected_component,
-        ) {
+        let ci = match component_index(section.columns[col_i].components.len(), selected_component)
+        {
             Some(v) => v,
             None => return false,
         };
@@ -565,10 +568,8 @@ impl App {
             return false;
         };
         let col_i = col_i.min(section.columns.len().saturating_sub(1));
-        let ci = match component_index(
-            section.columns[col_i].components.len(),
-            selected_component,
-        ) {
+        let ci = match component_index(section.columns[col_i].components.len(), selected_component)
+        {
             Some(v) => v,
             None => return false,
         };

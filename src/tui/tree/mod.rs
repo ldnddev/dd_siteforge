@@ -1,11 +1,11 @@
 //! Layout tree navigation and structural edits.
 mod build;
-mod expand;
-mod open;
-mod nav;
-mod edit;
-mod items;
 mod columns;
+mod edit;
+mod expand;
+mod items;
+mod nav;
+mod open;
 
 #[derive(Clone, Copy)]
 pub(in crate::tui) struct TreeRow {
@@ -94,4 +94,3 @@ pub(in crate::tui) enum TreeRowKind {
         item_idx: usize,
     },
 }
-

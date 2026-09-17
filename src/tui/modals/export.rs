@@ -2,7 +2,10 @@
 use super::super::*;
 
 impl App {
-    pub(in crate::tui) fn handle_export_path_prompt_event(&mut self, key: event::KeyEvent) -> Option<ModalResult> {
+    pub(in crate::tui) fn handle_export_path_prompt_event(
+        &mut self,
+        key: event::KeyEvent,
+    ) -> Option<ModalResult> {
         use crossterm::event::KeyCode;
         let path = if let Some(Modal::ExportPathPrompt { path }) = self.modal.take() {
             path
@@ -37,7 +40,10 @@ impl App {
         }
     }
 
-    pub(in crate::tui) fn handle_preview_path_prompt_event(&mut self, key: event::KeyEvent) -> Option<ModalResult> {
+    pub(in crate::tui) fn handle_preview_path_prompt_event(
+        &mut self,
+        key: event::KeyEvent,
+    ) -> Option<ModalResult> {
         use crossterm::event::KeyCode;
         let path = if let Some(Modal::PreviewPathPrompt { path }) = self.modal.take() {
             path
@@ -72,7 +78,10 @@ impl App {
         }
     }
 
-    pub(in crate::tui) fn commit_preview_path_from_prompt(&mut self, path: String) -> Option<ModalResult> {
+    pub(in crate::tui) fn commit_preview_path_from_prompt(
+        &mut self,
+        path: String,
+    ) -> Option<ModalResult> {
         let trimmed = path.trim();
         if trimmed.is_empty() {
             self.push_toast(ToastLevel::Warning, "Preview path required.");
@@ -110,23 +119,14 @@ impl App {
         match self.ensure_preview_server(out.clone()) {
             Ok(url) => match open_in_browser(&url) {
                 Ok(()) => {
-                    self.push_toast(
-                        ToastLevel::Info,
-                        format!("Opening {} in browser…", url),
-                    );
+                    self.push_toast(ToastLevel::Info, format!("Opening {} in browser…", url));
                 }
                 Err(e) => {
-                    self.push_toast(
-                        ToastLevel::Error,
-                        format!("Browser open failed: {}", e),
-                    );
+                    self.push_toast(ToastLevel::Error, format!("Browser open failed: {}", e));
                 }
             },
             Err(e) => {
-                self.push_toast(
-                    ToastLevel::Error,
-                    format!("Preview server failed: {}", e),
-                );
+                self.push_toast(ToastLevel::Error, format!("Preview server failed: {}", e));
             }
         }
     }
@@ -144,7 +144,9 @@ impl App {
     }
 
     pub(in crate::tui) fn current_page_slug_for_preview(&self) -> String {
-        let idx = self.selected_page.min(self.site.pages.len().saturating_sub(1));
+        let idx = self
+            .selected_page
+            .min(self.site.pages.len().saturating_sub(1));
         self.site
             .pages
             .get(idx)
@@ -153,7 +155,10 @@ impl App {
     }
 
     pub(in crate::tui) fn begin_preview_flow(&mut self) {
-        let root = self.path.as_ref().and_then(|p| p.parent().map(std::path::Path::to_path_buf));
+        let root = self
+            .path
+            .as_ref()
+            .and_then(|p| p.parent().map(std::path::Path::to_path_buf));
         let errors = crate::validate::validate_site_with_root(&self.site, root.as_deref());
         if !errors.is_empty() {
             self.modal = Some(Modal::ValidationErrors {
@@ -175,7 +180,10 @@ impl App {
     }
 
     pub(in crate::tui) fn begin_export_flow(&mut self) {
-        let root = self.path.as_ref().and_then(|p| p.parent().map(std::path::Path::to_path_buf));
+        let root = self
+            .path
+            .as_ref()
+            .and_then(|p| p.parent().map(std::path::Path::to_path_buf));
         let errors = crate::validate::validate_site_with_root(&self.site, root.as_deref());
         if !errors.is_empty() {
             self.modal = Some(Modal::ValidationErrors {
@@ -196,7 +204,10 @@ impl App {
         }
     }
 
-    pub(in crate::tui) fn commit_export_path_from_prompt(&mut self, path: String) -> Option<ModalResult> {
+    pub(in crate::tui) fn commit_export_path_from_prompt(
+        &mut self,
+        path: String,
+    ) -> Option<ModalResult> {
         let trimmed = path.trim();
         if trimmed.is_empty() {
             self.push_toast(ToastLevel::Warning, "Export path required.");
@@ -223,7 +234,10 @@ impl App {
                 self.site.export_dir = Some(normalized.clone());
                 let display = display_relative_path(&base, &out, &normalized);
                 let msg = if report.wrote_404 {
-                    format!("Exported {} page(s) to {} (wrote 404.html)", report.pages, display)
+                    format!(
+                        "Exported {} page(s) to {} (wrote 404.html)",
+                        report.pages, display
+                    )
                 } else {
                     format!("Exported {} page(s) to {}", report.pages, display)
                 };

@@ -11,7 +11,7 @@
 //! silently target the current page" bug: every write path funnels through
 //! `resolve_mut`, which knows every region.
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 
 use crate::model::{
     AccordionClass, AccordionItem, AccordionType, AlertClass, AlertType, AlternatingItem,
@@ -19,9 +19,9 @@ use crate::model::{
     DdAccordion, DdAlert, DdAlternating, DdBanner, DdBlockquote, DdCard, DdCta, DdFilmstrip,
     DdFooter, DdHead, DdHeader, DdHeaderMenu, DdHeaderSearch, DdHero, DdImage, DdMilestones,
     DdModal, DdNavigation, DdRichText, DdSection, DdSlider, FilmstripItem, FilmstripType,
-    SalAnimation, HeroImageClass, MilestonesItem, NavigationClass, NavigationItem, NavigationKind,
-    NavigationType, PageNode, SectionClass, SectionColumn, SectionComponent, SectionItemBoxClass,
-    Site, SliderItem,
+    HeroImageClass, MilestonesItem, NavigationClass, NavigationItem, NavigationKind,
+    NavigationType, PageNode, SalAnimation, SectionClass, SectionColumn, SectionComponent,
+    SectionItemBoxClass, Site, SliderItem,
 };
 use crate::tui::editform::{self, EditFormState, FieldKind};
 
@@ -155,7 +155,9 @@ pub fn resolve_mut<'a>(site: &'a mut Site, cursor: &Cursor) -> Result<CursorRef<
                 .context("page node index out of bounds")?;
             match n {
                 PageNode::Section(s) => Ok(CursorRef::Section(s)),
-                _ => Err(anyhow!("cursor points at section but node is not a Section")),
+                _ => Err(anyhow!(
+                    "cursor points at section but node is not a Section"
+                )),
             }
         }
         Cursor::PageComponent {
@@ -213,7 +215,10 @@ pub fn apply_edit_form_to_component(
     // Special roots/heads have dedicated cursors and may involve page-level fields like slug.
     match cursor {
         Cursor::PageHead { page } => {
-            let p = site.pages.get_mut(*page).context("page index out of bounds")?;
+            let p = site
+                .pages
+                .get_mut(*page)
+                .context("page index out of bounds")?;
             let orig_title = p.head.title.clone();
             let orig_slug = p.slug.clone();
             apply_head_values(&mut p.head, state)?;
@@ -276,12 +281,11 @@ pub fn apply_edit_form_to_component(
 }
 
 fn apply_cta_values(cta: &mut DdCta, state: &EditFormState) -> Result<()> {
-    cta.parent_class = parse_enum::<CtaClass>(state.get("parent_class"))
-        .context("invalid parent_class")?;
+    cta.parent_class =
+        parse_enum::<CtaClass>(state.get("parent_class")).context("invalid parent_class")?;
     cta.parent_image_url = state.get("parent_image_url").trim().to_string();
     cta.parent_image_alt = state.get("parent_image_alt").trim().to_string();
-    cta.sal = parse_enum::<SalAnimation>(state.get("sal"))
-        .context("invalid sal")?;
+    cta.sal = parse_enum::<SalAnimation>(state.get("sal")).context("invalid sal")?;
     cta.parent_title = state.get("parent_title").to_string();
     cta.parent_subtitle = state.get("parent_subtitle").to_string();
     cta.parent_copy = state.get("parent_copy").to_string();
@@ -296,8 +300,7 @@ fn apply_cta_values(cta: &mut DdCta, state: &EditFormState) -> Result<()> {
     } else {
         cta.parent_link_url = Some(link_url_raw);
         cta.parent_link_target = Some(
-            parse_enum::<CardLinkTarget>(&link_target_raw)
-                .context("invalid parent_link_target")?,
+            parse_enum::<CardLinkTarget>(&link_target_raw).context("invalid parent_link_target")?,
         );
         cta.parent_link_label = Some(link_label_raw);
     }
@@ -368,8 +371,7 @@ pub fn banner_to_form_state(b: &DdBanner) -> EditFormState {
 fn apply_banner_values(b: &mut DdBanner, state: &EditFormState) -> Result<()> {
     b.parent_class =
         parse_enum::<BannerClass>(state.get("parent_class")).context("invalid parent_class")?;
-    b.sal = parse_enum::<SalAnimation>(state.get("sal"))
-        .context("invalid sal")?;
+    b.sal = parse_enum::<SalAnimation>(state.get("sal")).context("invalid sal")?;
     b.parent_image_url = state.get("parent_image_url").trim().to_string();
     b.parent_image_alt = state.get("parent_image_alt").trim().to_string();
     Ok(())
@@ -397,8 +399,7 @@ pub fn image_to_form_state(i: &DdImage) -> EditFormState {
     s
 }
 fn apply_image_values(i: &mut DdImage, state: &EditFormState) -> Result<()> {
-    i.sal = parse_enum::<SalAnimation>(state.get("sal"))
-        .context("invalid sal")?;
+    i.sal = parse_enum::<SalAnimation>(state.get("sal")).context("invalid sal")?;
     i.parent_image_url = state.get("parent_image_url").trim().to_string();
     let dark = state.get("parent_image_url_dark").trim().to_string();
     i.parent_image_url_dark = if dark.is_empty() { None } else { Some(dark) };
@@ -425,8 +426,7 @@ pub fn header_search_to_form_state(h: &DdHeaderSearch) -> EditFormState {
 }
 fn apply_header_search_values(h: &mut DdHeaderSearch, state: &EditFormState) -> Result<()> {
     h.parent_width = state.get("parent_width").trim().to_string();
-    h.sal = parse_enum::<SalAnimation>(state.get("sal"))
-        .context("invalid sal")?;
+    h.sal = parse_enum::<SalAnimation>(state.get("sal")).context("invalid sal")?;
     Ok(())
 }
 
@@ -438,17 +438,13 @@ pub fn header_menu_to_form_state(h: &DdHeaderMenu) -> EditFormState {
 }
 fn apply_header_menu_values(h: &mut DdHeaderMenu, state: &EditFormState) -> Result<()> {
     h.parent_width = state.get("parent_width").trim().to_string();
-    h.sal = parse_enum::<SalAnimation>(state.get("sal"))
-        .context("invalid sal")?;
+    h.sal = parse_enum::<SalAnimation>(state.get("sal")).context("invalid sal")?;
     Ok(())
 }
 
 pub fn rich_text_to_form_state(r: &DdRichText) -> EditFormState {
     let mut s = EditFormState::new(&editform::RICH_TEXT_FORM);
-    s.set(
-        "parent_class",
-        r.parent_class.clone().unwrap_or_default(),
-    );
+    s.set("parent_class", r.parent_class.clone().unwrap_or_default());
     s.set("sal", enum_serde_str(r.sal));
     s.set("parent_copy", r.parent_copy.clone());
     s
@@ -456,8 +452,7 @@ pub fn rich_text_to_form_state(r: &DdRichText) -> EditFormState {
 fn apply_rich_text_values(r: &mut DdRichText, state: &EditFormState) -> Result<()> {
     let class = state.get("parent_class").trim().to_string();
     r.parent_class = if class.is_empty() { None } else { Some(class) };
-    r.sal = parse_enum::<SalAnimation>(state.get("sal"))
-        .context("invalid sal")?;
+    r.sal = parse_enum::<SalAnimation>(state.get("sal")).context("invalid sal")?;
     r.parent_copy = state.get("parent_copy").to_string();
     Ok(())
 }
@@ -467,10 +462,7 @@ pub fn alert_to_form_state(a: &DdAlert) -> EditFormState {
     s.set("parent_type", enum_serde_str(a.parent_type));
     s.set("parent_class", enum_serde_str(a.parent_class));
     s.set("sal", enum_serde_str(a.sal));
-    s.set(
-        "parent_title",
-        a.parent_title.clone().unwrap_or_default(),
-    );
+    s.set("parent_title", a.parent_title.clone().unwrap_or_default());
     s.set("parent_copy", a.parent_copy.clone());
     s
 }
@@ -479,8 +471,7 @@ fn apply_alert_values(a: &mut DdAlert, state: &EditFormState) -> Result<()> {
         parse_enum::<AlertType>(state.get("parent_type")).context("invalid parent_type")?;
     a.parent_class =
         parse_enum::<AlertClass>(state.get("parent_class")).context("invalid parent_class")?;
-    a.sal = parse_enum::<SalAnimation>(state.get("sal"))
-        .context("invalid sal")?;
+    a.sal = parse_enum::<SalAnimation>(state.get("sal")).context("invalid sal")?;
     let title = state.get("parent_title").trim().to_string();
     a.parent_title = if title.is_empty() { None } else { Some(title) };
     a.parent_copy = state.get("parent_copy").to_string();
@@ -510,8 +501,7 @@ pub fn blockquote_to_form_state(bq: &DdBlockquote) -> EditFormState {
     s
 }
 fn apply_blockquote_values(bq: &mut DdBlockquote, state: &EditFormState) -> Result<()> {
-    bq.sal = parse_enum::<SalAnimation>(state.get("sal"))
-        .context("invalid sal")?;
+    bq.sal = parse_enum::<SalAnimation>(state.get("sal")).context("invalid sal")?;
     bq.parent_image_url = state.get("parent_image_url").trim().to_string();
     bq.parent_image_alt = state.get("parent_image_alt").trim().to_string();
     bq.parent_name = state.get("parent_name").to_string();
@@ -570,7 +560,9 @@ fn apply_card_values(c: &mut DdCard, state: &EditFormState) -> Result<()> {
                 } else {
                     (
                         Some(link_url),
-                        Some(parse_enum::<CardLinkTarget>(item_s.get("child_link_target"))?),
+                        Some(parse_enum::<CardLinkTarget>(
+                            item_s.get("child_link_target"),
+                        )?),
                         Some(link_label),
                     )
                 };
@@ -666,7 +658,9 @@ fn apply_milestones_values(m: &mut DdMilestones, state: &EditFormState) -> Resul
                 } else {
                     (
                         Some(link_url),
-                        Some(parse_enum::<CardLinkTarget>(item_s.get("child_link_target"))?),
+                        Some(parse_enum::<CardLinkTarget>(
+                            item_s.get("child_link_target"),
+                        )?),
                         Some(link_label),
                     )
                 };
@@ -727,7 +721,9 @@ fn apply_slider_values(sl: &mut DdSlider, state: &EditFormState) -> Result<()> {
                 } else {
                     (
                         Some(link_url),
-                        Some(parse_enum::<CardLinkTarget>(item_s.get("child_link_target"))?),
+                        Some(parse_enum::<CardLinkTarget>(
+                            item_s.get("child_link_target"),
+                        )?),
                         Some(link_label),
                     )
                 };
@@ -823,10 +819,7 @@ pub fn hero_to_form_state(hero: &DdHero) -> EditFormState {
     let mut s = EditFormState::new(&editform::HERO_FORM);
     s.set("parent_title", hero.parent_title.clone());
     s.set("parent_subtitle", hero.parent_subtitle.clone());
-    s.set(
-        "parent_copy",
-        hero.parent_copy.clone().unwrap_or_default(),
-    );
+    s.set("parent_copy", hero.parent_copy.clone().unwrap_or_default());
     s.set(
         "parent_class",
         hero.parent_class
@@ -866,7 +859,10 @@ pub fn hero_to_form_state(hero: &DdHero) -> EditFormState {
         "parent_image_desktop",
         hero.parent_image_desktop.clone().unwrap_or_default(),
     );
-    s.set("link_1_label", hero.link_1_label.clone().unwrap_or_default());
+    s.set(
+        "link_1_label",
+        hero.link_1_label.clone().unwrap_or_default(),
+    );
     s.set("link_1_url", hero.link_1_url.clone().unwrap_or_default());
     s.set(
         "link_1_target",
@@ -874,7 +870,10 @@ pub fn hero_to_form_state(hero: &DdHero) -> EditFormState {
             .map(enum_serde_str)
             .unwrap_or_else(|| "_self".to_string()),
     );
-    s.set("link_2_label", hero.link_2_label.clone().unwrap_or_default());
+    s.set(
+        "link_2_label",
+        hero.link_2_label.clone().unwrap_or_default(),
+    );
     s.set("link_2_url", hero.link_2_url.clone().unwrap_or_default());
     s.set(
         "link_2_target",
@@ -900,7 +899,9 @@ fn apply_hero_values(hero: &mut DdHero, state: &EditFormState) -> Result<()> {
     hero.parent_image_url = state.get("parent_image_url").trim().to_string();
     let alt = state.get("parent_image_alt").trim().to_string();
     hero.parent_image_alt = if alt.is_empty() { None } else { Some(alt) };
-    hero.parent_image_class = Some(parse_enum::<HeroImageClass>(state.get("parent_image_class"))?);
+    hero.parent_image_class = Some(parse_enum::<HeroImageClass>(
+        state.get("parent_image_class"),
+    )?);
     for (field_id, slot) in [
         ("parent_image_mobile", &mut hero.parent_image_mobile),
         ("parent_image_tablet", &mut hero.parent_image_tablet),
@@ -909,8 +910,24 @@ fn apply_hero_values(hero: &mut DdHero, state: &EditFormState) -> Result<()> {
         let v = state.get(field_id).trim().to_string();
         *slot = if v.is_empty() { None } else { Some(v) };
     }
-    apply_hero_link(state, "link_1_label", "link_1_url", "link_1_target", &mut hero.link_1_label, &mut hero.link_1_url, &mut hero.link_1_target)?;
-    apply_hero_link(state, "link_2_label", "link_2_url", "link_2_target", &mut hero.link_2_label, &mut hero.link_2_url, &mut hero.link_2_target)?;
+    apply_hero_link(
+        state,
+        "link_1_label",
+        "link_1_url",
+        "link_1_target",
+        &mut hero.link_1_label,
+        &mut hero.link_1_url,
+        &mut hero.link_1_target,
+    )?;
+    apply_hero_link(
+        state,
+        "link_2_label",
+        "link_2_url",
+        "link_2_target",
+        &mut hero.link_2_label,
+        &mut hero.link_2_url,
+        &mut hero.link_2_target,
+    )?;
     Ok(())
 }
 fn apply_hero_link(
@@ -1004,7 +1021,11 @@ fn apply_section_values(section: &mut DdSection, state: &EditFormState) -> Resul
 fn apply_head_values(head: &mut crate::model::DdHead, state: &EditFormState) -> Result<()> {
     head.title = state.get("title").to_string();
     let meta_title = state.get("meta_title").trim().to_string();
-    head.meta_title = if meta_title.is_empty() { None } else { Some(meta_title) };
+    head.meta_title = if meta_title.is_empty() {
+        None
+    } else {
+        Some(meta_title)
+    };
     let meta = state.get("meta_description").trim().to_string();
     head.meta_description = if meta.is_empty() { None } else { Some(meta) };
     let canon = state.get("canonical_url").trim().to_string();
@@ -1041,9 +1062,8 @@ fn apply_head_values(head: &mut crate::model::DdHead, state: &EditFormState) -> 
 
 fn require_css_hex(raw: &str, field: &str) -> Result<String> {
     let trimmed = raw.trim().to_string();
-    super::theme::parse_hex_color(&trimmed).with_context(|| {
-        format!("invalid {field}: expected hex color like '#RRGGBB'")
-    })?;
+    super::theme::parse_hex_color(&trimmed)
+        .with_context(|| format!("invalid {field}: expected hex color like '#RRGGBB'"))?;
     Ok(trimmed)
 }
 
@@ -1058,7 +1078,11 @@ fn apply_site_values(site: &mut Site, state: &EditFormState) -> Result<()> {
     let base = state.get("base_url").trim().to_string();
     site.base_url = if base.is_empty() { None } else { Some(base) };
     let export = state.get("export_dir").trim().to_string();
-    site.export_dir = if export.is_empty() { None } else { Some(export) };
+    site.export_dir = if export.is_empty() {
+        None
+    } else {
+        Some(export)
+    };
     site.theme.primary_color = primary;
     site.theme.secondary_color = secondary;
     site.theme.tertiary_color = tertiary;
@@ -1066,7 +1090,10 @@ fn apply_site_values(site: &mut Site, state: &EditFormState) -> Result<()> {
     Ok(())
 }
 
-fn apply_header_root_values(header: &mut crate::model::DdHeader, state: &EditFormState) -> Result<()> {
+fn apply_header_root_values(
+    header: &mut crate::model::DdHeader,
+    state: &EditFormState,
+) -> Result<()> {
     header.id = state.get("id").to_string();
     let css = state.get("custom_css").trim().to_string();
     header.custom_css = if css.is_empty() { None } else { Some(css) };
@@ -1086,7 +1113,10 @@ pub fn page_head_to_form_state(page: &crate::model::Page) -> EditFormState {
     s.set("title", head.title.clone());
     s.set("slug", page.slug.clone());
     s.set("meta_title", head.meta_title.clone().unwrap_or_default());
-    s.set("meta_description", head.meta_description.clone().unwrap_or_default());
+    s.set(
+        "meta_description",
+        head.meta_description.clone().unwrap_or_default(),
+    );
     let canon = head.canonical_url.clone().unwrap_or_default();
     s.set("canonical_url", canon);
     let robots = match head.robots {
@@ -1114,7 +1144,10 @@ pub fn page_head_to_form_state(page: &crate::model::Page) -> EditFormState {
             .clone()
             .unwrap_or_else(|| head.html_title().to_string()),
     );
-    s.set("og_description", head.og_description.clone().unwrap_or_default());
+    s.set(
+        "og_description",
+        head.og_description.clone().unwrap_or_default(),
+    );
     s.set("og_image", head.og_image.clone().unwrap_or_default());
     s
 }

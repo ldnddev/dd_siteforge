@@ -2,7 +2,11 @@
 use super::super::*;
 
 impl App {
-    pub(in crate::tui) fn render_save_prompt_unified(&self, frame: &mut ratatui::Frame, path: &str) {
+    pub(in crate::tui) fn render_save_prompt_unified(
+        &self,
+        frame: &mut ratatui::Frame,
+        path: &str,
+    ) {
         let config = ModalConfig {
             width_percent: 70,
             height_percent: 35,
@@ -35,7 +39,11 @@ impl App {
         frame.render_widget(prompt, inner);
     }
 
-    pub(in crate::tui) fn render_template_picker_modal(&self, frame: &mut ratatui::Frame, selected: usize) {
+    pub(in crate::tui) fn render_template_picker_modal(
+        &self,
+        frame: &mut ratatui::Frame,
+        selected: usize,
+    ) {
         use ratatui::widgets::{List, ListItem, ListState};
         let area = centered_rect(60, 30, frame.area());
         frame.render_widget(Clear, area);
@@ -66,7 +74,11 @@ impl App {
         frame.render_stateful_widget(list, area, &mut state);
     }
 
-    pub(in crate::tui) fn render_new_page_title_prompt(&self, frame: &mut ratatui::Frame, title: &str) {
+    pub(in crate::tui) fn render_new_page_title_prompt(
+        &self,
+        frame: &mut ratatui::Frame,
+        title: &str,
+    ) {
         self.render_single_input_modal(
             frame,
             " New page — title ",
@@ -86,7 +98,11 @@ impl App {
         );
     }
 
-    pub(in crate::tui) fn render_preview_path_prompt(&self, frame: &mut ratatui::Frame, path: &str) {
+    pub(in crate::tui) fn render_preview_path_prompt(
+        &self,
+        frame: &mut ratatui::Frame,
+        path: &str,
+    ) {
         self.render_single_input_modal(
             frame,
             " Preview — output directory ",
@@ -96,7 +112,12 @@ impl App {
         );
     }
 
-    pub(in crate::tui) fn render_rename_page_prompt(&self, frame: &mut ratatui::Frame, title: &str, _page_idx: usize) {
+    pub(in crate::tui) fn render_rename_page_prompt(
+        &self,
+        frame: &mut ratatui::Frame,
+        title: &str,
+        _page_idx: usize,
+    ) {
         self.render_single_input_modal(
             frame,
             " Rename page ",
@@ -315,7 +336,11 @@ impl App {
         frame.render_widget(footer, footer_area);
     }
 
-    pub(in crate::tui) fn wrap_validation_lines(&self, errors: &[String], width: usize) -> Vec<String> {
+    pub(in crate::tui) fn wrap_validation_lines(
+        &self,
+        errors: &[String],
+        width: usize,
+    ) -> Vec<String> {
         let mut out = Vec::with_capacity(errors.len());
         for (i, err) in errors.iter().enumerate() {
             let prefix = format!("{}. ", i + 1);

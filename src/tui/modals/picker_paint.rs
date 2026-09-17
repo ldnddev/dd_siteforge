@@ -33,7 +33,8 @@ impl App {
 
         // Search box
         let search_text = format!("Search: {}", query);
-        let search = Paragraph::new(search_text).style(Style::default().fg(self.theme.text_primary));
+        let search =
+            Paragraph::new(search_text).style(Style::default().fg(self.theme.text_primary));
         frame.render_widget(
             search,
             Rect {
@@ -76,8 +77,8 @@ impl App {
         );
 
         // Footer
-        let footer =
-            Paragraph::new(&config.footer_text[..]).style(Style::default().fg(self.theme.text_secondary));
+        let footer = Paragraph::new(&config.footer_text[..])
+            .style(Style::default().fg(self.theme.text_secondary));
         frame.render_widget(
             footer,
             Rect {
@@ -175,10 +176,7 @@ impl App {
                 let glyph = if entry.is_dir { "/" } else { " " };
                 let line = format!("{} {}", glyph, entry.name);
                 let (fg, bg) = if is_selected {
-                    (
-                        self.theme.text_active_focus,
-                        self.theme.selected_background,
-                    )
+                    (self.theme.text_active_focus, self.theme.selected_background)
                 } else if entry.is_dir {
                     (self.theme.folders, self.theme.modal_background)
                 } else {
@@ -266,17 +264,12 @@ impl App {
                 Rect::new(content_x, body_y, content_w, 1),
             );
         } else {
-            for (i, (slug, title)) in
-                filtered.iter().skip(start).take(visible).enumerate()
-            {
+            for (i, (slug, title)) in filtered.iter().skip(start).take(visible).enumerate() {
                 let row = body_y + i as u16;
                 let is_selected = (start + i) == state.selected;
                 let line = format!("{}  /{}", title, slug);
                 let (fg, bg) = if is_selected {
-                    (
-                        self.theme.text_active_focus,
-                        self.theme.selected_background,
-                    )
+                    (self.theme.text_active_focus, self.theme.selected_background)
                 } else {
                     (self.theme.text_primary, self.theme.modal_background)
                 };
@@ -289,10 +282,7 @@ impl App {
 
         let footer_y = inner.y + inner.height.saturating_sub(1);
         frame.render_widget(
-            Paragraph::new(
-                "↑/↓: move  |  Enter: pick  |  type: filter  |  Esc: cancel",
-            )
-            .style(
+            Paragraph::new("↑/↓: move  |  Enter: pick  |  type: filter  |  Esc: cancel").style(
                 Style::default()
                     .fg(self.theme.text_secondary)
                     .bg(self.theme.modal_background),

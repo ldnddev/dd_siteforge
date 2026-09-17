@@ -111,9 +111,7 @@ struct PaletteFile {
 impl AppTheme {
     pub(crate) fn load() -> (Self, String, Option<String>) {
         let candidates: Vec<(PathBuf, &'static str)> = {
-            let mut c = vec![
-                (PathBuf::from("dd_siteforge_theme.yml"), "local"),
-            ];
+            let mut c = vec![(PathBuf::from("dd_siteforge_theme.yml"), "local")];
             if let Some(home) = std::env::var_os("HOME") {
                 let base = Path::new(&home).join(".config").join("ldnddev");
                 c.push((base.join("dd_siteforge_theme.yml"), "global"));
@@ -185,10 +183,7 @@ impl AppTheme {
         (Self::default(), "default".to_string(), warning)
     }
 
-    fn from_palette(
-        p: PaletteFile,
-        header_quotes: Vec<String>,
-    ) -> anyhow::Result<Self> {
+    fn from_palette(p: PaletteFile, header_quotes: Vec<String>) -> anyhow::Result<Self> {
         // Core backgrounds
         let base_background = parse_hex_color(p.base_background.as_str())?;
         let body_background = parse_hex_color(
@@ -211,7 +206,8 @@ impl AppTheme {
         let text_active_focus =
             parse_hex_color(p.text_active_focus.as_deref().unwrap_or("#64b4f5"))?;
         let modal_labels = parse_hex_color(p.modal_labels.as_deref().unwrap_or("#64b4f5"))?;
-        let modal_text = parse_hex_color(p.modal_text.as_deref().unwrap_or(p.text_primary.as_str()))?;
+        let modal_text =
+            parse_hex_color(p.modal_text.as_deref().unwrap_or(p.text_primary.as_str()))?;
         let modal_header = parse_hex_color(p.modal_header.as_deref().unwrap_or("#64b4f5"))?;
 
         // Selection
@@ -223,8 +219,7 @@ impl AppTheme {
 
         // Scrollbar
         let scrollbar = parse_hex_color(p.scrollbar.as_deref().unwrap_or("#ffa087"))?;
-        let scrollbar_hover =
-            parse_hex_color(p.scrollbar_hover.as_deref().unwrap_or("#64b4f5"))?;
+        let scrollbar_hover = parse_hex_color(p.scrollbar_hover.as_deref().unwrap_or("#64b4f5"))?;
 
         // Input field colors — prefer new split names; fall back to old input_default/input_focus.
         let input_border_default = parse_hex_color(
@@ -264,9 +259,7 @@ impl AppTheme {
         let files = parse_hex_color(p.files.as_deref().unwrap_or("#ffaf46"))?;
         let links = parse_hex_color(p.links.as_deref().unwrap_or("#ffa087"))?;
 
-        let app_shell = Style::default()
-            .bg(base_background)
-            .fg(text_primary);
+        let app_shell = Style::default().bg(base_background).fg(text_primary);
         let active_border = Style::default().fg(border_active);
 
         Ok(Self {
@@ -391,6 +384,159 @@ pub(crate) fn color_to_hex(c: Color) -> String {
     } else {
         "?".to_string()
     }
+}
+
+pub(crate) fn extra_theme_fields() -> &'static [ldnddev_theme::ColorField] {
+    &[
+        ldnddev_theme::EXTRA_MODAL_HEADER,
+        ldnddev_theme::EXTRA_TEXT_DISABLED,
+        ldnddev_theme::EXTRA_TEXT_INVERSE,
+    ]
+}
+
+fn rgb_to_color(rgb: ldnddev_theme::Rgb) -> Color {
+    Color::Rgb(rgb.r, rgb.g, rgb.b)
+}
+
+fn color_to_rgb(color: Color) -> ldnddev_theme::Rgb {
+    match color {
+        Color::Rgb(r, g, b) => ldnddev_theme::Rgb { r, g, b },
+        _ => ldnddev_theme::Rgb { r: 0, g: 0, b: 0 },
+    }
+}
+
+pub(crate) fn palette_from_theme(theme: &AppTheme) -> ldnddev_theme::Palette {
+    let mut palette = ldnddev_theme::Palette::builtin();
+    palette.header_quotes = theme.header_quotes.clone();
+    for (key, color) in [
+        ("base_background", theme.base_background),
+        ("body_background", theme.body_background),
+        ("modal_background", theme.modal_background),
+        ("text_primary", theme.text_primary),
+        ("text_secondary", theme.text_secondary),
+        ("text_disabled", theme.text_disabled),
+        ("text_inverse", theme.text_inverse),
+        ("text_labels", theme.text_labels),
+        ("text_active_focus", theme.text_active_focus),
+        ("modal_labels", theme.modal_labels),
+        ("modal_text", theme.modal_text),
+        ("modal_header", theme.modal_header),
+        ("selected_background", theme.selected_background),
+        ("border_default", theme.border),
+        ("border_active", theme.border_active),
+        ("scrollbar", theme.scrollbar),
+        ("scrollbar_hover", theme.scrollbar_hover),
+        ("input_border_default", theme.input_border_default),
+        ("input_border_focus", theme.input_border_focus),
+        ("input_text_default", theme.input_text_default),
+        ("input_text_focus", theme.input_text_focus),
+        ("cursor", theme.cursor),
+        ("success", theme.success),
+        ("warning", theme.warning),
+        ("error", theme.error),
+        ("info", theme.info),
+        ("folders", theme.folders),
+        ("files", theme.files),
+        ("links", theme.links),
+    ] {
+        palette.set(key, color_to_rgb(color));
+    }
+    palette
+}
+
+pub(crate) fn apply_palette(theme: &mut AppTheme, palette: &ldnddev_theme::Palette) {
+    let get = |k: &str| palette.get(k).map(rgb_to_color);
+    if let Some(c) = get("base_background") {
+        theme.base_background = c;
+    }
+    if let Some(c) = get("body_background") {
+        theme.body_background = c;
+    }
+    if let Some(c) = get("modal_background") {
+        theme.modal_background = c;
+    }
+    if let Some(c) = get("text_primary") {
+        theme.text_primary = c;
+    }
+    if let Some(c) = get("text_secondary") {
+        theme.text_secondary = c;
+    }
+    if let Some(c) = get("text_disabled") {
+        theme.text_disabled = c;
+    }
+    if let Some(c) = get("text_inverse") {
+        theme.text_inverse = c;
+    }
+    if let Some(c) = get("text_labels") {
+        theme.text_labels = c;
+    }
+    if let Some(c) = get("text_active_focus") {
+        theme.text_active_focus = c;
+    }
+    if let Some(c) = get("modal_labels") {
+        theme.modal_labels = c;
+    }
+    if let Some(c) = get("modal_text") {
+        theme.modal_text = c;
+    }
+    if let Some(c) = get("modal_header") {
+        theme.modal_header = c;
+    }
+    if let Some(c) = get("selected_background") {
+        theme.selected_background = c;
+    }
+    if let Some(c) = get("border_default") {
+        theme.border = c;
+    }
+    if let Some(c) = get("border_active") {
+        theme.border_active = c;
+        theme.active_border = Style::default().fg(c);
+    }
+    if let Some(c) = get("scrollbar") {
+        theme.scrollbar = c;
+    }
+    if let Some(c) = get("scrollbar_hover") {
+        theme.scrollbar_hover = c;
+    }
+    if let Some(c) = get("input_border_default") {
+        theme.input_border_default = c;
+    }
+    if let Some(c) = get("input_border_focus") {
+        theme.input_border_focus = c;
+    }
+    if let Some(c) = get("input_text_default") {
+        theme.input_text_default = c;
+    }
+    if let Some(c) = get("input_text_focus") {
+        theme.input_text_focus = c;
+    }
+    if let Some(c) = get("cursor") {
+        theme.cursor = c;
+    }
+    if let Some(c) = get("success") {
+        theme.success = c;
+    }
+    if let Some(c) = get("warning") {
+        theme.warning = c;
+    }
+    if let Some(c) = get("error") {
+        theme.error = c;
+    }
+    if let Some(c) = get("info") {
+        theme.info = c;
+    }
+    if let Some(c) = get("folders") {
+        theme.folders = c;
+    }
+    if let Some(c) = get("files") {
+        theme.files = c;
+    }
+    if let Some(c) = get("links") {
+        theme.links = c;
+    }
+    theme.app_shell = Style::default()
+        .bg(theme.base_background)
+        .fg(theme.text_primary);
 }
 
 #[cfg(test)]

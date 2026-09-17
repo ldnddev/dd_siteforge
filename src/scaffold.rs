@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 use rust_embed::RustEmbed;
 
 const GRUNTFILE: &str = include_str!("../Gruntfile.js");
@@ -40,9 +40,7 @@ pub struct SeedReport {
 pub fn config_scaffold_dir() -> PathBuf {
     let base = std::env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
-        .or_else(|| {
-            std::env::var_os("HOME").map(|h| Path::new(&h).join(".config"))
-        })
+        .or_else(|| std::env::var_os("HOME").map(|h| Path::new(&h).join(".config")))
         .unwrap_or_else(|| PathBuf::from(".config"));
     base.join("ldnddev").join("dd_siteforge")
 }
@@ -165,8 +163,8 @@ fn merge_overlay(overlay: &Path, files: &mut BTreeMap<String, Vec<u8>>) -> anyho
 }
 
 fn walk_files(root: &Path, dir: &Path, out: &mut Vec<(String, PathBuf)>) -> anyhow::Result<()> {
-    let entries = fs::read_dir(dir)
-        .with_context(|| format!("failed to read overlay '{}'", dir.display()))?;
+    let entries =
+        fs::read_dir(dir).with_context(|| format!("failed to read overlay '{}'", dir.display()))?;
     for entry in entries {
         let entry = entry?;
         let path = entry.path();
@@ -379,7 +377,12 @@ mod tests {
         assert!(report.written.iter().any(|p| p == "source/js/main.js"));
         assert!(report.written.iter().any(|p| p == "source/images/.gitkeep"));
         assert!(report.written.iter().any(|p| p.ends_with(".woff2")));
-        assert!(!report.written.iter().any(|p| p.starts_with("source/templates/")));
+        assert!(
+            !report
+                .written
+                .iter()
+                .any(|p| p.starts_with("source/templates/"))
+        );
         assert!(!root.join("source/templates").exists());
 
         let pkg: serde_json::Value =
@@ -464,7 +467,8 @@ mod tests {
 
     #[test]
     fn replace_lndo_hosts_rewrites_comments_and_proxy() {
-        let src = "name: dd-siteforge\n# https://dd-siteforge.lndo.site\n    - dd-siteforge.lndo.site\n";
+        let src =
+            "name: dd-siteforge\n# https://dd-siteforge.lndo.site\n    - dd-siteforge.lndo.site\n";
         let out = stamp_yaml_name_and_lndo(src, "acme");
         assert!(out.contains("name: acme"));
         assert!(out.contains("https://acme.lndo.site"));

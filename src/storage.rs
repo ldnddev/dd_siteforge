@@ -25,8 +25,13 @@ fn atomic_write(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
     };
     fs::write(&tmp, bytes)
         .with_context(|| format!("failed to write temp file '{}'", tmp.display()))?;
-    fs::rename(&tmp, path)
-        .with_context(|| format!("failed to rename '{}' -> '{}'", tmp.display(), path.display()))?;
+    fs::rename(&tmp, path).with_context(|| {
+        format!(
+            "failed to rename '{}' -> '{}'",
+            tmp.display(),
+            path.display()
+        )
+    })?;
     Ok(())
 }
 
@@ -408,7 +413,10 @@ mod tests {
           }]
         }"##;
         let site: crate::model::Site = serde_json::from_str(json).expect("legacy JSON should load");
-        assert!(!site.pages[0].slug_locked, "legacy pages load with slug_locked = false");
+        assert!(
+            !site.pages[0].slug_locked,
+            "legacy pages load with slug_locked = false"
+        );
     }
 
     #[test]
@@ -435,7 +443,10 @@ mod tests {
           "pages": []
         }"##;
         let site: crate::model::Site = serde_json::from_str(json).expect("legacy JSON should load");
-        assert!(site.export_dir.is_none(), "legacy sites load with export_dir = None");
+        assert!(
+            site.export_dir.is_none(),
+            "legacy sites load with export_dir = None"
+        );
     }
 
     #[test]

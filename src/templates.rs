@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 use handlebars::Handlebars;
 use serde_json::Value;
 
@@ -22,20 +22,41 @@ pub const BUNDLED: &[(&str, &str)] = &[
         "dd-section-column",
         include_str!("../templates/dd-section-column.hbs"),
     ),
-    ("dd-alternating", include_str!("../templates/dd-alternating.hbs")),
+    (
+        "dd-alternating",
+        include_str!("../templates/dd-alternating.hbs"),
+    ),
     ("dd-card", include_str!("../templates/dd-card.hbs")),
     ("dd-banner", include_str!("../templates/dd-banner.hbs")),
     ("dd-cta", include_str!("../templates/dd-cta.hbs")),
-    ("dd-filmstrip", include_str!("../templates/dd-filmstrip.hbs")),
-    ("dd-milestones", include_str!("../templates/dd-milestones.hbs")),
+    (
+        "dd-filmstrip",
+        include_str!("../templates/dd-filmstrip.hbs"),
+    ),
+    (
+        "dd-milestones",
+        include_str!("../templates/dd-milestones.hbs"),
+    ),
     ("dd-modal", include_str!("../templates/dd-modal.hbs")),
     ("dd-slider", include_str!("../templates/dd-slider.hbs")),
-    ("dd-accordion", include_str!("../templates/dd-accordion.hbs")),
-    ("dd-blockquote", include_str!("../templates/dd-blockquote.hbs")),
+    (
+        "dd-accordion",
+        include_str!("../templates/dd-accordion.hbs"),
+    ),
+    (
+        "dd-blockquote",
+        include_str!("../templates/dd-blockquote.hbs"),
+    ),
     ("dd-alert", include_str!("../templates/dd-alert.hbs")),
     ("dd-image", include_str!("../templates/dd-image.hbs")),
-    ("dd-rich_text", include_str!("../templates/dd-rich_text.hbs")),
-    ("dd-navigation", include_str!("../templates/dd-navigation.hbs")),
+    (
+        "dd-rich_text",
+        include_str!("../templates/dd-rich_text.hbs"),
+    ),
+    (
+        "dd-navigation",
+        include_str!("../templates/dd-navigation.hbs"),
+    ),
     (
         "dd-navigation-item",
         include_str!("../templates/dd-navigation-item.hbs"),
@@ -51,7 +72,10 @@ pub const BUNDLED: &[(&str, &str)] = &[
 ];
 
 pub fn bundled(name: &str) -> Option<&'static str> {
-    BUNDLED.iter().find(|(n, _)| *n == name).map(|(_, src)| *src)
+    BUNDLED
+        .iter()
+        .find(|(n, _)| *n == name)
+        .map(|(_, src)| *src)
 }
 
 pub fn templates_dir(site_root: &Path) -> std::path::PathBuf {
@@ -85,9 +109,8 @@ impl Renderer {
 
         let mut hbs = Handlebars::new();
         for (name, src) in &sources {
-            hbs.register_template_string(*name, src).with_context(|| {
-                format!("failed to parse template '{name}.hbs'")
-            })?;
+            hbs.register_template_string(*name, src)
+                .with_context(|| format!("failed to parse template '{name}.hbs'"))?;
         }
         Ok(Self { hbs })
     }
@@ -129,8 +152,7 @@ pub fn seed_templates(
         }
     }
     let dir = templates_dir(site_root);
-    fs::create_dir_all(&dir)
-        .with_context(|| format!("failed to create '{}'", dir.display()))?;
+    fs::create_dir_all(&dir).with_context(|| format!("failed to create '{}'", dir.display()))?;
     let mut report = SeedReport {
         written: Vec::new(),
         skipped: Vec::new(),
@@ -144,8 +166,7 @@ pub fn seed_templates(
             report.skipped.push((*name).to_string());
             continue;
         }
-        fs::write(&path, src)
-            .with_context(|| format!("failed to write '{}'", path.display()))?;
+        fs::write(&path, src).with_context(|| format!("failed to write '{}'", path.display()))?;
         report.written.push((*name).to_string());
     }
     Ok(report)

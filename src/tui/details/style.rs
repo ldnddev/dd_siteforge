@@ -82,8 +82,15 @@ pub(in crate::tui) enum FocusDepth {
 pub(in crate::tui) enum HeaderFocusDepth {
     Root,
     Section(usize),
-    Column { section: usize, column: usize },
-    Component { section: usize, column: usize, component: usize },
+    Column {
+        section: usize,
+        column: usize,
+    },
+    Component {
+        section: usize,
+        column: usize,
+        component: usize,
+    },
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -126,11 +133,8 @@ impl DetailsView {
         let n = line.chars().count();
         self.lines.push(line);
         self.hits.push(vec![]);
-        self.styles.push(if n == 0 {
-            vec![]
-        } else {
-            vec![(0, n, style)]
-        });
+        self.styles
+            .push(if n == 0 { vec![] } else { vec![(0, n, style)] });
     }
 
     /// Append an ASCII map and return the line range plus its column-box segments.
@@ -150,7 +154,13 @@ impl DetailsView {
         (start, self.lines.len(), boxes)
     }
 
-    pub(in crate::tui) fn paint(&mut self, line: usize, x0: usize, x1: usize, style: BlueprintStyle) {
+    pub(in crate::tui) fn paint(
+        &mut self,
+        line: usize,
+        x0: usize,
+        x1: usize,
+        style: BlueprintStyle,
+    ) {
         if line >= self.lines.len() {
             return;
         }

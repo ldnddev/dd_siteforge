@@ -20,7 +20,11 @@ use tui::run_tui;
 use validate::validate_site_with_root;
 
 #[derive(Debug, Parser)]
-#[command(name = "dd_siteforge", version, about = "Framework-native static site builder")]
+#[command(
+    name = "dd_siteforge",
+    version,
+    about = "Framework-native static site builder"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Command,
@@ -60,9 +64,16 @@ enum Command {
         #[arg(long)]
         name: Option<String>,
     },
-    ShowSite { path: String },
-    ValidateSite { path: String },
-    ExportHtml { input: String, output_dir: String },
+    ShowSite {
+        path: String,
+    },
+    ValidateSite {
+        path: String,
+    },
+    ExportHtml {
+        input: String,
+        output_dir: String,
+    },
     /// Export then serve the site over HTTP for local preview.
     Serve {
         path: String,
@@ -71,7 +82,9 @@ enum Command {
         #[arg(long)]
         output_dir: Option<String>,
     },
-    Tui { path: Option<String> },
+    Tui {
+        path: Option<String>,
+    },
 }
 
 fn main() -> anyhow::Result<()> {
@@ -145,16 +158,13 @@ fn main() -> anyhow::Result<()> {
                 println!("Global scaffold: {}", dest.display());
                 print_seed_report(&report);
             } else {
-                let path = path.ok_or_else(|| {
-                    anyhow::anyhow!("path is required unless --global is set")
-                })?;
+                let path =
+                    path.ok_or_else(|| anyhow::anyhow!("path is required unless --global is set"))?;
                 let root = site_root(&path);
                 let slug = name
                     .as_deref()
                     .map(scaffold::slugify_project_name)
-                    .unwrap_or_else(|| {
-                        scaffold::slugify_project_name(&scaffold::dir_hint(&root))
-                    });
+                    .unwrap_or_else(|| scaffold::slugify_project_name(&scaffold::dir_hint(&root)));
                 let overlay = scaffold::overlay_if_present();
                 let report = scaffold::seed_scaffold(
                     &root,
@@ -177,9 +187,7 @@ fn main() -> anyhow::Result<()> {
         Command::ValidateSite { path } => {
             let site =
                 load_site(&path).with_context(|| format!("could not load site '{}'", path))?;
-            let root = PathBuf::from(&path)
-                .parent()
-                .map(PathBuf::from);
+            let root = PathBuf::from(&path).parent().map(PathBuf::from);
             let errors = validate_site_with_root(&site, root.as_deref());
             if errors.is_empty() {
                 println!("Validation passed.");
@@ -194,9 +202,7 @@ fn main() -> anyhow::Result<()> {
         Command::ExportHtml { input, output_dir } => {
             let site =
                 load_site(&input).with_context(|| format!("could not load site '{}'", input))?;
-            let root = PathBuf::from(&input)
-                .parent()
-                .map(PathBuf::from);
+            let root = PathBuf::from(&input).parent().map(PathBuf::from);
             let errors = validate_site_with_root(&site, root.as_deref());
             if !errors.is_empty() {
                 println!(
@@ -254,7 +260,11 @@ fn main() -> anyhow::Result<()> {
                 .unwrap_or_else(|| "web".to_string());
             let out_path = root.join(&out);
             let report = export_site(&site, &out_path, Some(&root)).with_context(|| {
-                format!("could not export site '{}' to '{}'", path, out_path.display())
+                format!(
+                    "could not export site '{}' to '{}'",
+                    path,
+                    out_path.display()
+                )
             })?;
             println!(
                 "Exported {} page(s) to {}{}",

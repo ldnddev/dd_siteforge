@@ -4,8 +4,9 @@ use std::path::Path;
 use anyhow::Context;
 
 use crate::model::{
-    absolute_url, page_file_name, page_href, DdRichText, DdSection, Page, PageNode, RobotsDirective,
-    SchemaType, SectionClass, SectionColumn, SectionComponent, SectionItemBoxClass, Site,
+    DdRichText, DdSection, Page, PageNode, RobotsDirective, SchemaType, SectionClass,
+    SectionColumn, SectionComponent, SectionItemBoxClass, Site, absolute_url, page_file_name,
+    page_href,
 };
 use crate::renderer::render_site_to_dir;
 
@@ -76,8 +77,7 @@ fn fill_dir_if_empty(src: &Path, dest: &Path) -> anyhow::Result<()> {
     if dest_has_files(dest) {
         return Ok(());
     }
-    copy_dir_recursive(src, dest)
-        .with_context(|| format!("failed to copy '{}'", src.display()))
+    copy_dir_recursive(src, dest).with_context(|| format!("failed to copy '{}'", src.display()))
 }
 
 fn dest_has_files(dir: &Path) -> bool {
@@ -253,9 +253,16 @@ mod tests {
     #[test]
     fn export_copies_source_webfonts_and_favicon_when_present() {
         let root = tmp_dir("dd_export_fonts_root");
-        copy_dir_recursive(&crate_source().join("webfonts"), &root.join("source/webfonts"))
-            .unwrap();
-        copy_dir_recursive(&crate_source().join("favicon"), &root.join("source/favicon")).unwrap();
+        copy_dir_recursive(
+            &crate_source().join("webfonts"),
+            &root.join("source/webfonts"),
+        )
+        .unwrap();
+        copy_dir_recursive(
+            &crate_source().join("favicon"),
+            &root.join("source/favicon"),
+        )
+        .unwrap();
         let out = root.join("out");
         export_site(&Site::starter(), &out, Some(&root)).expect("export");
         assert!(out.join("assets/webfonts/fa-regular-400.woff2").exists());

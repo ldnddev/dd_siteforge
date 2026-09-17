@@ -221,9 +221,10 @@ impl App {
         };
         // Find the SubForm field (by convention named "items"). If the
         // parent doesn't have one, give up.
-        let items_field_idx = parent_state.form.fields.iter().position(|f| {
-            f.id == "items" && matches!(f.kind, editform::FieldKind::SubForm { .. })
-        });
+        let items_field_idx =
+            parent_state.form.fields.iter().position(|f| {
+                f.id == "items" && matches!(f.kind, editform::FieldKind::SubForm { .. })
+            });
         let Some(items_field_idx) = items_field_idx else {
             return false;
         };
@@ -285,21 +286,27 @@ impl App {
             drill_stack,
             scroll_offset: 0,
         });
-        self.push_toast(ToastLevel::Info, format!("Editing {} (item {}).", title, safe_item_idx + 1));
+        self.push_toast(
+            ToastLevel::Info,
+            format!("Editing {} (item {}).", title, safe_item_idx + 1),
+        );
         true
     }
 
     pub(in crate::tui) fn try_open_form_edit_drilled_into_column(&mut self, row: &TreeRow) -> bool {
         let (page_idx, node_idx, sec_idx, col_idx, is_header, is_footer) = match row.kind {
-            TreeRowKind::Column { node_idx, column_idx } => {
-                (self.selected_page, node_idx, 0, column_idx, false, false)
-            }
-            TreeRowKind::HeaderColumn { section_idx, column_idx } => {
-                (0, 0, section_idx, column_idx, true, false)
-            }
-            TreeRowKind::FooterColumn { section_idx, column_idx } => {
-                (0, 0, section_idx, column_idx, false, true)
-            }
+            TreeRowKind::Column {
+                node_idx,
+                column_idx,
+            } => (self.selected_page, node_idx, 0, column_idx, false, false),
+            TreeRowKind::HeaderColumn {
+                section_idx,
+                column_idx,
+            } => (0, 0, section_idx, column_idx, true, false),
+            TreeRowKind::FooterColumn {
+                section_idx,
+                column_idx,
+            } => (0, 0, section_idx, column_idx, false, true),
             _ => return false,
         };
 
@@ -321,7 +328,10 @@ impl App {
                     PageNode::Section(s) => Some(s.clone()),
                     _ => None,
                 });
-            let cur = cursor::Cursor::PageSection { page: page_idx, node: node_idx };
+            let cur = cursor::Cursor::PageSection {
+                page: page_idx,
+                node: node_idx,
+            };
             (section, cur, "dd-section column")
         };
 
@@ -386,7 +396,10 @@ impl App {
             drill_stack,
             scroll_offset: 0,
         });
-        self.push_toast(ToastLevel::Info, format!("Editing {} (column {}).", title_prefix, safe_col_idx + 1));
+        self.push_toast(
+            ToastLevel::Info,
+            format!("Editing {} (column {}).", title_prefix, safe_col_idx + 1),
+        );
         true
     }
 
@@ -439,7 +452,10 @@ impl App {
         }
     }
 
-    pub(in crate::tui) fn try_open_root(&self, row: &TreeRow) -> Option<(editform::EditFormState, cursor::Cursor, &'static str)> {
+    pub(in crate::tui) fn try_open_root(
+        &self,
+        row: &TreeRow,
+    ) -> Option<(editform::EditFormState, cursor::Cursor, &'static str)> {
         match row.kind {
             TreeRowKind::PageHead => {
                 let page_idx = self.selected_page;
@@ -519,10 +535,13 @@ impl App {
         self.selected_header_section = insert_at;
         self.selected_header_column = 0;
         self.selected_header_component = 0;
-        self.push_toast(ToastLevel::Info, format!(
-            "Added dd-section to header at position {}.",
-            self.selected_header_section + 1
-        ));
+        self.push_toast(
+            ToastLevel::Info,
+            format!(
+                "Added dd-section to header at position {}.",
+                self.selected_header_section + 1
+            ),
+        );
     }
 
     pub(in crate::tui) fn add_footer_section(&mut self) {
@@ -553,7 +572,10 @@ impl App {
 
     pub(in crate::tui) fn add_component_to_header_section(&mut self) {
         if self.site.header.sections.is_empty() {
-            self.push_toast(ToastLevel::Warning, "No header section available. Add a section first with '/'.");
+            self.push_toast(
+                ToastLevel::Warning,
+                "No header section available. Add a section first with '/'.",
+            );
             return;
         }
         let section_idx = self
@@ -575,11 +597,14 @@ impl App {
         };
         col.components.insert(insert_at, component);
         self.selected_header_component = insert_at;
-        self.push_toast(ToastLevel::Info, format!(
-            "Added {} to header section column '{}'.",
-            kind.label(),
-            self.site.header.sections[section_idx].columns[col_idx].id
-        ));
+        self.push_toast(
+            ToastLevel::Info,
+            format!(
+                "Added {} to header section column '{}'.",
+                kind.label(),
+                self.site.header.sections[section_idx].columns[col_idx].id
+            ),
+        );
     }
 
     pub(in crate::tui) fn add_component_to_footer_section(&mut self) {
@@ -699,7 +724,10 @@ impl App {
         self.selected_column = 0;
         self.selected_component = 0;
         self.selected_nested_item = 0;
-        self.push_toast(ToastLevel::Success, format!("Inserted dd-hero at position {}.", idx + 1));
+        self.push_toast(
+            ToastLevel::Success,
+            format!("Inserted dd-hero at position {}.", idx + 1),
+        );
     }
 
     pub(in crate::tui) fn add_section(&mut self) {
@@ -727,13 +755,19 @@ impl App {
         self.selected_column = 0;
         self.selected_component = 0;
         self.selected_nested_item = 0;
-        self.push_toast(ToastLevel::Success, format!("Inserted dd-section at position {}.", idx + 1));
+        self.push_toast(
+            ToastLevel::Success,
+            format!("Inserted dd-section at position {}.", idx + 1),
+        );
     }
 
     pub(in crate::tui) fn add_selected_component_to_section(&mut self) {
         let kind = self.component_kind;
         if matches!(kind, ComponentKind::Hero | ComponentKind::Section) {
-            self.push_toast(ToastLevel::Warning, "dd-hero and dd-section are top-level insert types.");
+            self.push_toast(
+                ToastLevel::Warning,
+                "dd-hero and dd-section are top-level insert types.",
+            );
             return;
         }
         let selected = self.selected_node;

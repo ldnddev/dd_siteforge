@@ -28,20 +28,14 @@ pub(super) fn focused_field_virtual_rows(state: &editform::EditFormState) -> (u1
             continue;
         }
         let content_rows: u16 = match &field.kind {
-            editform::FieldKind::Textarea { rows, .. } => {
-                textarea_display_rows(
-                    state.get(field.id),
-                    (*rows).max(1),
-                    None,
-                    TEXTAREA_MAX_DISPLAY_ROWS,
-                )
-            }
+            editform::FieldKind::Textarea { rows, .. } => textarea_display_rows(
+                state.get(field.id),
+                (*rows).max(1),
+                None,
+                TEXTAREA_MAX_DISPLAY_ROWS,
+            ),
             editform::FieldKind::SubForm { .. } => {
-                let items_len = state
-                    .sub_state
-                    .get(field.id)
-                    .map(|v| v.len())
-                    .unwrap_or(0);
+                let items_len = state.sub_state.get(field.id).map(|v| v.len()).unwrap_or(0);
                 (1 + items_len.max(1)) as u16
             }
             _ => 1,
@@ -63,9 +57,7 @@ pub(super) fn textarea_display_rows(
     max_rows: u16,
 ) -> u16 {
     let content_rows = textarea_visual_line_count(value, wrap_width).min(u16::MAX as usize) as u16;
-    base_rows
-        .max(content_rows.max(1))
-        .min(max_rows.max(1))
+    base_rows.max(content_rows.max(1)).min(max_rows.max(1))
 }
 
 pub(super) fn textarea_max_rows_for_window(content_height: u16) -> u16 {
@@ -146,11 +138,7 @@ pub(super) fn textarea_cursor_visual(
     (chosen, col)
 }
 
-pub(super) fn textarea_line_home(
-    value: &str,
-    cursor_pos: usize,
-    wrap_width: Option<u16>,
-) -> usize {
+pub(super) fn textarea_line_home(value: &str, cursor_pos: usize, wrap_width: Option<u16>) -> usize {
     let rows = textarea_visual_rows(value, wrap_width);
     let (row, _) = textarea_cursor_visual(value, cursor_pos, wrap_width);
     rows.get(row).map(|r| r.start).unwrap_or(0)
@@ -396,9 +384,7 @@ impl App {
             return None;
         }
         let areas = self.modal_field_areas.borrow();
-        let (_, box_rect) = areas
-            .iter()
-            .find(|(idx, _)| *idx == state.focused_field)?;
+        let (_, box_rect) = areas.iter().find(|(idx, _)| *idx == state.focused_field)?;
         textarea_wrap_width_from_box(state.get(field.id), *box_rect)
     }
 }

@@ -36,7 +36,10 @@ impl App {
                 self.modal = Some(Modal::NewPageTitlePrompt {
                     title: String::new(),
                 });
-                self.push_toast(ToastLevel::Info, "New page: type a title, Enter to continue.");
+                self.push_toast(
+                    ToastLevel::Info,
+                    "New page: type a title, Enter to continue.",
+                );
                 true
             }
             KeyCode::Char('X') if key.modifiers.contains(KeyModifiers::SHIFT) => {
@@ -109,8 +112,23 @@ impl App {
                 &evt,
                 Event::Key(k) if matches!(k.code, KeyCode::F(1) | KeyCode::F(2) | KeyCode::Esc)
             ) {
+                if matches!(self.overlay, Some(Overlay::Theme { .. })) {
+                    if let Some(mut editor) = self.theme_editor.take() {
+                        editor.revert();
+                        super::theme::apply_palette(&mut self.theme, &editor.palette);
+                    }
+                }
                 self.overlay = None;
                 return Ok(());
+            }
+
+            if matches!(self.overlay, Some(Overlay::Theme { .. })) {
+                if let Event::Key(k) = &evt {
+                    if let Some(ek) = map_siteforge_editor_key(k) {
+                        self.dispatch_theme_editor(ek, k.modifiers.contains(KeyModifiers::SHIFT));
+                    }
+                    return Ok(());
+                }
             }
 
             let (track, drag_kind) = match &self.overlay {
@@ -188,89 +206,95 @@ impl App {
                     return Ok(());
                 }
                 match k.code {
-                KeyCode::F(1) => self.overlay = Some(Overlay::Help { scroll: 0 }),
-                KeyCode::F(2) => self.overlay = Some(Overlay::Theme { scroll: 0 }),
-                KeyCode::F(3) => self.open_validation_modal(),
-                KeyCode::Char('E') if k.modifiers.contains(KeyModifiers::SHIFT) => {
-                    self.begin_export_flow();
-                }
-                KeyCode::Char('p') if !k.modifiers.contains(KeyModifiers::CONTROL) => {
-                    self.begin_preview_flow();
-                }
-                KeyCode::Char('q') if k.modifiers.contains(KeyModifiers::CONTROL) => {
-                    self.request_quit();
-                }
-                KeyCode::Up => self.handle_up(),
-                KeyCode::Down => self.handle_down(),
-                KeyCode::Char('k') => {
-                    if self.selected_sidebar_section == SidebarSection::Details {
-                        self.scroll_details_by(-1);
-                    } else {
-                        self.handle_up();
+                    KeyCode::F(1) => self.overlay = Some(Overlay::Help { scroll: 0 }),
+                    KeyCode::F(2) => {
+                        self.theme_editor = Some(ldnddev_theme::ThemeEditor::new(
+                            super::theme::palette_from_theme(&self.theme),
+                            super::theme::extra_theme_fields(),
+                        ));
+                        self.overlay = Some(Overlay::Theme { scroll: 0 });
                     }
-                }
-                KeyCode::Char('j') => {
-                    if self.selected_sidebar_section == SidebarSection::Details {
-                        self.scroll_details_by(1);
-                    } else {
-                        self.handle_down();
+                    KeyCode::F(3) => self.open_validation_modal(),
+                    KeyCode::Char('E') if k.modifiers.contains(KeyModifiers::SHIFT) => {
+                        self.begin_export_flow();
                     }
-                }
-                KeyCode::Char('h') => self.vim_collapse_selected_row(),
-                KeyCode::Char('l') => self.vim_expand_selected_row(),
-                KeyCode::Char('g') => {
-                    if self.selected_sidebar_section == SidebarSection::Details {
-                        self.details_scroll_row = 0;
-                    } else {
-                        self.vim_jump_to_first_row();
+                    KeyCode::Char('p') if !k.modifiers.contains(KeyModifiers::CONTROL) => {
+                        self.begin_preview_flow();
                     }
-                }
-                KeyCode::Char('G') => {
-                    if self.selected_sidebar_section == SidebarSection::Details {
-                        self.details_scroll_row = self.details_max_scroll();
-                    } else {
-                        self.vim_jump_to_last_row();
+                    KeyCode::Char('q') if k.modifiers.contains(KeyModifiers::CONTROL) => {
+                        self.request_quit();
                     }
+                    KeyCode::Up => self.handle_up(),
+                    KeyCode::Down => self.handle_down(),
+                    KeyCode::Char('k') => {
+                        if self.selected_sidebar_section == SidebarSection::Details {
+                            self.scroll_details_by(-1);
+                        } else {
+                            self.handle_up();
+                        }
+                    }
+                    KeyCode::Char('j') => {
+                        if self.selected_sidebar_section == SidebarSection::Details {
+                            self.scroll_details_by(1);
+                        } else {
+                            self.handle_down();
+                        }
+                    }
+                    KeyCode::Char('h') => self.vim_collapse_selected_row(),
+                    KeyCode::Char('l') => self.vim_expand_selected_row(),
+                    KeyCode::Char('g') => {
+                        if self.selected_sidebar_section == SidebarSection::Details {
+                            self.details_scroll_row = 0;
+                        } else {
+                            self.vim_jump_to_first_row();
+                        }
+                    }
+                    KeyCode::Char('G') => {
+                        if self.selected_sidebar_section == SidebarSection::Details {
+                            self.details_scroll_row = self.details_max_scroll();
+                        } else {
+                            self.vim_jump_to_last_row();
+                        }
+                    }
+                    KeyCode::PageUp => self.page_focused_pane(-5),
+                    KeyCode::PageDown => self.page_focused_pane(5),
+                    KeyCode::Char(' ') => self.toggle_selected_tree_expanded(),
+                    KeyCode::Enter => self.handle_enter_on_selected_row(),
+                    KeyCode::Tab => self.select_next_page(),
+                    KeyCode::BackTab => self.select_prev_page(),
+                    KeyCode::Char('s') => self.begin_save_prompt(),
+                    KeyCode::Char('/') => self.open_component_picker(),
+                    KeyCode::Char('d') => self.delete_selected_row(),
+                    KeyCode::Char('y') => self.duplicate_selected_row(),
+                    KeyCode::Char('u') => self.undo_last(),
+                    KeyCode::Char('J') => self.move_selected_row(1),
+                    KeyCode::Char('K') => self.move_selected_row(-1),
+                    KeyCode::Char('C') => self.add_column(),
+                    KeyCode::Char('V') => self.remove_selected_column(),
+                    KeyCode::Char('c') => self.select_prev_column(),
+                    KeyCode::Char('v') => self.select_next_column(),
+                    KeyCode::Char('r') => self.begin_edit_selected_column_id(),
+                    KeyCode::Char('f') => self.begin_edit_selected_column_width_class(),
+                    KeyCode::Char('A') => self.add_selected_collection_item(),
+                    KeyCode::Char('X') => self.remove_selected_collection_item(),
+                    KeyCode::Char('1') => {
+                        self.selected_sidebar_section = SidebarSection::Regions;
+                    }
+                    KeyCode::Char('2') => {
+                        self.selected_sidebar_section = SidebarSection::Pages;
+                        self.selected_region = SelectedRegion::Page;
+                        self.selected_tree_row = 0;
+                        self.sync_tree_row_with_selection();
+                    }
+                    KeyCode::Char('3') => {
+                        self.selected_sidebar_section = SidebarSection::Layouts;
+                    }
+                    KeyCode::Char('4') => {
+                        self.selected_sidebar_section = SidebarSection::Details;
+                    }
+                    _ => {}
                 }
-                KeyCode::PageUp => self.page_focused_pane(-5),
-                KeyCode::PageDown => self.page_focused_pane(5),
-                KeyCode::Char(' ') => self.toggle_selected_tree_expanded(),
-                KeyCode::Enter => self.handle_enter_on_selected_row(),
-                KeyCode::Tab => self.select_next_page(),
-                KeyCode::BackTab => self.select_prev_page(),
-                KeyCode::Char('s') => self.begin_save_prompt(),
-                KeyCode::Char('/') => self.open_component_picker(),
-                KeyCode::Char('d') => self.delete_selected_row(),
-                KeyCode::Char('y') => self.duplicate_selected_row(),
-                KeyCode::Char('u') => self.undo_last(),
-                KeyCode::Char('J') => self.move_selected_row(1),
-                KeyCode::Char('K') => self.move_selected_row(-1),
-                KeyCode::Char('C') => self.add_column(),
-                KeyCode::Char('V') => self.remove_selected_column(),
-                KeyCode::Char('c') => self.select_prev_column(),
-                KeyCode::Char('v') => self.select_next_column(),
-                KeyCode::Char('r') => self.begin_edit_selected_column_id(),
-                KeyCode::Char('f') => self.begin_edit_selected_column_width_class(),
-                KeyCode::Char('A') => self.add_selected_collection_item(),
-                KeyCode::Char('X') => self.remove_selected_collection_item(),
-                KeyCode::Char('1') => {
-                    self.selected_sidebar_section = SidebarSection::Regions;
-                }
-                KeyCode::Char('2') => {
-                    self.selected_sidebar_section = SidebarSection::Pages;
-                    self.selected_region = SelectedRegion::Page;
-                    self.selected_tree_row = 0;
-                    self.sync_tree_row_with_selection();
-                }
-                KeyCode::Char('3') => {
-                    self.selected_sidebar_section = SidebarSection::Layouts;
-                }
-                KeyCode::Char('4') => {
-                    self.selected_sidebar_section = SidebarSection::Details;
-                }
-                _ => {}
-                }
-            },
+            }
             Event::Mouse(m) => match m.kind {
                 MouseEventKind::ScrollUp | MouseEventKind::ScrollDown => {
                     let up = matches!(m.kind, MouseEventKind::ScrollUp);
@@ -312,11 +336,15 @@ impl App {
                     } else {
                         self.scrollbar_drag = None;
                         let now = std::time::Instant::now();
-                        let is_double = if let Some((last_col, last_row, last_time)) = self.last_mouse_click {
-                            last_col == col && last_row == row && now.duration_since(last_time).as_millis() < DOUBLE_CLICK_THRESHOLD_MS
-                        } else {
-                            false
-                        };
+                        let is_double =
+                            if let Some((last_col, last_row, last_time)) = self.last_mouse_click {
+                                last_col == col
+                                    && last_row == row
+                                    && now.duration_since(last_time).as_millis()
+                                        < DOUBLE_CLICK_THRESHOLD_MS
+                            } else {
+                                false
+                            };
                         self.last_mouse_click = Some((col, row, now));
                         if is_double {
                             self.handle_double_click(col, row);
@@ -516,4 +544,63 @@ impl App {
         self.layout_list_state.select(Some(idx));
         self.selected_sidebar_section = SidebarSection::Layouts;
     }
+
+    fn dispatch_theme_editor(&mut self, ek: ldnddev_theme::EditorKey, shift: bool) {
+        let outcome = {
+            let Some(editor) = self.theme_editor.as_mut() else {
+                return;
+            };
+            editor.handle(ek, shift)
+        };
+        match outcome {
+            ldnddev_theme::EditorOutcome::PaletteChanged => {
+                if let Some(editor) = &self.theme_editor {
+                    super::theme::apply_palette(&mut self.theme, &editor.palette);
+                }
+            }
+            ldnddev_theme::EditorOutcome::RequestSave => {
+                if let Some(editor) = &self.theme_editor {
+                    let root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+                    if ldnddev_theme::save_theme(
+                        &editor.palette,
+                        &root,
+                        "dd_siteforge_theme.yml",
+                        editor.save_target,
+                        ldnddev_theme::default_config_home().as_deref(),
+                        &editor.fields,
+                    )
+                    .is_ok()
+                    {
+                        super::theme::apply_palette(&mut self.theme, &editor.palette);
+                        self.theme_source = editor.save_target.label().to_string();
+                        self.theme_editor = None;
+                        self.overlay = None;
+                    }
+                }
+            }
+            ldnddev_theme::EditorOutcome::Closed { .. } => {
+                if let Some(mut editor) = self.theme_editor.take() {
+                    editor.revert();
+                    super::theme::apply_palette(&mut self.theme, &editor.palette);
+                }
+                self.overlay = None;
+            }
+            ldnddev_theme::EditorOutcome::HexError(_) | ldnddev_theme::EditorOutcome::None => {}
+        }
+    }
+}
+
+fn map_siteforge_editor_key(k: &crossterm::event::KeyEvent) -> Option<ldnddev_theme::EditorKey> {
+    Some(match k.code {
+        KeyCode::Up => ldnddev_theme::EditorKey::Up,
+        KeyCode::Down => ldnddev_theme::EditorKey::Down,
+        KeyCode::Left => ldnddev_theme::EditorKey::Left,
+        KeyCode::Right => ldnddev_theme::EditorKey::Right,
+        KeyCode::Tab => ldnddev_theme::EditorKey::Tab,
+        KeyCode::Enter => ldnddev_theme::EditorKey::Enter,
+        KeyCode::Esc => ldnddev_theme::EditorKey::Esc,
+        KeyCode::Backspace => ldnddev_theme::EditorKey::Backspace,
+        KeyCode::Char(c) => ldnddev_theme::EditorKey::Char(c),
+        _ => return None,
+    })
 }

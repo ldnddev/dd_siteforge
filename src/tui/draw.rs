@@ -1,5 +1,6 @@
 //! Frame layout: header, sidebar, details, footer, overlays.
 use super::*;
+use ratatui::text::Line;
 
 /// Sidebar block title. Compact when pane width (incl. borders) is under 22:
 /// 25% of an 80-col frame is 20, which still fits `[1]` / `[2]` / `[3]`.
@@ -47,10 +48,7 @@ impl App {
         self.prune_toasts();
 
         // Full-screen app shell base layer (base_background + text_primary).
-        frame.render_widget(
-            Block::default().style(self.theme.app_shell),
-            frame.area(),
-        );
+        frame.render_widget(Block::default().style(self.theme.app_shell), frame.area());
 
         let page = self.current_page();
         let root = Layout::default()
@@ -178,11 +176,13 @@ impl App {
                     .border_style(Style::default().fg(regions_border))
                     .title_style(
                         Style::default()
-                            .fg(if self.selected_sidebar_section == SidebarSection::Regions {
-                                self.theme.text_active_focus
-                            } else {
-                                self.theme.text_labels
-                            })
+                            .fg(
+                                if self.selected_sidebar_section == SidebarSection::Regions {
+                                    self.theme.text_active_focus
+                                } else {
+                                    self.theme.text_labels
+                                },
+                            )
                             .add_modifier(Modifier::BOLD),
                     ),
             )
@@ -316,11 +316,13 @@ impl App {
                     .border_style(Style::default().fg(layouts_border))
                     .title_style(
                         Style::default()
-                            .fg(if self.selected_sidebar_section == SidebarSection::Layouts {
-                                self.theme.text_active_focus
-                            } else {
-                                self.theme.text_labels
-                            })
+                            .fg(
+                                if self.selected_sidebar_section == SidebarSection::Layouts {
+                                    self.theme.text_active_focus
+                                } else {
+                                    self.theme.text_labels
+                                },
+                            )
                             .add_modifier(Modifier::BOLD),
                     ),
             )
@@ -401,11 +403,13 @@ impl App {
                     .border_style(Style::default().fg(details_border))
                     .title_style(
                         Style::default()
-                            .fg(if self.selected_sidebar_section == SidebarSection::Details {
-                                self.theme.text_active_focus
-                            } else {
-                                self.theme.text_labels
-                            })
+                            .fg(
+                                if self.selected_sidebar_section == SidebarSection::Details {
+                                    self.theme.text_active_focus
+                                } else {
+                                    self.theme.text_labels
+                                },
+                            )
                             .add_modifier(Modifier::BOLD),
                     ),
             )
@@ -418,10 +422,7 @@ impl App {
         // last column inside the border; thumb height is proportional to
         // visible/total rows.
         self.details_scrollbar_track = ScrollbarTrack::default();
-        if details_total_rows > details_visible_rows
-            && main[1].width >= 3
-            && main[1].height >= 4
-        {
+        if details_total_rows > details_visible_rows && main[1].width >= 3 && main[1].height >= 4 {
             let track = Rect {
                 x: main[1].x + main[1].width.saturating_sub(2),
                 y: main[1].y + 1,
@@ -534,6 +535,11 @@ impl App {
                     );
                 }
             }
+            Some(Overlay::Theme { .. }) if self.theme_editor.is_some() => {
+                if let Some(editor) = &self.theme_editor {
+                    self.render_theme_editor(frame, editor);
+                }
+            }
             Some(Overlay::Theme { scroll }) => {
                 let area = centered_rect(80, 80, frame.area());
                 frame.render_widget(Clear, area);
@@ -563,7 +569,12 @@ impl App {
                     height: inner.height,
                 };
 
-                let help = build_theme_text(&self.theme, &self.theme_source, &self.theme_status, body_w as usize);
+                let help = build_theme_text(
+                    &self.theme,
+                    &self.theme_source,
+                    &self.theme_status,
+                    body_w as usize,
+                );
                 let wrapped_total = count_lines(&help, body_w as usize);
                 let visible = inner.height as usize;
                 let max_scroll = wrapped_total.saturating_sub(visible) as u16;
@@ -638,6 +649,68 @@ impl App {
         }
     }
 
+    fn render_theme_editor(&self, frame: &mut ratatui::Frame, editor: &ldnddev_theme::ThemeEditor) {
+        use ldnddev_theme::{ThemeEditorRow, theme_editor_rows};
+        let area = centered_rect(80, 80, frame.area());
+        frame.render_widget(Clear, area);
+        let rows = theme_editor_rows(&editor.fields);
+        let channel = ["R", "G", "B"][editor.channel.min(2)];
+        let target = editor.save_target.label().to_uppercase();
+        let mut lines = vec![
+            Line::from(format!(
+                "Save: {target} (Tab)   Channel: {channel} ([/])   Y save   R reset   Esc revert"
+            )),
+            Line::from(if editor.editing_hex {
+                format!("Hex: {}█", editor.hex_draft)
+            } else {
+                format!("Hex: {}   Enter / +/-", editor.hex_draft)
+            }),
+            Line::from(""),
+        ];
+        let view_h = area.height.saturating_sub(6) as usize;
+        let start = rows
+            .iter()
+            .position(|row| match row {
+                ThemeEditorRow::Color(idx) => *idx >= editor.scroll,
+                ThemeEditorRow::Header(_) => false,
+            })
+            .unwrap_or(0);
+        let start = if start > 0 && matches!(rows[start - 1], ThemeEditorRow::Header(_)) {
+            start - 1
+        } else {
+            start
+        };
+        for row in rows.iter().skip(start).take(view_h.max(1)) {
+            match row {
+                ThemeEditorRow::Header(name) => lines.push(Line::from(*name)),
+                ThemeEditorRow::Color(idx) => {
+                    let field = editor.fields[*idx];
+                    let hex = editor
+                        .palette
+                        .get(field.key)
+                        .map(|c| c.to_hex())
+                        .unwrap_or_else(|| "#000000".into());
+                    let cursor = if *idx == editor.selected { ">" } else { " " };
+                    lines.push(Line::from(format!("{cursor} {:<22} {hex}", field.key)));
+                }
+            }
+        }
+        frame.render_widget(
+            Paragraph::new(lines).block(
+                Block::default()
+                    .title("F2 Theme editor")
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(self.theme.border_active))
+                    .style(
+                        Style::default()
+                            .bg(self.theme.modal_background)
+                            .fg(self.theme.modal_text),
+                    ),
+            ),
+            area,
+        );
+    }
+
     pub(super) fn active_input_cursor_cell(&self) -> Option<(u16, u16, char)> {
         // Help/Theme paint after FormEdit; a caret overlay would punch through.
         if self.overlay.is_some() {
@@ -651,13 +724,14 @@ impl App {
         };
         let field = state.form.fields.get(state.focused_field)?;
         let areas = self.modal_field_areas.borrow();
-        let (_, box_rect) = areas
-            .iter()
-            .find(|(idx, _)| *idx == state.focused_field)?;
+        let (_, box_rect) = areas.iter().find(|(idx, _)| *idx == state.focused_field)?;
         form_input_cursor_cell(&field.kind, state.get(field.id), *cursor_pos, *box_rect)
     }
 
-    pub(super) fn set_cursor_for_active_input(&self, frame: &mut ratatui::Frame) -> Option<(u16, u16, char)> {
+    pub(super) fn set_cursor_for_active_input(
+        &self,
+        frame: &mut ratatui::Frame,
+    ) -> Option<(u16, u16, char)> {
         let (x, y, ch) = self.active_input_cursor_cell()?;
         let area = frame.area();
         if x < area.x

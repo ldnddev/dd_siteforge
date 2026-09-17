@@ -2,7 +2,10 @@
 use super::super::*;
 
 impl App {
-    pub(in crate::tui) fn handle_image_picker_event(&mut self, key: event::KeyEvent) -> Option<ModalResult> {
+    pub(in crate::tui) fn handle_image_picker_event(
+        &mut self,
+        key: event::KeyEvent,
+    ) -> Option<ModalResult> {
         use crossterm::event::{KeyCode, KeyModifiers};
         let Some(Modal::ImagePicker { state }) = self.modal.as_mut() else {
             return Some(ModalResult::CloseCancel);
@@ -105,13 +108,13 @@ impl App {
         match binding {
             ImagePickBinding::FormEditField { field_id } => {
                 self.modal = self.paused_form_edit_modal.take();
-                if let Some(Modal::FormEdit { state, cursor_pos, .. }) = self.modal.as_mut() {
+                if let Some(Modal::FormEdit {
+                    state, cursor_pos, ..
+                }) = self.modal.as_mut()
+                {
                     state.set(&field_id, value.clone());
                     *cursor_pos = state.get(&field_id).len();
-                    self.push_toast(
-                        ToastLevel::Success,
-                        format!("Picked image: {}", value),
-                    );
+                    self.push_toast(ToastLevel::Success, format!("Picked image: {}", value));
                 } else {
                     self.push_toast(
                         ToastLevel::Warning,
@@ -143,8 +146,7 @@ impl App {
             KeyCode::Down if !key.modifiers.contains(KeyModifiers::CONTROL) => {
                 let filtered = filter_pages(&state.pages, &state.filter);
                 if !filtered.is_empty() {
-                    state.selected =
-                        (state.selected + 1).min(filtered.len() - 1);
+                    state.selected = (state.selected + 1).min(filtered.len() - 1);
                 }
                 Some(ModalResult::Continue)
             }
@@ -190,10 +192,7 @@ impl App {
                     let value = crate::model::page_href(&slug);
                     state.set(&field_id, value.clone());
                     *cursor_pos = state.get(&field_id).len();
-                    self.push_toast(
-                        ToastLevel::Success,
-                        format!("Picked page: {}", value),
-                    );
+                    self.push_toast(ToastLevel::Success, format!("Picked page: {}", value));
                 } else {
                     self.push_toast(
                         ToastLevel::Warning,

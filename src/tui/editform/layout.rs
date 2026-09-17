@@ -21,21 +21,30 @@ pub static HERO_FORM: EditForm = EditForm {
         FormField {
             id: "parent_copy",
             label: "Copy (Markdown)",
-            kind: FieldKind::Textarea { rows: 5, default: "" },
+            kind: FieldKind::Textarea {
+                rows: 5,
+                default: "",
+            },
             required: false,
             visible_when: None,
         },
         FormField {
             id: "parent_class",
             label: "Hero Class",
-            kind: FieldKind::Enum { options: HERO_CLASS_OPTIONS, default: "-full-full" },
+            kind: FieldKind::Enum {
+                options: HERO_CLASS_OPTIONS,
+                default: "-full-full",
+            },
             required: true,
             visible_when: None,
         },
         FormField {
             id: "sal",
             label: "Animation",
-            kind: FieldKind::Enum { options: SAL_OPTIONS, default: "fade" },
+            kind: FieldKind::Enum {
+                options: SAL_OPTIONS,
+                default: "fade",
+            },
             required: true,
             visible_when: None,
         },
@@ -63,7 +72,10 @@ pub static HERO_FORM: EditForm = EditForm {
         FormField {
             id: "parent_image_class",
             label: "Image Class",
-            kind: FieldKind::Enum { options: HERO_CLASS_OPTIONS, default: "-full-full" },
+            kind: FieldKind::Enum {
+                options: HERO_CLASS_OPTIONS,
+                default: "-full-full",
+            },
             required: true,
             visible_when: None,
         },
@@ -105,7 +117,10 @@ pub static HERO_FORM: EditForm = EditForm {
         FormField {
             id: "link_1_target",
             label: "Link 1 Target",
-            kind: FieldKind::Enum { options: HERO_TARGET_OPTIONS, default: "_self" },
+            kind: FieldKind::Enum {
+                options: HERO_TARGET_OPTIONS,
+                default: "_self",
+            },
             required: false,
             visible_when: None,
         },
@@ -126,7 +141,10 @@ pub static HERO_FORM: EditForm = EditForm {
         FormField {
             id: "link_2_target",
             label: "Link 2 Target",
-            kind: FieldKind::Enum { options: HERO_TARGET_OPTIONS, default: "_self" },
+            kind: FieldKind::Enum {
+                options: HERO_TARGET_OPTIONS,
+                default: "_self",
+            },
             required: false,
             visible_when: None,
         },
@@ -146,7 +164,9 @@ pub static COLUMN_ITEM_FORM: EditForm = EditForm {
         FormField {
             id: "width_class",
             label: "Width Class (dd-u-*)",
-            kind: FieldKind::Text { default: "dd-u-1-1" },
+            kind: FieldKind::Text {
+                default: "dd-u-1-1",
+            },
             required: true,
             visible_when: None,
         },
@@ -173,14 +193,20 @@ pub static SECTION_FORM: EditForm = EditForm {
         FormField {
             id: "section_class",
             label: "Section Class",
-            kind: FieldKind::Enum { options: SECTION_CLASS_OPTIONS, default: "-full-contained" },
+            kind: FieldKind::Enum {
+                options: SECTION_CLASS_OPTIONS,
+                default: "-full-contained",
+            },
             required: true,
             visible_when: None,
         },
         FormField {
             id: "item_box_class",
             label: "Item Box Class",
-            kind: FieldKind::Enum { options: ITEM_BOX_CLASS_OPTIONS, default: "l-box" },
+            kind: FieldKind::Enum {
+                options: ITEM_BOX_CLASS_OPTIONS,
+                default: "l-box",
+            },
             required: true,
             visible_when: None,
         },
@@ -391,7 +417,10 @@ pub static NAV_ITEM_FORM: EditForm = EditForm {
         FormField {
             id: "child_kind",
             label: "Kind",
-            kind: FieldKind::Enum { options: &["link", "button"], default: "link" },
+            kind: FieldKind::Enum {
+                options: &["link", "button"],
+                default: "link",
+            },
             required: true,
             visible_when: None,
         },
@@ -415,7 +444,10 @@ pub static NAV_ITEM_FORM: EditForm = EditForm {
         FormField {
             id: "child_link_target",
             label: "Target",
-            kind: FieldKind::Enum { options: LINK_TARGET_OPTIONS, default: "_self" },
+            kind: FieldKind::Enum {
+                options: LINK_TARGET_OPTIONS,
+                default: "_self",
+            },
             required: false,
             visible_when: Some(FieldPredicate::FieldEquals {
                 other_id: "child_kind",
@@ -477,7 +509,10 @@ pub static NAVIGATION_FORM: EditForm = EditForm {
         FormField {
             id: "sal",
             label: "Animation",
-            kind: FieldKind::Enum { options: SAL_OPTIONS, default: "fade" },
+            kind: FieldKind::Enum {
+                options: SAL_OPTIONS,
+                default: "fade",
+            },
             required: true,
             visible_when: None,
         },
