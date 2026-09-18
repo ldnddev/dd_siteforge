@@ -2,7 +2,6 @@
 name = "ldnddev_theme"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.74"
 license = "MIT"
 description = "Shared YAML theme load/save and live color editor for ldnddev TUI apps"
 

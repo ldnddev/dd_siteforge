@@ -1,3 +1,7 @@
+[workspace]
+members = ["crates/ldnddev_theme"]
+resolver = "3"
+
 [package]
 name = "dd_siteforge"
 version = "1.10.0"
@@ -15,4 +19,4 @@ rust-embed = { version = "8", features = ["include-exclude"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.9"
-ldnddev_theme = { path = "ldnddev_theme" }
+ldnddev_theme = { path = "crates/ldnddev_theme" }

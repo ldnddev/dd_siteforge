@@ -67,6 +67,7 @@ jobs:
       - uses: taiki-e/upload-rust-binary-action@v1
         with:
           bin: dd_siteforge
+          package: dd_siteforge
           target: ${{ matrix.target }}
           archive: $bin-$target
           tar: unix
