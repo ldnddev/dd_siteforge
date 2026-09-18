@@ -4,7 +4,7 @@ resolver = "3"
 
 [package]
 name = "dd_siteforge"
-version = "1.10.0"
+version = "1.11.0"
 edition = "2024"
 license = "MIT"
 

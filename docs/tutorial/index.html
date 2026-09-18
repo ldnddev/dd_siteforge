@@ -140,7 +140,7 @@
 <body>
   <header class="hero">
     <div class="wrap">
-      <div class="kicker">dd_siteforge 1.10</div>
+      <div class="kicker">dd_siteforge 1.11</div>
       <h1>Setup, install, and the TUI</h1>
       <p>A terminal CMS for framework-native static pages. One Rust binary: edit a typed site tree, export HTML, host anywhere static.</p>
       <nav class="toc" aria-label="Sections">
@@ -163,9 +163,9 @@
     <h2 id="install">Install</h2>
     <p>The installer detects Linux or macOS and x86_64 or aarch64, then downloads that binary from GitHub Releases. You do not need Rust for this path. Node.js is still required later for CSS/JS.</p>
 <pre><code>curl -fsSL https://raw.githubusercontent.com/ldnddev/dd_siteforge/master/install.sh | bash</code></pre>
-    <p>Installs <code>$HOME/.local/bin/dd_siteforge</code> and copies the default theme to <code>$HOME/.config/ldnddev/dd_siteforge_theme.yml</code> only if that file is not already there. Override with <code>PREFIX</code>, <code>BIN_DIR</code>, or <code>CONFIG_DIR</code>. Pin a release with <code>--version v1.10.0</code>.</p>
+    <p>Installs <code>$HOME/.local/bin/dd_siteforge</code> and copies the default theme to <code>$HOME/.config/ldnddev/dd_siteforge_theme.yml</code> only if that file is not already there. Override with <code>PREFIX</code>, <code>BIN_DIR</code>, or <code>CONFIG_DIR</code>. Pin a release with <code>--version v1.11.0</code>.</p>
 <pre><code># pin / uninstall (piped)
-curl -fsSL https://raw.githubusercontent.com/ldnddev/dd_siteforge/master/install.sh | bash -s -- --version v1.10.0
+curl -fsSL https://raw.githubusercontent.com/ldnddev/dd_siteforge/master/install.sh | bash -s -- --version v1.11.0
 curl -fsSL https://raw.githubusercontent.com/ldnddev/dd_siteforge/master/install.sh | bash -s -- uninstall
 
 # from a clone
@@ -175,7 +175,7 @@ cargo install --path .              # ~/.cargo/bin
 ./install.sh uninstall</code></pre>
     <p>Confirm:</p>
 <pre><code>dd_siteforge --version
-# dd_siteforge 1.10.0</code></pre>
+# dd_siteforge 1.11.0</code></pre>
 
     <h2 id="first-site">Create a site</h2>
     <p>Pick an empty folder. <code>init-site</code> writes <code>site.json</code>, seeds Handlebars into <code>source/templates/</code>, and copies the Grunt / <code>source/</code> / Lando / DDEV kit next to the JSON. Existing files are skipped.</p>
