@@ -5,14 +5,14 @@
 # See SCREENSHOTS.md for the filename contract and a manual fallback.
 #
 # Usage (from repo root):
-#   ./docs/tutorial/capture.sh
+#   ./docs/capture.sh
 #
-# Writes PNGs into docs/tutorial/images/. Does not commit.
+# Writes PNGs into docs/images/. Does not commit.
 
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-IMG="$ROOT/docs/tutorial/images"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+IMG="$ROOT/docs/images"
 BIN="$ROOT/target/release/dd_siteforge"
 WORK="${DD_SITEFORGE_TUTORIAL_SITE:-/tmp/dd_siteforge_tutorial}"
 SITE="$WORK/site.json"

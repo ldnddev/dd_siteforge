@@ -2,7 +2,7 @@
 
 Terminal-UI CMS for authoring framework-native static pages. Single Rust binary: edit a typed site tree, export HTML, host anywhere static.
 
-**Tutorial (setup, TUI walkthrough, screenshots):** open [`docs/tutorial/index.html`](docs/tutorial/index.html).
+**Tutorial (setup, TUI walkthrough, screenshots):** [ldnddev.github.io/dd_siteforge](https://ldnddev.github.io/dd_siteforge/).
 
 ## Install
 

@@ -8,7 +8,7 @@ Companion docs:
 - `LDNDDEV_TUI_VISUAL_STANDARD.md` — portable TUI theme + shell contract (copy into any new ldnddev TUI)
 - `components/dd-*.md` — per-component fields, render rules, validation
 - `README.md` — install pointer
-- `docs/tutorial/index.html` — setup + TUI walkthrough with screenshots
+- `docs/index.html` — setup + TUI walkthrough with screenshots ([GitHub Pages](https://ldnddev.github.io/dd_siteforge/))
 
 ---
 

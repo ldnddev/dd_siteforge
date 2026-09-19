@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>dd_siteforge tutorial</title>
+  <link rel="canonical" href="https://ldnddev.github.io/dd_siteforge/">
   <style>
     :root {
       --base: #0F1114;
@@ -270,7 +271,7 @@ dd_siteforge serve site.json          # export + http://127.0.0.1:8765/
       <li><code>~/.config/ldnddev/dd_siteforge_theme.yml</code> (user)</li>
       <li>Built-in defaults</li>
     </ol>
-    <p>Must declare <code>version: 1</code>. Token names are in <a href="../../LDNDDEV_TUI_VISUAL_STANDARD.md">LDNDDEV_TUI_VISUAL_STANDARD.md</a>. Optional <code>header_quotes</code> replaces the rotating header line (picked once per launch).</p>
+    <p>Must declare <code>version: 1</code>. Token names are in <a href="https://github.com/ldnddev/dd_siteforge/blob/master/LDNDDEV_TUI_VISUAL_STANDARD.md">LDNDDEV_TUI_VISUAL_STANDARD.md</a>. Optional <code>header_quotes</code> replaces the rotating header line (picked once per launch).</p>
 
     <h2 id="keys">Cheatsheet</h2>
     <table>
@@ -296,19 +297,19 @@ dd_siteforge init-scaffold --global          # house overlay in ~/.config/ldndde
 dd_siteforge show-site site.json</code></pre>
 
     <h2 id="screenshots">Updating these screenshots</h2>
-    <p>PNGs live in <code>docs/tutorial/images/</code>. Names are a contract with this page. The full procedure is <a href="SCREENSHOTS.md">SCREENSHOTS.md</a>.</p>
+    <p>PNGs live in <code>docs/images/</code>. Names are a contract with this page. The full procedure is <a href="https://github.com/ldnddev/dd_siteforge/blob/master/docs/SCREENSHOTS.md">SCREENSHOTS.md</a>.</p>
     <p>On Hyprland (foot + grim + wtype):</p>
 <pre><code>cargo build --release
-./docs/tutorial/capture.sh</code></pre>
+./docs/capture.sh</code></pre>
     <p>That seeds a throwaway site under <code>/tmp/dd_siteforge_tutorial/</code>, pins the header quote, drives the TUI through the table in SCREENSHOTS.md, and overwrites the eight PNGs. Inspect them, then:</p>
-<pre><code>git add docs/tutorial/images/*.png
+<pre><code>git add docs/images/*.png
 git commit -m "docs: refresh tutorial screenshots"</code></pre>
     <p>Do not commit <code>site.json</code> or the <code>/tmp</code> scratch site. Manual capture: 132×42 terminal, same key sequence, window-only screenshot, same filenames.</p>
   </main>
 
   <footer class="page">
-    MIT licensed. Spec: <a href="../SPEC.md">docs/SPEC.md</a>.
-    Capture script: <a href="capture.sh">capture.sh</a>.
+    MIT licensed. <a href="https://github.com/ldnddev/dd_siteforge">ldnddev/dd_siteforge</a>.
+    Spec: <a href="https://github.com/ldnddev/dd_siteforge/blob/master/docs/SPEC.md">docs/SPEC.md</a>.
   </footer>
 </body>
 </html>

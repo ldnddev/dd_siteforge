@@ -1,0 +1,39 @@
+# Publish docs/ as the GitHub Pages site (https://ldnddev.github.io/dd_siteforge/).
+name: Pages
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - docs/**
+      - .github/workflows/pages.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Stage tutorial
+        run: |
+          mkdir -p _site/images
+          cp docs/index.html docs/404.html docs/.nojekyll _site/
+          cp docs/images/*.png _site/images/
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4

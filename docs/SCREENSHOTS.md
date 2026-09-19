@@ -1,6 +1,6 @@
 # Updating tutorial screenshots
 
-The HTML tutorial at `docs/tutorial/index.html` loads PNGs from `docs/tutorial/images/`. Filenames are a contract — keep them, or update every `src=` in the HTML.
+The HTML tutorial at `docs/index.html` (GitHub Pages: https://ldnddev.github.io/dd_siteforge/) loads PNGs from `docs/images/`. Filenames are a contract — keep them, or update every `src=` in the HTML.
 
 | File | What it must show | How the capture script gets there |
 |---|---|---|
@@ -19,7 +19,7 @@ From the repo root:
 
 ```bash
 cargo build --release
-./docs/tutorial/capture.sh
+./docs/capture.sh
 ```
 
 Needs `foot`, `grim`, `wtype`, `hyprctl`, and `python` on `$PATH`. The script:
@@ -27,9 +27,9 @@ Needs `foot`, `grim`, `wtype`, `hyprctl`, and `python` on `$PATH`. The script:
 1. Builds a throwaway site at `/tmp/dd_siteforge_tutorial/` (`init-site --name tutorial`) if missing.
 2. Writes a local `dd_siteforge_theme.yml` there with a **fixed** header quote so screenshots do not rotate.
 3. Opens a 132×42 `foot` window (`app-id` `dd-siteforge-tutorial`) running `target/release/dd_siteforge tui site.json`.
-4. Focuses that window, sends the key sequence above, and `grim`s the window rect into `docs/tutorial/images/`.
+4. Focuses that window, sends the key sequence above, and `grim`s the window rect into `docs/images/`.
 
-Override the scratch site with `DD_SITEFORGE_TUTORIAL_SITE=/path ./docs/tutorial/capture.sh`. Slow a sluggish compositor with `SLEEP_AFTER_KEY=0.8`.
+Override the scratch site with `DD_SITEFORGE_TUTORIAL_SITE=/path ./docs/capture.sh`. Slow a sluggish compositor with `SLEEP_AFTER_KEY=0.8`.
 
 Inspect every PNG before committing. The compositor tiles the window; a tall tile is expected.
 
@@ -48,7 +48,7 @@ Follow the key column in the table. Screenshot the **terminal window only** (no 
 ## After recapture
 
 ```bash
-git add docs/tutorial/images/*.png
+git add docs/images/*.png
 git commit -m "docs: refresh tutorial screenshots"
 ```
 
