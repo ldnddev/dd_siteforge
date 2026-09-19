@@ -16,7 +16,6 @@
 
 // The following block includes the default fontawesome package
 @use "fontawesome/fontawesome";
-//@import "fontawesome/solid";
 @use "fontawesome/brands";
 @use "fontawesome/regular";
 
@@ -61,46 +60,8 @@
 @use "components/_dd_tabs";
 @use "components/_dd_timeline";
 
-// The following block includes the default layouts
-// @use "layouts/front";
-// @use "layouts/user-login";
-
 // The following block includes the default axe-cli options
 @use "components/_dd_axe";
 
 // SAL (Scroll Animation Library)
 @use "vendors/sal";
-
-// Drupal specific, only enable when using Drupal.
-/* @use "drupal-components/_breadcrumb";
-@use "drupal-components/_tabs";
-@use "drupal-components/_action-links";
-@use "drupal-components/_button";
-@use "drupal-components/_container-inline";
-@use "drupal-components/_details";
-@use "drupal-components/_dialog";
-@use "drupal-components/_dropbutton";
-@use "drupal-components/_exposed-filters";
-@use "drupal-components/_field";
-@use "drupal-components/_file";
-@use "drupal-components/_form";
-@use "drupal-components/_icons";
-@use "drupal-components/_image-widget";
-@use "drupal-components/_indented";
-@use "drupal-components/_inline-form";
-@use "drupal-components/_item-list";
-@use "drupal-components/_link";
-@use "drupal-components/_links";
-@use "drupal-components/_menu";
-@use "drupal-components/_messages";
-@use "drupal-components/_more-link";
-@use "drupal-components/_node";
-@use "drupal-components/_pager";
-@use "drupal-components/_progress";
-@use "drupal-components/_search-results";
-@use "drupal-components/_tabledrag";
-@use "drupal-components/_tableselect";
-@use "drupal-components/_tablesort";
-@use "drupal-components/_textarea";
-@use "drupal-components/_ui-dialog";
-@use "drupal-components/_user"; */

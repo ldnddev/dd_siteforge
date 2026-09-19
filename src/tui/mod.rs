@@ -293,7 +293,10 @@ impl App {
     pub(super) fn run<B: ratatui::backend::Backend>(
         &mut self,
         terminal: &mut Terminal<B>,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<()>
+    where
+        B::Error: Send + Sync + 'static,
+    {
         while !self.should_quit {
             self.tick_autosave(std::time::Instant::now());
             terminal.draw(|f| self.draw(f))?;
