@@ -107,7 +107,9 @@ impl App {
             | TreeRowKind::CardItem { .. }
             | TreeRowKind::FilmstripItem { .. }
             | TreeRowKind::MilestonesItem { .. }
-            | TreeRowKind::SliderItem { .. } => {
+            | TreeRowKind::SliderItem { .. }
+            | TreeRowKind::TabsItem { .. }
+            | TreeRowKind::TimelineItem { .. } => {
                 self.push_undo();
                 self.remove_selected_collection_item();
                 self.sync_tree_row_with_selection();
@@ -342,7 +344,9 @@ impl App {
             | TreeRowKind::CardItem { .. }
             | TreeRowKind::FilmstripItem { .. }
             | TreeRowKind::MilestonesItem { .. }
-            | TreeRowKind::SliderItem { .. } => {
+            | TreeRowKind::SliderItem { .. }
+            | TreeRowKind::TabsItem { .. }
+            | TreeRowKind::TimelineItem { .. } => {
                 self.push_undo();
                 if self.duplicate_selected_collection_item() {
                     self.push_toast(ToastLevel::Success, "Duplicated item.");
@@ -404,6 +408,16 @@ impl App {
                 true
             }
             crate::model::SectionComponent::Slider(a) if item_idx < a.items.len() => {
+                let clone = a.items[item_idx].clone();
+                a.items.insert(item_idx + 1, clone);
+                true
+            }
+            crate::model::SectionComponent::Tabs(a) if item_idx < a.items.len() => {
+                let clone = a.items[item_idx].clone();
+                a.items.insert(item_idx + 1, clone);
+                true
+            }
+            crate::model::SectionComponent::Timeline(a) if item_idx < a.items.len() => {
                 let clone = a.items[item_idx].clone();
                 a.items.insert(item_idx + 1, clone);
                 true
@@ -492,7 +506,9 @@ impl App {
             | TreeRowKind::CardItem { .. }
             | TreeRowKind::FilmstripItem { .. }
             | TreeRowKind::MilestonesItem { .. }
-            | TreeRowKind::SliderItem { .. } => {
+            | TreeRowKind::SliderItem { .. }
+            | TreeRowKind::TabsItem { .. }
+            | TreeRowKind::TimelineItem { .. } => {
                 self.push_undo();
                 if self.move_selected_collection_item(delta) {
                     self.push_toast(ToastLevel::Info, "Moved item.");
@@ -600,6 +616,14 @@ impl App {
                 true
             }
             crate::model::SectionComponent::Slider(a) if dest < a.items.len() => {
+                a.items.swap(item_idx, dest);
+                true
+            }
+            crate::model::SectionComponent::Tabs(a) if dest < a.items.len() => {
+                a.items.swap(item_idx, dest);
+                true
+            }
+            crate::model::SectionComponent::Timeline(a) if dest < a.items.len() => {
                 a.items.swap(item_idx, dest);
                 true
             }

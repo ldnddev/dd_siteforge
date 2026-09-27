@@ -471,7 +471,7 @@ impl App {
                     comps_since = 0;
                     comp_idx = 0;
                 }
-                if t.contains("dd-") && !t.contains("dd-section") && !t.contains("dd-hero") {
+                if t.contains("- dd-") {
                     comp_idx = comps_since;
                     comps_since += 1;
                 }
@@ -528,19 +528,19 @@ impl App {
         let mut comps = 0usize;
         for (_i, &l) in lines.iter().enumerate().take(up_to + 1) {
             let t = l.trim();
-            if t.contains("section: ") {
+            if t.contains("Section ID:") || t.contains("section: ") {
                 sec_idx = secs;
                 secs += 1;
                 cols = 0;
                 comps = 0;
                 col_idx = 0;
                 comp_idx = 0;
-            } else if t.contains("column: ") {
+            } else if t.contains("item: ") || t.contains("column: ") {
                 col_idx = cols;
                 cols += 1;
                 comps = 0;
                 comp_idx = 0;
-            } else if t.contains("dd-") && !t.contains("section:") {
+            } else if t.contains("- dd-") {
                 comp_idx = comps;
                 comps += 1;
             }

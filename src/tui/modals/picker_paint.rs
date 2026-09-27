@@ -147,7 +147,10 @@ impl App {
         );
 
         // Body: filtered entry list, with vertical scroll keeping selection in view.
-        let entries = list_dir_entries(&state.cwd);
+        let entries: Vec<_> = list_dir_entries(&state.cwd)
+            .into_iter()
+            .filter(|e| state.file_kind.allows(&e.name, e.is_dir))
+            .collect();
         let filtered = filter_entries(&entries, &state.filter);
         let body_y = inner.y + 3;
         let body_h = inner.height.saturating_sub(5);

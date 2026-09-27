@@ -100,6 +100,31 @@ pub(in crate::tui) struct ImagePickerState {
     pub(in crate::tui) filter: String,
     pub(in crate::tui) selected: usize,
     pub(in crate::tui) binding: ImagePickBinding,
+    pub(in crate::tui) file_kind: PickerFileKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::tui) enum PickerFileKind {
+    Image,
+    Video,
+}
+
+impl PickerFileKind {
+    pub(in crate::tui) fn allows(self, name: &str, is_dir: bool) -> bool {
+        if is_dir {
+            return true;
+        }
+        let ext = name.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
+        match self {
+            PickerFileKind::Image => {
+                matches!(
+                    ext.as_str(),
+                    "jpg" | "jpeg" | "png" | "webp" | "gif" | "svg"
+                )
+            }
+            PickerFileKind::Video => ext == "mp4",
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

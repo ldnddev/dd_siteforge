@@ -1,0 +1,19 @@
+{{#if is_image}}
+<picture>
+  {{#if source_mobile}}<source media="(max-width: 767px)" srcset="{{source_mobile}}">{{/if}}
+  {{#if source_tablet}}<source media="(max-width: 1199px)" srcset="{{source_tablet}}">{{/if}}
+  {{#if source_desktop}}<source media="(min-width: 1200px)" srcset="{{source_desktop}}">{{/if}}
+  <img src="{{url}}" alt="{{alt}}" class="dd-img"{{#unless skip_lazy}} loading="lazy"{{/unless}}>
+</picture>
+{{/if}}
+{{#if is_oembed}}
+<div class="dd-image_or_video__video">{{{oembed_iframe}}}</div>
+{{/if}}
+{{#if is_local_video}}
+<div class="dd-image_or_video__video">
+  <video class="dd-img" playsinline{{#if loop}} loop{{/if}}{{#if autoplay}} autoplay muted{{/if}}{{#if poster}} poster="{{poster}}"{{/if}}{{#if name}} aria-label="{{name}}"{{/if}}>
+    {{#if sm_mp4}}<source src="{{sm_mp4}}" media="(max-width: 767px)" type="video/mp4">{{/if}}
+    <source src="{{lg_mp4}}" type="video/mp4">
+  </video>
+</div>
+{{/if}}

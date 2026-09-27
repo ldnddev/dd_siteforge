@@ -57,7 +57,7 @@ Site
 
 **Top-level (Page node):** `dd-hero`, `dd-section`.
 
-**Section components:** `dd-alert`, `dd-banner`, `dd-blockquote`, `dd-card`, `dd-cta`, `dd-filmstrip`, `dd-image`, `dd-milestones`, `dd-modal`, `dd-rich_text`, `dd-slider`, `dd-alternating`, `dd-accordion`, `dd-navigation`.
+**Section components:** `dd-alert`, `dd-banner`, `dd-blockquote`, `dd-card`, `dd-cta`, `dd-filmstrip`, `dd-image`, `dd-milestones`, `dd-modal`, `dd-rich_text`, `dd-slider`, `dd-alternating`, `dd-accordion`, `dd-navigation`, `dd-spacer`, `dd-tabs`, `dd-timeline`.
 
 **Header / Footer slots:** same component set as section components plus `dd-header-search`, `dd-header-menu`.
 
@@ -72,7 +72,16 @@ Each component spec lives in `components/dd-*.md` (single source of truth for fi
   - `dd-blockquote` emits Quotation JSON-LD.
   - `dd-modal` derives `parent_modal_id` from `parent_title` (HTML-id-safe).
   - `dd-slider` derives `parent_uid` from `parent_title`; `uid-<random6>` fallback.
-  - Copy textareas with the Expand control (`dd-hero.copy`, `dd-rich_text.parent_copy`, `dd-cta.parent_copy`, `dd-alert.parent_copy`, `dd-modal.parent_copy`, `dd-blockquote.parent_copy`, and `child_copy` on card / accordion / alternating / milestones / slider items) accept CommonMark (headings, lists, thematic breaks, code, tables, strikethrough) or raw HTML, converted at export. JSON-LD `text` fields keep the authored source.
+  - Copy textareas with the Expand control (`dd-hero.copy`, `dd-rich_text.parent_copy`, `dd-cta.parent_copy`, `dd-alert.parent_copy`, `dd-modal.parent_copy`, `dd-blockquote.parent_copy`, and `child_copy` on card / accordion / alternating / milestones / slider / tabs / timeline items) accept CommonMark (headings, lists, thematic breaks, code, tables, strikethrough) or raw HTML, converted at export. JSON-LD `text` fields keep the authored source.
+- SAL: `sal` style (`no-animation` omits attributes), optional `sal_duration` / `sal_delay`. Collection stagger is author delay + `100 × index`, cap 1000.
+- Links: `DdLink` (`url`, `label`, `target`, `style` `-primary`/`-secondary`/`-tertiary`/`-ghost`). Hero max 2; CTA / alternating items / slider items max 4. Card and milestones keep one optional link plus style.
+- Media: `Media` enum on hero, banner, alternating items, slider items (`none` / `image` / `oembed` / `local-video`). Shared `_media.hbs` partial. CTA/card/filmstrip/blockquote/`dd-image` stay image-only.
+- Section visual options: width (`section_class`), optional `-bg-muted` / `-no-padding` / extra CSS / ARIA label / SAL. HTML `id` on `<section>`.
+- Hero overlay / copy position: optional `-overlay-light` / `-overlay-dark` and `-left` / `-center` / `-right` on `.dd-hero` next to width. Optional HTML `id` (emitted when set). ARIA label defaults to `"Introduction"`.
+- Spacer: size tokens `-sm`…`-xxxl`, optional `-divider`, `aria-hidden="true"`. No SAL.
+- Tabs: `parent_id`, orientation `-horizontal`/`-vertical`, ARIA label default `"Content tabs"`, SAL on the root, items of label + markdown panel. Buttons with APG tablist roles; first tab active.
+- Timeline: optional ARIA label default `"Timeline"`, SAL stagger on items, events with year, optional datetime, title, heading 2–6 (default 3), markdown copy, optional image. `<ol>` of events. Datetime required when year is not YYYY / YYYY-MM / YYYY-MM-DD.
+- Site options: header CTA + banner on `DdHeader`; footer blurb / copyright / socials on `DdFooter`; GTM snippets on `Site`. GTM export extracts `GTM-XXXX` and emits canonical googletagmanager.com markup.
 - Static export: `crate::export::export_site(&site, &out, site_root)`. Writes `{slug}.html`, copies Grunt `web/assets/{css,js,webfonts,favicon,vendors}` when the dest is not already `web/` (does not clobber a local `grunt build`), fills missing webfonts/favicon from `source/`, copies `<site_dir>/source/images/` → `<out>/assets/images/`, plus `sitemap.xml`, `robots.txt`, and `404.html` when no author 404 page exists.
 - Asset and page hrefs are same-directory relative (`assets/css/style.min.css`, `contact.html`). `p` / `serve` start a local HTTP server so those paths resolve.
 

@@ -40,6 +40,26 @@ fields:
     default: ""
     maps_to: "<header> class token (appended to base dd-header)"
 
+  - id: cta_label
+    required: false
+    type: string
+    default: "Contact"
+    maps_to: ".dd-header__cta a"
+
+  - id: cta_url
+    required: false
+    type: string
+    default: ""
+    maps_to: ".dd-header__cta a[href]"
+    notes: "Empty omits the CTA button."
+
+  - id: banner
+    required: false
+    type: string
+    default: ""
+    maps_to: ".dd-header__banner"
+    notes: "Plain-text site-wide notice. Separate from optional dd-alert."
+
   - id: alert
     required: false
     type: object_or_null
@@ -103,6 +123,7 @@ without search can drop it entirely.
 
 ```html
 <header class="dd-header [custom_css]">
+  <!-- if banner --><div class="dd-header__banner"><div class="dd-header__banner-copy">[banner]</div></div><!-- endif -->
   <!-- if alert -->
   [render dd-alert here]
   <!-- endif -->
@@ -111,6 +132,7 @@ without search can drop it entirely.
     <!-- repeat: sections -->
     [render dd-section here — standard section HTML with its columns and nested components]
     <!-- end repeat: sections -->
+    <!-- if cta_url --><div class="dd-header__cta"><a href="[cta_url]" class="dd-button -primary">[cta_label]</a></div><!-- endif -->
   </div>
 
   <!-- hardcoded search panel (always rendered for now) -->

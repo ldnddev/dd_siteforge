@@ -1,5 +1,14 @@
 <footer class="dd-footer{{custom}}">
   <div class="dd-footer__content">
-{{{sections_html}}}
-  </div>
+{{#if blurb}}    <div class="dd-footer__blurb l-box">{{{blurb}}}</div>
+{{/if}}{{{sections_html}}}
+{{#if has_socials}}    <div class="dd-footer__navigation navigation -social-menu">
+      <nav aria-label="Social">
+        <ul class="menu">
+          {{#each socials}}<li class="menu-item"><a href="{{url}}" target="_blank" rel="noopener noreferrer"><span class="visually-hidden">{{label}}</span><i class="fa-brands {{icon}}" aria-hidden="true"></i></a></li>{{/each}}
+        </ul>
+      </nav>
+    </div>
+{{/if}}  </div>
+  <div class="dd-footer__copyright"><div class="l-box">{{copyright}}</div></div>
 </footer>

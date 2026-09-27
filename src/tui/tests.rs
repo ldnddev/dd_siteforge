@@ -175,6 +175,35 @@ fn dd_cta_form_edit_tab_and_enum_cycle() {
     );
 }
 
+fn tab_to_links_field(app: &mut App) {
+    for _ in 0..20 {
+        if form_focused_field_id(app) == Some("links") {
+            return;
+        }
+        send_key(app, KeyCode::Tab, KeyModifiers::NONE);
+    }
+    panic!("never reached links field after 20 tabs");
+}
+
+#[test]
+fn cta_links_subform_add_and_cap() {
+    let mut app = app_with_cta();
+    open_form_edit_on_selected_cta(&mut app);
+    tab_to_links_field(&mut app);
+    // default CTA already has 1 link; add up to 4.
+    send_key(&mut app, KeyCode::Char('A'), KeyModifiers::SHIFT);
+    send_key(&mut app, KeyCode::Char('A'), KeyModifiers::SHIFT);
+    send_key(&mut app, KeyCode::Char('A'), KeyModifiers::SHIFT);
+    send_key(&mut app, KeyCode::Char('A'), KeyModifiers::SHIFT);
+    let len = match &app.modal {
+        Some(Modal::FormEdit { state, .. }) => {
+            state.sub_state.get("links").map(|v| v.len()).unwrap_or(0)
+        }
+        _ => panic!("expected FormEdit"),
+    };
+    assert_eq!(len, 4, "CTA links cap at 4");
+}
+
 #[test]
 fn dd_cta_edits_apply_in_page_region() {
     let mut app = app_with_cta();
@@ -399,6 +428,41 @@ fn tier_a_image_form_edit_round_trip() {
 }
 
 #[test]
+fn image_form_saves_sal_duration() {
+    let mut app = app_with_component(ComponentKind::Image);
+    open_form_edit_on_page_component(&mut app);
+    send_key(&mut app, KeyCode::Tab, KeyModifiers::NONE);
+    send_key(&mut app, KeyCode::Right, KeyModifiers::NONE);
+    send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
+    match &app.site.pages[0].nodes[1] {
+        PageNode::Section(s) => match &s.columns[0].components[0] {
+            crate::model::SectionComponent::Image(i) => {
+                assert_eq!(i.sal_duration, Some(450));
+            }
+            _ => panic!("expected Image"),
+        },
+        _ => panic!("expected Section"),
+    }
+}
+
+#[test]
+fn image_form_no_animation_omits_duration_on_save() {
+    let mut app = app_with_component(ComponentKind::Image);
+    open_form_edit_on_page_component(&mut app);
+    send_key(&mut app, KeyCode::Left, KeyModifiers::NONE);
+    send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
+    match &app.site.pages[0].nodes[1] {
+        PageNode::Section(s) => match &s.columns[0].components[0] {
+            crate::model::SectionComponent::Image(i) => {
+                assert_eq!(i.sal, crate::model::SalAnimation::NoAnimation);
+            }
+            _ => panic!("expected Image"),
+        },
+        _ => panic!("expected Section"),
+    }
+}
+
+#[test]
 fn tier_a_header_search_form_edit_round_trip() {
     // HeaderSearch only valid in header region, so build a scenario there.
     let mut app = App::new(
@@ -456,6 +520,8 @@ fn tier_a_rich_text_form_edit_round_trip() {
 }
 
 fn focus_rich_text_copy(app: &mut App) {
+    send_key(app, KeyCode::Tab, KeyModifiers::NONE);
+    send_key(app, KeyCode::Tab, KeyModifiers::NONE);
     send_key(app, KeyCode::Tab, KeyModifiers::NONE);
     send_key(app, KeyCode::Tab, KeyModifiers::NONE);
     assert_eq!(form_focused_field_id(app), Some("parent_copy"));
@@ -788,11 +854,40 @@ fn tier_b_alternating_drill_round_trip() {
 }
 
 #[test]
+fn tier_b_tabs_drill_round_trip() {
+    tier_b_drill_round_trip(ComponentKind::Tabs);
+}
+
+#[test]
+fn tier_b_timeline_drill_round_trip() {
+    tier_b_drill_round_trip(ComponentKind::Timeline);
+}
+
+#[test]
+fn tier_c_spacer_form_edit_round_trip() {
+    let mut app = app_with_component(ComponentKind::Spacer);
+    open_form_edit_on_page_component(&mut app);
+    send_key(&mut app, KeyCode::Right, KeyModifiers::NONE);
+    send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
+    assert!(app.modal.is_none());
+    match &app.site.pages[0].nodes[1] {
+        PageNode::Section(s) => match &s.columns[0].components[0] {
+            crate::model::SectionComponent::Spacer(sp) => {
+                assert_eq!(sp.size, crate::model::SpacerSize::Lg);
+            }
+            _ => panic!("expected Spacer"),
+        },
+        _ => panic!("expected Section"),
+    }
+}
+
+#[test]
 fn alternating_item_subtitle_round_trip() {
     let mut app = app_with_component(ComponentKind::Alternating);
     open_form_edit_on_page_component(&mut app);
     tab_to_items_field(&mut app);
     send_key(&mut app, KeyCode::Enter, KeyModifiers::NONE);
+    send_key(&mut app, KeyCode::Tab, KeyModifiers::NONE);
     send_key(&mut app, KeyCode::Tab, KeyModifiers::NONE);
     send_key(&mut app, KeyCode::Tab, KeyModifiers::NONE);
     send_key(&mut app, KeyCode::Tab, KeyModifiers::NONE);
@@ -2507,6 +2602,7 @@ fn image_picker_left_arrow_at_root_does_not_escape() {
             binding: ImagePickBinding::FormEditField {
                 field_id: "x".to_string(),
             },
+            file_kind: PickerFileKind::Image,
         },
     });
     send_key(&mut app, KeyCode::Left, KeyModifiers::NONE);
@@ -2552,6 +2648,7 @@ fn image_picker_esc_restores_paused_form_edit_modal() {
             binding: ImagePickBinding::FormEditField {
                 field_id: "x".to_string(),
             },
+            file_kind: PickerFileKind::Image,
         },
     });
     send_key(&mut app, KeyCode::Esc, KeyModifiers::NONE);
@@ -3483,13 +3580,13 @@ fn header_and_footer_details_hits_align_with_lines() {
         "default".to_string(),
         None,
     );
-    let header_view = app.header_details_text(40);
+    let header_view = app.header_details_text(200);
     let header = header_view.as_str();
     assert_eq!(header.lines().count(), header_view.hits.len());
     let header_lines: Vec<&str> = header.lines().collect();
     let search_line = header_lines
         .iter()
-        .position(|l| l.contains("dd-header-search"))
+        .position(|l| l.contains("- dd-header-search") || l.contains("dd-header-search"))
         .expect("starter header has dd-header-search");
     assert!(
         !header_view.hits[search_line].is_empty(),
@@ -3504,13 +3601,13 @@ fn header_and_footer_details_hits_align_with_lines() {
         "decl lines keep empty hit rows"
     );
 
-    let footer_view = app.footer_details_text(40);
+    let footer_view = app.footer_details_text(80);
     let footer = footer_view.as_str();
     assert_eq!(footer.lines().count(), footer_view.hits.len());
     let footer_lines: Vec<&str> = footer.lines().collect();
     let col = footer_lines
         .iter()
-        .position(|l| l.contains("column: "))
+        .position(|l| l.contains("item: ") || l.contains("column: "))
         .expect("footer column decl");
     assert!(
         footer_view.hits[col].is_empty(),
@@ -3674,7 +3771,7 @@ fn mouse_down_on_details_cell_selects_and_footer_does_not_early_return() {
         x: 20,
         y: 1,
         width: 60,
-        height: 30,
+        height: 80,
         ..Default::default()
     };
     app.list_area = Rect::default();
@@ -4087,6 +4184,55 @@ fn site_form_save_writes_lang() {
     send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
     assert_eq!(app.site.lang, "de");
     assert!(app.modal.is_none());
+}
+
+#[test]
+fn header_form_save_writes_cta_and_banner() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    app.selected_region = SelectedRegion::Header;
+    app.sync_tree_row_with_selection();
+    send_key(&mut app, KeyCode::Enter, KeyModifiers::NONE);
+    if let Some(Modal::FormEdit { state, .. }) = &mut app.modal {
+        assert_eq!(state.form.title, "dd-header-root");
+        state.set("cta_url", "/contact.html");
+        state.set("cta_label", "Ping");
+        state.set("banner", "Notice");
+    } else {
+        panic!("expected header FormEdit");
+    }
+    send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
+    assert_eq!(app.site.header.cta_url.as_deref(), Some("/contact.html"));
+    assert_eq!(app.site.header.cta_label.as_deref(), Some("Ping"));
+    assert_eq!(app.site.header.banner.as_deref(), Some("Notice"));
+}
+
+#[test]
+fn site_form_save_writes_gtm_snippets() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    app.selected_region = SelectedRegion::Site;
+    app.sync_tree_row_with_selection();
+    send_key(&mut app, KeyCode::Enter, KeyModifiers::NONE);
+    if let Some(Modal::FormEdit { state, .. }) = &mut app.modal {
+        state.set("header_gtm_tag", "GTM-ABC123");
+        state.set("body_gtm_tag", "GTM-ABC123");
+    } else {
+        panic!("expected Site settings FormEdit");
+    }
+    send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
+    assert_eq!(app.site.header_gtm_tag.as_deref(), Some("GTM-ABC123"));
+    assert_eq!(app.site.body_gtm_tag.as_deref(), Some("GTM-ABC123"));
 }
 
 #[test]

@@ -204,6 +204,46 @@ impl App {
                                         }
                                     }
                                 }
+                                if let Some(crate::model::SectionComponent::Tabs(tabs)) =
+                                    col.components.get(component_idx)
+                                {
+                                    if self.is_tabs_items_expanded(
+                                        node_idx,
+                                        column_idx,
+                                        component_idx,
+                                    ) {
+                                        for (item_idx, _) in tabs.items.iter().enumerate() {
+                                            rows.push(TreeRow {
+                                                kind: TreeRowKind::TabsItem {
+                                                    node_idx,
+                                                    column_idx,
+                                                    component_idx,
+                                                    item_idx,
+                                                },
+                                            });
+                                        }
+                                    }
+                                }
+                                if let Some(crate::model::SectionComponent::Timeline(timeline)) =
+                                    col.components.get(component_idx)
+                                {
+                                    if self.is_timeline_items_expanded(
+                                        node_idx,
+                                        column_idx,
+                                        component_idx,
+                                    ) {
+                                        for (item_idx, _) in timeline.items.iter().enumerate() {
+                                            rows.push(TreeRow {
+                                                kind: TreeRowKind::TimelineItem {
+                                                    node_idx,
+                                                    column_idx,
+                                                    component_idx,
+                                                    item_idx,
+                                                },
+                                            });
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -434,6 +474,20 @@ impl App {
                         "[+]"
                     };
                     format!("    - {} {} {}", comp_i + 1, marker, label)
+                } else if matches!(component, crate::model::SectionComponent::Tabs(_)) {
+                    let marker = if self.is_tabs_items_expanded(*node_idx, col_i, comp_i) {
+                        "[-]"
+                    } else {
+                        "[+]"
+                    };
+                    format!("    - {} {} {}", comp_i + 1, marker, label)
+                } else if matches!(component, crate::model::SectionComponent::Timeline(_)) {
+                    let marker = if self.is_timeline_items_expanded(*node_idx, col_i, comp_i) {
+                        "[-]"
+                    } else {
+                        "[+]"
+                    };
+                    format!("    - {} {} {}", comp_i + 1, marker, label)
                 } else {
                     format!("    - {} {}", comp_i + 1, label)
                 }
@@ -588,6 +642,58 @@ impl App {
                 };
                 let item_i = (*item_idx).min(slider.items.len().saturating_sub(1));
                 let item = &slider.items[item_i];
+                format!(
+                    "      - {}: {}",
+                    item_i + 1,
+                    truncate_ascii(&item.child_title, 40)
+                )
+            }
+            TreeRowKind::TabsItem {
+                node_idx,
+                column_idx,
+                component_idx,
+                item_idx,
+            } => {
+                let page = self.current_page();
+                let PageNode::Section(section) = &page.nodes[*node_idx] else {
+                    return format!("      - item {}", item_idx + 1);
+                };
+                let columns = section_columns_ref(section);
+                let col_i = (*column_idx).min(columns.len().saturating_sub(1));
+                let comp_i =
+                    (*component_idx).min(columns[col_i].components.len().saturating_sub(1));
+                let tabs = match &columns[col_i].components[comp_i] {
+                    crate::model::SectionComponent::Tabs(t) => t,
+                    _ => return format!("      - item {}", item_idx + 1),
+                };
+                let item_i = (*item_idx).min(tabs.items.len().saturating_sub(1));
+                let item = &tabs.items[item_i];
+                format!(
+                    "      - {}: {}",
+                    item_i + 1,
+                    truncate_ascii(&item.child_title, 40)
+                )
+            }
+            TreeRowKind::TimelineItem {
+                node_idx,
+                column_idx,
+                component_idx,
+                item_idx,
+            } => {
+                let page = self.current_page();
+                let PageNode::Section(section) = &page.nodes[*node_idx] else {
+                    return format!("      - item {}", item_idx + 1);
+                };
+                let columns = section_columns_ref(section);
+                let col_i = (*column_idx).min(columns.len().saturating_sub(1));
+                let comp_i =
+                    (*component_idx).min(columns[col_i].components.len().saturating_sub(1));
+                let timeline = match &columns[col_i].components[comp_i] {
+                    crate::model::SectionComponent::Timeline(t) => t,
+                    _ => return format!("      - item {}", item_idx + 1),
+                };
+                let item_i = (*item_idx).min(timeline.items.len().saturating_sub(1));
+                let item = &timeline.items[item_i];
                 format!(
                     "      - {}: {}",
                     item_i + 1,
@@ -755,6 +861,28 @@ impl App {
                 self.selected_component = component_idx;
                 self.selected_nested_item = item_idx;
             }
+            TreeRowKind::TabsItem {
+                node_idx,
+                column_idx,
+                component_idx,
+                item_idx,
+            } => {
+                self.selected_node = node_idx;
+                self.selected_column = column_idx;
+                self.selected_component = component_idx;
+                self.selected_nested_item = item_idx;
+            }
+            TreeRowKind::TimelineItem {
+                node_idx,
+                column_idx,
+                component_idx,
+                item_idx,
+            } => {
+                self.selected_node = node_idx;
+                self.selected_column = column_idx;
+                self.selected_component = component_idx;
+                self.selected_nested_item = item_idx;
+            }
         }
     }
 
@@ -862,6 +990,28 @@ impl App {
                     && item_idx == self.selected_nested_item
             }
             TreeRowKind::SliderItem {
+                node_idx,
+                column_idx,
+                component_idx,
+                item_idx,
+            } => {
+                node_idx == self.selected_node
+                    && column_idx == self.selected_column
+                    && component_idx == self.selected_component
+                    && item_idx == self.selected_nested_item
+            }
+            TreeRowKind::TabsItem {
+                node_idx,
+                column_idx,
+                component_idx,
+                item_idx,
+            } => {
+                node_idx == self.selected_node
+                    && column_idx == self.selected_column
+                    && component_idx == self.selected_component
+                    && item_idx == self.selected_nested_item
+            }
+            TreeRowKind::TimelineItem {
                 node_idx,
                 column_idx,
                 component_idx,

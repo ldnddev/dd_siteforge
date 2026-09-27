@@ -31,6 +31,37 @@ fields:
     default: ""
     maps_to: "<footer> class token (appended to base dd-footer)"
 
+  - id: blurb
+    required: false
+    type: textarea
+    default: ""
+    maps_to: ".dd-footer__blurb"
+
+  - id: copyright
+    required: false
+    type: string
+    default: ""
+    maps_to: ".dd-footer__copyright"
+    notes: "Empty falls back to © {year} {site.name}."
+
+  - id: social_linkedin
+    required: false
+    type: string
+    default: ""
+    maps_to: ".navigation.-social-menu a[href]"
+
+  - id: social_x
+    required: false
+    type: string
+    default: ""
+    maps_to: ".navigation.-social-menu a[href]"
+
+  - id: social_github
+    required: false
+    type: string
+    default: ""
+    maps_to: ".navigation.-social-menu a[href]"
+
   - id: sections
     required: true
     type: array
@@ -77,10 +108,15 @@ standard `dd-section` markup. No alert zone and no search chrome in footer
 ```html
 <footer class="dd-footer [custom_css]">
   <div class="dd-footer__content">
+    <!-- if blurb --><div class="dd-footer__blurb l-box">[blurb]</div><!-- endif -->
     <!-- repeat: sections -->
     [render dd-section here — standard section HTML with its columns and nested components]
     <!-- end repeat: sections -->
+    <!-- if socials --><div class="dd-footer__navigation navigation -social-menu">
+      <nav aria-label="Social"><ul class="menu"><!-- each --><li class="menu-item"><a href="[url]" target="_blank" rel="noopener noreferrer"><span class="visually-hidden">[label]</span><i class="fa-brands [icon]" aria-hidden="true"></i></a></li><!-- endeach --></ul></nav>
+    </div><!-- endif -->
   </div>
+  <div class="dd-footer__copyright"><div class="l-box">[copyright]</div></div>
 </footer>
 ```
 

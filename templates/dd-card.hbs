@@ -1,7 +1,7 @@
 <div class="dd-card {{parent_type}}">
   <div class="dd-card__items dd-g">
     {{#each items}}
-    <div class="dd-card__item l-box {{../parent_width}}" data-sal="{{../sal}}"{{#if sal_delay}} data-sal-delay="{{sal_delay}}"{{/if}}>
+    <div class="dd-card__item l-box {{../parent_width}}"{{{sal_attr}}}>
       <div class="dd-card__body dd-g">
         <div class="dd-card__image">
           <img src="{{child_image_url}}" alt="{{child_image_alt}}" class="dd-img" loading="lazy">
@@ -17,7 +17,7 @@
           {{#if has_link}}
           <div class="dd-card__links dd-g">
             <div class="dd-card__link">
-              <a href="{{child_link_url}}" target="{{child_link_target}}" class="dd-button -primary">{{child_link_label}}</a>
+              <a href="{{child_link_url}}" target="{{child_link_target}}" class="dd-button {{child_link_style}}">{{child_link_label}}</a>
             </div>
           </div>
           {{/if}}

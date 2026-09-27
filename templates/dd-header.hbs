@@ -1,8 +1,10 @@
 <header class="dd-header{{custom}}">
-{{{alert_html}}}
+{{#if banner}}<div class="dd-header__banner"><div class="dd-header__banner-copy">{{banner}}</div></div>
+{{/if}}{{{alert_html}}}
   <div class="dd-header__top">
 {{{sections_html}}}
-  </div>
+{{#if cta_url}}    <div class="dd-header__cta"><a href="{{cta_url}}" class="dd-button -primary">{{cta_label}}</a></div>
+{{/if}}  </div>
   <div class="dd-search">
     <button class="dd-search__close">- search</button>
     <form action="">

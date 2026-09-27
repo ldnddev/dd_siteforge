@@ -197,6 +197,18 @@ impl App {
                 column_idx,
                 component_idx,
                 item_idx,
+            }
+            | TreeRowKind::TabsItem {
+                node_idx,
+                column_idx,
+                component_idx,
+                item_idx,
+            }
+            | TreeRowKind::TimelineItem {
+                node_idx,
+                column_idx,
+                component_idx,
+                item_idx,
             } => (node_idx, column_idx, component_idx, item_idx),
             _ => return false,
         };
@@ -524,6 +536,13 @@ impl App {
             section_title: None,
             section_class: Some(crate::model::SectionClass::FullContained),
             item_box_class: Some(crate::model::SectionItemBoxClass::LBox),
+            bg: None,
+            padding: None,
+            custom_css: None,
+            aria_label: None,
+            sal: crate::model::SalAnimation::NoAnimation,
+            sal_duration: None,
+            sal_delay: None,
             columns: vec![SectionColumn {
                 id: "column-1".to_string(),
                 width_class: "dd-u-1-1".to_string(),
@@ -550,6 +569,13 @@ impl App {
             section_title: None,
             section_class: Some(crate::model::SectionClass::FullContained),
             item_box_class: Some(crate::model::SectionItemBoxClass::LBox),
+            bg: None,
+            padding: None,
+            custom_css: None,
+            aria_label: None,
+            sal: crate::model::SalAnimation::NoAnimation,
+            sal_duration: None,
+            sal_delay: None,
             columns: vec![SectionColumn {
                 id: "column-1".to_string(),
                 width_class: "dd-u-1-1".to_string(),
@@ -700,10 +726,13 @@ impl App {
             parent_image_url: "/assets/images/hero-new.jpg".to_string(),
             parent_class: Some(crate::model::HeroImageClass::FullFull),
             sal: Some(crate::model::SalAnimation::Fade),
+            sal_duration: None,
+            sal_delay: None,
             parent_custom_css: None,
             parent_title: "New Hero".to_string(),
             parent_subtitle: "Add subtitle".to_string(),
             parent_copy: None,
+            links: Vec::new(),
             link_1_label: None,
             link_1_url: None,
             link_1_target: Some(crate::model::CtaTarget::SelfTarget),
@@ -715,6 +744,11 @@ impl App {
             parent_image_tablet: None,
             parent_image_desktop: None,
             parent_image_class: Some(crate::model::HeroImageClass::FullFull),
+            media: crate::model::Media::None,
+            overlay: None,
+            copy_position: Some(crate::model::HeroCopyPosition::Left),
+            id: None,
+            aria_label: Some("Introduction".to_string()),
         };
         let idx = Self::selected_index_for_page(page, selected)
             .map(|v| v + 1)
@@ -741,6 +775,13 @@ impl App {
             section_title: None,
             section_class: Some(crate::model::SectionClass::FullContained),
             item_box_class: Some(crate::model::SectionItemBoxClass::LBox),
+            bg: None,
+            padding: None,
+            custom_css: None,
+            aria_label: None,
+            sal: crate::model::SalAnimation::NoAnimation,
+            sal_duration: None,
+            sal_delay: None,
             columns: vec![SectionColumn {
                 id: "column-1".to_string(),
                 width_class: "dd-u-1-1".to_string(),

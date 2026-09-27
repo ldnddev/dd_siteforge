@@ -1,4 +1,4 @@
-<section class="dd-section {{section_class}}" aria-label="Content section">
+<section class="dd-section {{section_class}}{{#if bg}} {{bg}}{{/if}}{{#if padding}} {{padding}}{{/if}}{{#if custom_css}} {{custom_css}}{{/if}}" id="{{id}}" aria-label="{{aria_label}}"{{{sal_attr}}}>
   <div class="dd-section__content">
     {{#if section_title}}<div class="dd-section__title l-box">{{section_title}}</div>{{/if}}
     <div class="dd-section__items dd-g">

@@ -93,4 +93,16 @@ pub(in crate::tui) enum TreeRowKind {
         component_idx: usize,
         item_idx: usize,
     },
+    TabsItem {
+        node_idx: usize,
+        column_idx: usize,
+        component_idx: usize,
+        item_idx: usize,
+    },
+    TimelineItem {
+        node_idx: usize,
+        column_idx: usize,
+        component_idx: usize,
+        item_idx: usize,
+    },
 }

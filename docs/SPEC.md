@@ -44,7 +44,19 @@ Page head: `title` is the TUI page label. `meta_title` is the HTML `<title>`; em
 
 New fields on `Site` / `Page` take `#[serde(default)]` so legacy JSON still loads.
 
-Animation attribute is SAL (`data-sal`). JSON still accepts the old `parent_data_aos` alias.
+Animation attributes are SAL (`data-sal`, optional `data-sal-duration` / `data-sal-delay`). Style includes `no-animation` (omits all three attributes). Duration is 200–2000 ms in 50 ms steps (CSS default 400, omitted from HTML when unset or 400). Delay is 0–1000 ms in 50 ms steps; collection items (card, alternating, milestones) add `100 × index` on top, capped at 1000. JSON still accepts the old `parent_data_aos` alias. Slider and modal have no SAL fields.
+
+Buttons are `DdLink` (`url`, `label`, `target` `_self`/`_blank`, `style` `-primary`/`-secondary`/`-tertiary`/`-ghost`). Hero has `links` (max 2); CTA, alternating items, and slider items have `links` (max 4). Empty list means no buttons. Legacy hero `link_1_*` / `link_2_*` and CTA/slider single-link fields still load when `links` is empty (second hero link defaults to `-ghost`). Card and milestones items keep one optional triple plus `child_link_style`. Image wraps the picture (URL + target only).
+
+Section visual options: `section_class` (width), optional `bg` (`-bg-muted`), `padding` (`-no-padding`), `custom_css`, `aria_label`, and SAL (default `no-animation` so legacy JSON does not animate). Builder `id` is emitted as the HTML `id`. Accessible name is title, else `aria_label`, else `"Content section"`.
+
+Hero overlay / copy position: optional overlay (`-overlay-light` / `-overlay-dark`, omitted when none), copy position (`-left` / `-center` / `-right`) as a separate field from width `parent_class`. Optional HTML-safe `id` unique among heroes and sections on the page (emitted only when set). ARIA label defaults to `"Introduction"`. Missing JSON overlay/id/aria stay omitted; missing copy position becomes `-left` on next save.
+
+Site options: header root has CTA label/URL (empty URL hides the button; default label `"Contact"`) and a plain-text alert banner (`.dd-header__banner`, separate from the optional header `dd-alert`). Footer root has blurb, copyright override (empty falls back to `© {year} {site.name}`), and LinkedIn / X / GitHub URLs. Site settings holds header and body GTM snippets; export extracts a `GTM-XXXX` id and emits canonical googletagmanager.com script/noscript. Unrecognized snippets are omitted from HTML and fail validation.
+
+Spacer, tabs, and timeline are section components. Spacer is size (`-sm`…`-xxxl`) plus optional divider; no SAL; `aria-hidden="true"`. Tabs have a slug `parent_id`, orientation (`-horizontal` / `-vertical`), ARIA label (default `"Content tabs"`), SAL on the root, and items of label + markdown panel (min 1). Timeline has ARIA label (default `"Timeline"`), SAL stagger on events, and items of year, optional datetime, title, heading level 2–6 (default 3), markdown copy, and optional image. Datetime is required when year is not YYYY / YYYY-MM / YYYY-MM-DD.
+
+Media on hero, banner, alternating items, and slider items is `Media`: `none` / `image` / `oembed` / `local-video`. Image requires URL + alt. oEmbed stores a YouTube or Vimeo URL and exports a nocookie/player iframe. Local video needs large MP4 + accessible name; small MP4, poster, loop, and autoplay are optional. Autoplay is muted and stripped when `prefers-reduced-motion: reduce`. Legacy `parent_image_url`/`alt` (and `child_image_*`) load as `image` when `media` is absent. CTA, card, filmstrip, blockquote, and `dd-image` stay image-only. Hero image class and breakpoint URLs show when kind is `image`. Ctrl+P on image/poster fields lists images; on `mp4` fields lists `.mp4` in `./source/images/`.
 
 ### TUI
 
@@ -62,7 +74,7 @@ Edit forms: Tab between fields, click-to-focus, mouse wheel, `Ctrl+P` image or p
 
 ### Export + assets
 
-- Copy textareas with Expand (`dd-hero`, `dd-rich_text`, `dd-cta`, `dd-alert`, `dd-modal`, `dd-blockquote`, plus card / accordion / alternating / milestones / slider item copy) render CommonMark to HTML at export (headings, lists, thematic breaks, code, tables, strikethrough, raw HTML passthrough). JSON-LD `text` keeps the authored source.
+- Copy textareas with Expand (`dd-hero`, `dd-rich_text`, `dd-cta`, `dd-alert`, `dd-modal`, `dd-blockquote`, plus card / accordion / alternating / milestones / slider / tabs / timeline item copy) render CommonMark to HTML at export (headings, lists, thematic breaks, code, tables, strikethrough, raw HTML passthrough). JSON-LD `text` keeps the authored source.
 - Handlebars from crate `templates/` plus `source/templates/` overrides. Seed on `init-site` only. Re-seed with `init-templates --force`. Export never writes templates.
 - Build kit (Gruntfile, package.json, `.lando.yml`, `.ddev/`, `source/` except author images and templates) is embedded in the binary. `init-site` copies it once (skip existing). Optional house overlay: `~/.config/ldnddev/dd_siteforge/` (dump with `init-scaffold --global`). Re-seed a site with `init-scaffold --force`.
 - `init-site` asks for a project name (or `--name` / folder default when stdin is not a TTY) and stamps that slug into Lando, DDEV, and `package.json`.

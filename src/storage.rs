@@ -59,8 +59,11 @@ mod tests {
                 .push(SectionComponent::Banner(crate::model::DdBanner {
                     parent_class: crate::model::BannerClass::BgCenterCenter,
                     sal: crate::model::SalAnimation::Fade,
+                    sal_duration: None,
+                    sal_delay: None,
                     parent_image_url: "/assets/images/banner.jpg".to_string(),
                     parent_image_alt: "Banner A".to_string(),
+                    media: crate::model::Media::None,
                 }));
 
             section.columns[0]
@@ -69,6 +72,8 @@ mod tests {
                     parent_type: crate::model::AccordionType::Default,
                     parent_class: crate::model::AccordionClass::Primary,
                     sal: crate::model::SalAnimation::Fade,
+                    sal_duration: None,
+                    sal_delay: None,
                     parent_group_name: "group1".to_string(),
                     items: vec![
                         crate::model::AccordionItem {
@@ -89,12 +94,16 @@ mod tests {
                     parent_type: crate::model::AlternatingType::Default,
                     parent_class: "-default".to_string(),
                     sal: crate::model::SalAnimation::Fade,
+                    sal_duration: None,
+                    sal_delay: None,
                     items: vec![crate::model::AlternatingItem {
                         child_image_url: "/assets/images/alternating.jpg".to_string(),
                         child_image_alt: "Alt".to_string(),
                         child_title: "Item A".to_string(),
                         child_subtitle: "Sub A".to_string(),
                         child_copy: "Copy A".to_string(),
+                        links: Vec::new(),
+                        media: crate::model::Media::None,
                     }],
                 }));
 
@@ -102,6 +111,8 @@ mod tests {
                 .components
                 .push(SectionComponent::Blockquote(crate::model::DdBlockquote {
                     sal: crate::model::SalAnimation::Fade,
+                    sal_duration: None,
+                    sal_delay: None,
                     parent_image_url: "/assets/images/blockquote.jpg".to_string(),
                     parent_image_alt: "Person A".to_string(),
                     parent_name: "Person A".to_string(),
@@ -114,6 +125,8 @@ mod tests {
                 .push(SectionComponent::Card(crate::model::DdCard {
                     parent_type: crate::model::CardType::Default,
                     sal: crate::model::SalAnimation::Fade,
+                    sal_duration: None,
+                    sal_delay: None,
                     parent_width: "dd-u-1-1 dd-u-md-12-24 dd-u-lg-8-24".to_string(),
                     items: vec![crate::model::CardItem {
                         child_image_url: "/assets/images/card.jpg".to_string(),
@@ -124,6 +137,7 @@ mod tests {
                         child_link_url: Some("/front".to_string()),
                         child_link_target: Some(crate::model::CardLinkTarget::SelfTarget),
                         child_link_label: Some("Learn More".to_string()),
+                        child_link_style: crate::model::ButtonStyle::Primary,
                     }],
                 }));
 
@@ -134,9 +148,12 @@ mod tests {
                     parent_image_url: "/assets/images/cta.jpg".to_string(),
                     parent_image_alt: "CTA image".to_string(),
                     sal: crate::model::SalAnimation::Fade,
+                    sal_duration: None,
+                    sal_delay: None,
                     parent_title: "CTA A".to_string(),
                     parent_subtitle: "Sub CTA".to_string(),
                     parent_copy: "Copy CTA".to_string(),
+                    links: Vec::new(),
                     parent_link_url: Some("/path".to_string()),
                     parent_link_target: Some(crate::model::CardLinkTarget::SelfTarget),
                     parent_link_label: Some("Learn More".to_string()),
@@ -147,6 +164,8 @@ mod tests {
                 .push(SectionComponent::Filmstrip(crate::model::DdFilmstrip {
                     parent_type: crate::model::FilmstripType::Default,
                     sal: crate::model::SalAnimation::Fade,
+                    sal_duration: None,
+                    sal_delay: None,
                     items: vec![crate::model::FilmstripItem {
                         child_image_url: "/assets/images/filmstrip-1.jpg".to_string(),
                         child_image_alt: "Filmstrip 1".to_string(),
@@ -158,6 +177,8 @@ mod tests {
                 .components
                 .push(SectionComponent::Milestones(crate::model::DdMilestones {
                     sal: crate::model::SalAnimation::Fade,
+                    sal_duration: None,
+                    sal_delay: None,
                     parent_width: "dd-u-1-1 dd-u-md-12-24".to_string(),
                     items: vec![crate::model::MilestonesItem {
                         child_percentage: "70".to_string(),
@@ -167,6 +188,7 @@ mod tests {
                         child_link_url: Some("/path".to_string()),
                         child_link_target: Some(crate::model::CardLinkTarget::SelfTarget),
                         child_link_label: Some("Learn More".to_string()),
+                        child_link_style: crate::model::ButtonStyle::Primary,
                     }],
                 }));
 
@@ -184,11 +206,18 @@ mod tests {
                     items: vec![crate::model::SliderItem {
                         child_title: "Title".to_string(),
                         child_copy: "Copy".to_string(),
-                        child_link_url: Some("/path".to_string()),
-                        child_link_target: Some(crate::model::CardLinkTarget::SelfTarget),
-                        child_link_label: Some("Learn More".to_string()),
+                        links: vec![crate::model::DdLink {
+                            url: "/path".to_string(),
+                            label: "Learn More".to_string(),
+                            target: crate::model::CardLinkTarget::SelfTarget,
+                            style: crate::model::ButtonStyle::Primary,
+                        }],
+                        child_link_url: None,
+                        child_link_target: None,
+                        child_link_label: None,
                         child_image_url: "/assets/images/slider.jpg".to_string(),
                         child_image_alt: "Image alt text".to_string(),
+                        media: crate::model::Media::None,
                     }],
                 }));
 
@@ -304,6 +333,8 @@ mod tests {
                     parent_type: crate::model::AccordionType::Default,
                     parent_class: crate::model::AccordionClass::Primary,
                     sal: crate::model::SalAnimation::Fade,
+                    sal_duration: None,
+                    sal_delay: None,
                     parent_group_name: "group1".to_string(),
                     items: vec![
                         crate::model::AccordionItem {
@@ -328,6 +359,8 @@ mod tests {
                     parent_type: crate::model::AlternatingType::Default,
                     parent_class: "-default".to_string(),
                     sal: crate::model::SalAnimation::Fade,
+                    sal_duration: None,
+                    sal_delay: None,
                     items: vec![
                         crate::model::AlternatingItem {
                             child_image_url: "/assets/images/a1.jpg".to_string(),
@@ -335,6 +368,8 @@ mod tests {
                             child_title: "Alt 1".to_string(),
                             child_subtitle: String::new(),
                             child_copy: "One".to_string(),
+                            links: Vec::new(),
+                            media: crate::model::Media::None,
                         },
                         crate::model::AlternatingItem {
                             child_image_url: "/assets/images/a2.jpg".to_string(),
@@ -342,6 +377,8 @@ mod tests {
                             child_title: "Alt 2".to_string(),
                             child_subtitle: String::new(),
                             child_copy: "Two".to_string(),
+                            links: Vec::new(),
+                            media: crate::model::Media::None,
                         },
                     ],
                 }));

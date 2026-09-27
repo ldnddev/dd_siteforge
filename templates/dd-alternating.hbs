@@ -3,12 +3,10 @@
     {{#each items}}
     <div class="dd-alternating__item dd-u-1-1">
       <div class="dd-alternating__content dd-g">
-        <div class="dd-alternating__image dd-u-1-1 dd-u-sm-1-1 dd-u-md-1-1 dd-u-lg-12-24" data-sal="{{../sal}}"{{#if sal_delay}} data-sal-delay="{{sal_delay}}"{{/if}}>
-          <picture>
-            <img src="{{child_image_url}}" class="dd-img" alt="{{child_image_alt}}" />
-          </picture>
+        <div class="dd-alternating__image dd-u-1-1 dd-u-sm-1-1 dd-u-md-1-1 dd-u-lg-12-24"{{{sal_attr}}}>
+          {{> _media media}}
         </div>
-        <div class="dd-alternating__copy l-box dd-u-1-1 dd-u-sm-1-1 dd-u-md-1-1 dd-u-lg-12-24" data-sal="{{../sal}}"{{#if sal_delay}} data-sal-delay="{{sal_delay}}"{{/if}}>
+        <div class="dd-alternating__copy l-box dd-u-1-1 dd-u-sm-1-1 dd-u-md-1-1 dd-u-lg-12-24"{{{sal_attr}}}>
           <div class="dd-alternating__title">
             <h2>{{child_title}}</h2>
           </div>
@@ -19,6 +17,15 @@
           {{/if}}
           <div class="dd-alternating__body">
             {{{child_copy_html}}}
+            {{#if has_links}}
+            <div class="dd-alternating__links dd-g">
+              {{#each links}}
+              <div class="dd-alternating__link">
+                <a href="{{url}}" target="{{target}}" class="dd-button {{style}}">{{label}}</a>
+              </div>
+              {{/each}}
+            </div>
+            {{/if}}
           </div>
         </div>
       </div>

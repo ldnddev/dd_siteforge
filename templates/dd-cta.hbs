@@ -4,7 +4,7 @@
       <img src="{{parent_image_url}}" class="dd-img" alt="{{parent_image_alt}}" />
     </picture>
   </div>
-  <div class="dd-cta__content dd-g" data-sal="{{sal}}">
+  <div class="dd-cta__content dd-g"{{{sal_attr}}}>
     <div class="dd-cta__copy dd-u-1-1 dd-u-md-12-24">
       <div class="dd-cta__title">
         <h2>{{parent_title}}</h2>
@@ -13,11 +13,13 @@
         <strong>{{parent_subtitle}}</strong>
       </div>
       {{{parent_copy_html}}}
-      {{#if has_link}}
+      {{#if has_links}}
       <div class="dd-cta__links dd-g -x-center">
+        {{#each links}}
         <div class="dd-cta__link">
-          <a href="{{parent_link_url}}" class="dd-button -primary" target="{{parent_link_target}}">{{parent_link_label}}</a>
+          <a href="{{url}}" class="dd-button {{style}}" target="{{target}}">{{label}}</a>
         </div>
+        {{/each}}
       </div>
       {{/if}}
     </div>

@@ -24,14 +24,14 @@ pub use layout::*;
 
 /// Static description of an editable component's fields. One instance per
 /// component type, stored as a `static` item and referenced by the editor.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct EditForm {
     pub title: &'static str,
     pub fields: &'static [FormField],
 }
 
 /// One editable field inside an `EditForm`.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct FormField {
     pub id: &'static str,
     pub label: &'static str,
@@ -43,7 +43,7 @@ pub struct FormField {
 
 /// Shape of a field. The editor renders differently for each variant and
 /// the save dispatch decodes values back into typed model fields.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum FieldKind {
     /// Single-line text input.
     Text { default: &'static str },
@@ -73,6 +73,9 @@ pub enum FieldKind {
     SubForm {
         template: &'static EditForm,
         min_items: usize,
+        /// `None` means no cap. Hero links use `Some(2)`; CTA / alternating /
+        /// slider use `Some(4)`.
+        max_items: Option<usize>,
         summary_field_id: &'static str,
     },
 }
@@ -80,9 +83,13 @@ pub enum FieldKind {
 /// Predicate that gates whether a field is visible. The editor skips hidden
 /// fields during Tab traversal and the renderer draws them dimmed or not at
 /// all.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum FieldPredicate {
     FieldEquals {
+        other_id: &'static str,
+        value: &'static str,
+    },
+    FieldNotEquals {
         other_id: &'static str,
         value: &'static str,
     },
@@ -174,6 +181,9 @@ impl EditFormState {
         match &field.visible_when {
             None => true,
             Some(FieldPredicate::FieldEquals { other_id, value }) => self.get(other_id) == *value,
+            Some(FieldPredicate::FieldNotEquals { other_id, value }) => {
+                self.get(other_id) != *value
+            }
         }
     }
 
@@ -255,6 +265,7 @@ impl EditFormState {
 
 // Shared option lists reused by several forms.
 pub(super) const SAL_OPTIONS: &[&str] = &[
+    "no-animation",
     "fade",
     "slide-up",
     "slide-down",
@@ -268,9 +279,171 @@ pub(super) const SAL_OPTIONS: &[&str] = &[
     "flip-right",
 ];
 
+/// CSS-valid `data-sal-duration` steps (200–2000 ms).
+pub(super) const SAL_DURATION_OPTIONS: &[&str] = &[
+    "200", "250", "300", "350", "400", "450", "500", "550", "600", "650", "700", "750", "800",
+    "850", "900", "950", "1000", "1050", "1100", "1150", "1200", "1250", "1300", "1350", "1400",
+    "1450", "1500", "1550", "1600", "1650", "1700", "1750", "1800", "1850", "1900", "1950", "2000",
+];
+
+/// CSS-valid `data-sal-delay` steps (0–1000 ms).
+pub(super) const SAL_DELAY_OPTIONS: &[&str] = &[
+    "0", "50", "100", "150", "200", "250", "300", "350", "400", "450", "500", "550", "600", "650",
+    "700", "750", "800", "850", "900", "950", "1000",
+];
+
+/// Clone-style SAL field pack: style, duration, delay. Duration/delay hide when
+/// style is `no-animation`. Compose these three into each SAL-capable form.
+pub(super) static SAL_STYLE_FIELD: FormField = FormField {
+    id: "sal",
+    label: "Animation",
+    kind: FieldKind::Enum {
+        options: SAL_OPTIONS,
+        default: "fade",
+    },
+    required: true,
+    visible_when: None,
+};
+pub(super) static SAL_DURATION_FIELD: FormField = FormField {
+    id: "sal_duration",
+    label: "Duration (ms)",
+    kind: FieldKind::Enum {
+        options: SAL_DURATION_OPTIONS,
+        default: "400",
+    },
+    required: false,
+    visible_when: Some(FieldPredicate::FieldNotEquals {
+        other_id: "sal",
+        value: "no-animation",
+    }),
+};
+pub(super) static SAL_DELAY_FIELD: FormField = FormField {
+    id: "sal_delay",
+    label: "Delay (ms)",
+    kind: FieldKind::Enum {
+        options: SAL_DELAY_OPTIONS,
+        default: "0",
+    },
+    required: false,
+    visible_when: Some(FieldPredicate::FieldNotEquals {
+        other_id: "sal",
+        value: "no-animation",
+    }),
+};
+
 pub(super) const LINK_TARGET_OPTIONS: &[&str] = &["_self", "_blank"];
 
-pub(super) const HERO_TARGET_OPTIONS: &[&str] = &["_self", "_blank", "_parent"];
+pub(super) const BUTTON_STYLE_OPTIONS: &[&str] = &["-primary", "-secondary", "-tertiary", "-ghost"];
+
+pub(super) const MEDIA_KIND_OPTIONS: &[&str] = &["none", "image", "oembed", "local-video"];
+pub(super) const BOOL_OPTIONS: &[&str] = &["false", "true"];
+
+pub(super) static MEDIA_KIND_FIELD: FormField = FormField {
+    id: "media_kind",
+    label: "Media",
+    kind: FieldKind::Enum {
+        options: MEDIA_KIND_OPTIONS,
+        default: "image",
+    },
+    required: true,
+    visible_when: None,
+};
+pub(super) static MEDIA_IMAGE_URL_FIELD: FormField = FormField {
+    id: "media_image_url",
+    label: "Image URL",
+    kind: FieldKind::Url { default: "" },
+    required: false,
+    visible_when: Some(FieldPredicate::FieldEquals {
+        other_id: "media_kind",
+        value: "image",
+    }),
+};
+pub(super) static MEDIA_IMAGE_ALT_FIELD: FormField = FormField {
+    id: "media_image_alt",
+    label: "Image Alt",
+    kind: FieldKind::Text { default: "" },
+    required: false,
+    visible_when: Some(FieldPredicate::FieldEquals {
+        other_id: "media_kind",
+        value: "image",
+    }),
+};
+pub(super) static MEDIA_OEMBED_URL_FIELD: FormField = FormField {
+    id: "media_oembed_url",
+    label: "YouTube or Vimeo URL",
+    kind: FieldKind::Url { default: "" },
+    required: false,
+    visible_when: Some(FieldPredicate::FieldEquals {
+        other_id: "media_kind",
+        value: "oembed",
+    }),
+};
+pub(super) static MEDIA_LG_MP4_FIELD: FormField = FormField {
+    id: "media_lg_mp4",
+    label: "Large MP4",
+    kind: FieldKind::Url { default: "" },
+    required: false,
+    visible_when: Some(FieldPredicate::FieldEquals {
+        other_id: "media_kind",
+        value: "local-video",
+    }),
+};
+pub(super) static MEDIA_SM_MP4_FIELD: FormField = FormField {
+    id: "media_sm_mp4",
+    label: "Small MP4 (optional)",
+    kind: FieldKind::Url { default: "" },
+    required: false,
+    visible_when: Some(FieldPredicate::FieldEquals {
+        other_id: "media_kind",
+        value: "local-video",
+    }),
+};
+pub(super) static MEDIA_POSTER_FIELD: FormField = FormField {
+    id: "media_poster",
+    label: "Poster image",
+    kind: FieldKind::Url { default: "" },
+    required: false,
+    visible_when: Some(FieldPredicate::FieldEquals {
+        other_id: "media_kind",
+        value: "local-video",
+    }),
+};
+pub(super) static MEDIA_NAME_FIELD: FormField = FormField {
+    id: "media_name",
+    label: "Accessible name",
+    kind: FieldKind::Text { default: "" },
+    required: false,
+    visible_when: Some(FieldPredicate::FieldEquals {
+        other_id: "media_kind",
+        value: "local-video",
+    }),
+};
+pub(super) static MEDIA_LOOP_FIELD: FormField = FormField {
+    id: "media_loop",
+    label: "Loop",
+    kind: FieldKind::Enum {
+        options: BOOL_OPTIONS,
+        default: "false",
+    },
+    required: false,
+    visible_when: Some(FieldPredicate::FieldEquals {
+        other_id: "media_kind",
+        value: "local-video",
+    }),
+};
+pub(super) static MEDIA_AUTOPLAY_FIELD: FormField = FormField {
+    id: "media_autoplay",
+    label: "Autoplay",
+    kind: FieldKind::Enum {
+        options: BOOL_OPTIONS,
+        default: "false",
+    },
+    required: false,
+    visible_when: Some(FieldPredicate::FieldEquals {
+        other_id: "media_kind",
+        value: "local-video",
+    }),
+};
 
 pub(super) const ROBOTS_OPTIONS: &[&str] = &[
     "index, follow",
@@ -319,3 +492,76 @@ pub(super) const SECTION_CLASS_OPTIONS: &[&str] = &[
 ];
 
 pub(super) const ITEM_BOX_CLASS_OPTIONS: &[&str] = &["l-box", "ll-box"];
+
+pub(super) const SECTION_BG_OPTIONS: &[&str] = &["none", "-bg-muted"];
+pub(super) const SECTION_PADDING_OPTIONS: &[&str] = &["default", "-no-padding"];
+
+pub(super) const HERO_OVERLAY_OPTIONS: &[&str] = &["none", "-overlay-light", "-overlay-dark"];
+pub(super) const HERO_COPY_POSITION_OPTIONS: &[&str] = &["-left", "-center", "-right"];
+
+pub(super) const SPACER_SIZE_OPTIONS: &[&str] = &["-sm", "-md", "-lg", "-xl", "-xxl", "-xxxl"];
+pub(super) const TABS_ORIENTATION_OPTIONS: &[&str] = &["-horizontal", "-vertical"];
+pub(super) const HEADING_LEVEL_OPTIONS: &[&str] = &["2", "3", "4", "5", "6"];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sal_duration_and_delay_hide_when_no_animation() {
+        let mut state = EditFormState::new(&IMAGE_FORM);
+        let visible = |s: &EditFormState, id: &str| {
+            s.form
+                .fields
+                .iter()
+                .find(|f| f.id == id)
+                .map(|f| s.field_visible(f))
+                .unwrap_or(false)
+        };
+        assert!(visible(&state, "sal"));
+        assert!(visible(&state, "sal_duration"));
+        assert!(visible(&state, "sal_delay"));
+        state.set("sal", "no-animation");
+        assert!(visible(&state, "sal"));
+        assert!(!visible(&state, "sal_duration"));
+        assert!(!visible(&state, "sal_delay"));
+    }
+
+    #[test]
+    fn media_fields_follow_kind() {
+        let mut state = EditFormState::new(&BANNER_FORM);
+        let visible = |s: &EditFormState, id: &str| {
+            s.form
+                .fields
+                .iter()
+                .find(|f| f.id == id)
+                .map(|f| s.field_visible(f))
+                .unwrap_or(false)
+        };
+        assert!(visible(&state, "media_kind"));
+        assert!(visible(&state, "media_image_url"));
+        assert!(!visible(&state, "media_oembed_url"));
+        assert!(!visible(&state, "media_lg_mp4"));
+        state.set("media_kind", "oembed");
+        assert!(!visible(&state, "media_image_url"));
+        assert!(visible(&state, "media_oembed_url"));
+        state.set("media_kind", "local-video");
+        assert!(visible(&state, "media_lg_mp4"));
+        assert!(visible(&state, "media_name"));
+        assert!(!visible(&state, "media_image_url"));
+        state.set("media_kind", "none");
+        assert!(!visible(&state, "media_image_url"));
+        assert!(!visible(&state, "media_oembed_url"));
+        assert!(!visible(&state, "media_lg_mp4"));
+    }
+
+    #[test]
+    fn hero_form_visual_fields_follow_links() {
+        let ids: Vec<&str> = HERO_FORM.fields.iter().map(|f| f.id).collect();
+        let links = ids.iter().position(|id| *id == "links").expect("links");
+        assert_eq!(
+            &ids[links + 1..],
+            &["overlay", "copy_position", "id", "aria_label"]
+        );
+    }
+}

@@ -20,6 +20,12 @@
   &.-no-padding {
     padding: 0;
   }
+  &.-bg-muted {
+    background-color: variables.$c_ui_neutral_200;
+    @include mixins.pref_dark {
+      background-color: variables.$c_ui_neutral_200--dark;
+    }
+  }
   &.-full-full {
     max-width: 100%;
     & .dd-section__content {

@@ -22,6 +22,8 @@ impl App {
                 self.add_selected_milestones_item()
             }
             Some(crate::model::SectionComponent::Slider(_)) => self.add_selected_slider_item(),
+            Some(crate::model::SectionComponent::Tabs(_)) => self.add_selected_tabs_item(),
+            Some(crate::model::SectionComponent::Timeline(_)) => self.add_selected_timeline_item(),
             Some(_) => {
                 self.push_toast(
                     ToastLevel::Warning,
@@ -54,6 +56,10 @@ impl App {
                 self.remove_selected_milestones_item()
             }
             Some(crate::model::SectionComponent::Slider(_)) => self.remove_selected_slider_item(),
+            Some(crate::model::SectionComponent::Tabs(_)) => self.remove_selected_tabs_item(),
+            Some(crate::model::SectionComponent::Timeline(_)) => {
+                self.remove_selected_timeline_item()
+            }
             Some(_) => {
                 self.push_toast(
                     ToastLevel::Warning,
@@ -224,6 +230,8 @@ impl App {
                                 child_title: format!("Alternating Item {}", next_num),
                                 child_subtitle: "Subtitle".to_string(),
                                 child_copy: "Alternating content".to_string(),
+                                links: Vec::new(),
+                                media: crate::model::Media::None,
                             },
                         );
                         (
@@ -353,6 +361,7 @@ impl App {
                                 child_link_url: Some("/front".to_string()),
                                 child_link_target: Some(crate::model::CardLinkTarget::SelfTarget),
                                 child_link_label: Some("Learn More".to_string()),
+                                child_link_style: crate::model::ButtonStyle::Primary,
                             },
                         );
                         (
@@ -611,6 +620,7 @@ impl App {
                                 child_link_url: None,
                                 child_link_target: Some(crate::model::CardLinkTarget::SelfTarget),
                                 child_link_label: None,
+                                child_link_style: crate::model::ButtonStyle::Primary,
                             },
                         );
                         (
@@ -737,12 +747,19 @@ impl App {
                             crate::model::SliderItem {
                                 child_title: format!("Title {}", next_num),
                                 child_copy: "Copy".to_string(),
-                                child_link_url: Some("/path".to_string()),
-                                child_link_target: Some(crate::model::CardLinkTarget::SelfTarget),
-                                child_link_label: Some("Learn More".to_string()),
+                                links: vec![crate::model::DdLink {
+                                    url: "/path".to_string(),
+                                    label: "Learn More".to_string(),
+                                    target: crate::model::CardLinkTarget::SelfTarget,
+                                    style: crate::model::ButtonStyle::Primary,
+                                }],
+                                child_link_url: None,
+                                child_link_target: None,
+                                child_link_label: None,
                                 child_image_url: "https://dummyimage.com/720x720/000/fff"
                                     .to_string(),
                                 child_image_alt: "Image alt text".to_string(),
+                                media: crate::model::Media::None,
                             },
                         );
                         (
@@ -821,6 +838,255 @@ impl App {
         if let Some(item_i) = result.0 {
             self.selected_nested_item = item_i;
             self.set_slider_items_expanded(ni, selected_column, selected_component, true);
+            self.sync_tree_row_with_selection();
+        }
+        self.push_toast(ToastLevel::Info, result.1);
+    }
+
+    pub(in crate::tui) fn add_selected_tabs_item(&mut self) {
+        let rows = self.build_page_tree_rows();
+        if rows.is_empty() {
+            self.push_toast(ToastLevel::Warning, "No selected section.");
+            return;
+        }
+        let row = rows[self.selected_tree_row.min(rows.len() - 1)];
+        let selected = self.selected_node;
+        let selected_column = self.selected_column;
+        let selected_component = self.selected_component;
+        let preferred_insert_after = match row.kind {
+            TreeRowKind::TabsItem { item_idx, .. } => Some(item_idx),
+            _ => None,
+        };
+        let Some(page) = self.current_page_mut() else {
+            return;
+        };
+        if page.nodes.is_empty() {
+            self.push_toast(ToastLevel::Warning, "No selected section.");
+            return;
+        }
+        let ni = selected.min(page.nodes.len() - 1);
+        let result = match &mut page.nodes[ni] {
+            PageNode::Section(section) => {
+                normalize_section_columns(section);
+                let col_i = selected_column.min(section.columns.len().saturating_sub(1));
+                let components = &mut section.columns[col_i].components;
+                if let Some(ci) = component_index(components.len(), selected_component) {
+                    if let crate::model::SectionComponent::Tabs(tabs) = &mut components[ci] {
+                        let insert_idx = preferred_insert_after
+                            .map(|i| (i + 1).min(tabs.items.len()))
+                            .unwrap_or(tabs.items.len());
+                        let next_num = tabs.items.len() + 1;
+                        tabs.items.insert(
+                            insert_idx,
+                            crate::model::TabsItem {
+                                child_title: format!("Tab {}", next_num),
+                                child_copy: "Panel copy".to_string(),
+                            },
+                        );
+                        (
+                            Some(insert_idx),
+                            format!("Added dd-tabs item {}.", insert_idx + 1),
+                        )
+                    } else {
+                        (None, "Selected component is not dd-tabs.".to_string())
+                    }
+                } else {
+                    (None, "Section has no components.".to_string())
+                }
+            }
+            _ => (None, "Selected node is not a section.".to_string()),
+        };
+        if let Some(item_i) = result.0 {
+            self.selected_nested_item = item_i;
+            self.set_tabs_items_expanded(ni, selected_column, selected_component, true);
+            self.sync_tree_row_with_selection();
+        }
+        self.push_toast(ToastLevel::Info, result.1);
+    }
+
+    pub(in crate::tui) fn remove_selected_tabs_item(&mut self) {
+        let rows = self.build_page_tree_rows();
+        if rows.is_empty() {
+            self.push_toast(ToastLevel::Warning, "No selected section.");
+            return;
+        }
+        let row = rows[self.selected_tree_row.min(rows.len() - 1)];
+        let selected = self.selected_node;
+        let selected_column = self.selected_column;
+        let selected_component = self.selected_component;
+        let selected_nested_item = self.selected_nested_item;
+        let preferred_remove = match row.kind {
+            TreeRowKind::TabsItem { item_idx, .. } => Some(item_idx),
+            _ => None,
+        };
+        let Some(page) = self.current_page_mut() else {
+            return;
+        };
+        if page.nodes.is_empty() {
+            self.push_toast(ToastLevel::Warning, "No selected section.");
+            return;
+        }
+        let ni = selected.min(page.nodes.len() - 1);
+        let result = match &mut page.nodes[ni] {
+            PageNode::Section(section) => {
+                normalize_section_columns(section);
+                let col_i = selected_column.min(section.columns.len().saturating_sub(1));
+                let components = &mut section.columns[col_i].components;
+                if let Some(ci) = component_index(components.len(), selected_component) {
+                    if let crate::model::SectionComponent::Tabs(tabs) = &mut components[ci] {
+                        if tabs.items.len() <= 1 {
+                            (None, "dd-tabs must keep at least one item.".to_string())
+                        } else {
+                            let remove_i = preferred_remove.unwrap_or_else(|| {
+                                selected_nested_item.min(tabs.items.len().saturating_sub(1))
+                            });
+                            tabs.items.remove(remove_i);
+                            let next_i = remove_i.min(tabs.items.len().saturating_sub(1));
+                            (
+                                Some(next_i),
+                                format!("Removed dd-tabs item {}.", remove_i + 1),
+                            )
+                        }
+                    } else {
+                        (None, "Selected component is not dd-tabs.".to_string())
+                    }
+                } else {
+                    (None, "Section has no components.".to_string())
+                }
+            }
+            _ => (None, "Selected node is not a section.".to_string()),
+        };
+        if let Some(item_i) = result.0 {
+            self.selected_nested_item = item_i;
+            self.set_tabs_items_expanded(ni, selected_column, selected_component, true);
+            self.sync_tree_row_with_selection();
+        }
+        self.push_toast(ToastLevel::Info, result.1);
+    }
+
+    pub(in crate::tui) fn add_selected_timeline_item(&mut self) {
+        let rows = self.build_page_tree_rows();
+        if rows.is_empty() {
+            self.push_toast(ToastLevel::Warning, "No selected section.");
+            return;
+        }
+        let row = rows[self.selected_tree_row.min(rows.len() - 1)];
+        let selected = self.selected_node;
+        let selected_column = self.selected_column;
+        let selected_component = self.selected_component;
+        let preferred_insert_after = match row.kind {
+            TreeRowKind::TimelineItem { item_idx, .. } => Some(item_idx),
+            _ => None,
+        };
+        let Some(page) = self.current_page_mut() else {
+            return;
+        };
+        if page.nodes.is_empty() {
+            self.push_toast(ToastLevel::Warning, "No selected section.");
+            return;
+        }
+        let ni = selected.min(page.nodes.len() - 1);
+        let result = match &mut page.nodes[ni] {
+            PageNode::Section(section) => {
+                normalize_section_columns(section);
+                let col_i = selected_column.min(section.columns.len().saturating_sub(1));
+                let components = &mut section.columns[col_i].components;
+                if let Some(ci) = component_index(components.len(), selected_component) {
+                    if let crate::model::SectionComponent::Timeline(timeline) = &mut components[ci]
+                    {
+                        let insert_idx = preferred_insert_after
+                            .map(|i| (i + 1).min(timeline.items.len()))
+                            .unwrap_or(timeline.items.len());
+                        let next_num = timeline.items.len() + 1;
+                        timeline.items.insert(
+                            insert_idx,
+                            crate::model::TimelineItem {
+                                child_year: format!("{}", 2020 + next_num),
+                                child_datetime: None,
+                                child_title: format!("Title {}", next_num),
+                                heading_level: 3,
+                                child_copy: "Copy".to_string(),
+                                child_image_url: None,
+                                child_image_alt: None,
+                            },
+                        );
+                        (
+                            Some(insert_idx),
+                            format!("Added dd-timeline item {}.", insert_idx + 1),
+                        )
+                    } else {
+                        (None, "Selected component is not dd-timeline.".to_string())
+                    }
+                } else {
+                    (None, "Section has no components.".to_string())
+                }
+            }
+            _ => (None, "Selected node is not a section.".to_string()),
+        };
+        if let Some(item_i) = result.0 {
+            self.selected_nested_item = item_i;
+            self.set_timeline_items_expanded(ni, selected_column, selected_component, true);
+            self.sync_tree_row_with_selection();
+        }
+        self.push_toast(ToastLevel::Info, result.1);
+    }
+
+    pub(in crate::tui) fn remove_selected_timeline_item(&mut self) {
+        let rows = self.build_page_tree_rows();
+        if rows.is_empty() {
+            self.push_toast(ToastLevel::Warning, "No selected section.");
+            return;
+        }
+        let row = rows[self.selected_tree_row.min(rows.len() - 1)];
+        let selected = self.selected_node;
+        let selected_column = self.selected_column;
+        let selected_component = self.selected_component;
+        let selected_nested_item = self.selected_nested_item;
+        let preferred_remove = match row.kind {
+            TreeRowKind::TimelineItem { item_idx, .. } => Some(item_idx),
+            _ => None,
+        };
+        let Some(page) = self.current_page_mut() else {
+            return;
+        };
+        if page.nodes.is_empty() {
+            self.push_toast(ToastLevel::Warning, "No selected section.");
+            return;
+        }
+        let ni = selected.min(page.nodes.len() - 1);
+        let result = match &mut page.nodes[ni] {
+            PageNode::Section(section) => {
+                normalize_section_columns(section);
+                let col_i = selected_column.min(section.columns.len().saturating_sub(1));
+                let components = &mut section.columns[col_i].components;
+                if let Some(ci) = component_index(components.len(), selected_component) {
+                    if let crate::model::SectionComponent::Timeline(timeline) = &mut components[ci]
+                    {
+                        if timeline.items.len() <= 1 {
+                            (None, "dd-timeline must keep at least one item.".to_string())
+                        } else {
+                            let remove_i = preferred_remove.unwrap_or_else(|| {
+                                selected_nested_item.min(timeline.items.len().saturating_sub(1))
+                            });
+                            timeline.items.remove(remove_i);
+                            let next_i = remove_i.min(timeline.items.len().saturating_sub(1));
+                            (
+                                Some(next_i),
+                                format!("Removed dd-timeline item {}.", remove_i + 1),
+                            )
+                        }
+                    } else {
+                        (None, "Selected component is not dd-timeline.".to_string())
+                    }
+                } else {
+                    (None, "Section has no components.".to_string())
+                }
+            }
+            _ => (None, "Selected node is not a section.".to_string()),
+        };
+        if let Some(item_i) = result.0 {
+            self.selected_nested_item = item_i;
+            self.set_timeline_items_expanded(ni, selected_column, selected_component, true);
             self.sync_tree_row_with_selection();
         }
         self.push_toast(ToastLevel::Info, result.1);

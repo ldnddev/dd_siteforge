@@ -14,6 +14,7 @@ use serde_json::Value;
 pub const BUNDLED: &[(&str, &str)] = &[
     ("_page", include_str!("../templates/_page.hbs")),
     ("_head", include_str!("../templates/_head.hbs")),
+    ("_media", include_str!("../templates/_media.hbs")),
     ("dd-header", include_str!("../templates/dd-header.hbs")),
     ("dd-footer", include_str!("../templates/dd-footer.hbs")),
     ("dd-hero", include_str!("../templates/dd-hero.hbs")),
@@ -69,6 +70,9 @@ pub const BUNDLED: &[(&str, &str)] = &[
         "dd-header-menu",
         include_str!("../templates/dd-header-menu.hbs"),
     ),
+    ("dd-spacer", include_str!("../templates/dd-spacer.hbs")),
+    ("dd-tabs", include_str!("../templates/dd-tabs.hbs")),
+    ("dd-timeline", include_str!("../templates/dd-timeline.hbs")),
 ];
 
 pub fn bundled(name: &str) -> Option<&'static str> {

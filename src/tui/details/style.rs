@@ -323,6 +323,18 @@ impl App {
                 column_idx,
                 component_idx,
                 ..
+            }
+            | TreeRowKind::TabsItem {
+                node_idx,
+                column_idx,
+                component_idx,
+                ..
+            }
+            | TreeRowKind::TimelineItem {
+                node_idx,
+                column_idx,
+                component_idx,
+                ..
             } => BlueprintFocus::Page {
                 node: node_idx,
                 depth: FocusDepth::Component {

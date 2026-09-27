@@ -19,6 +19,9 @@ pub(super) enum ComponentKind {
     Navigation,
     HeaderSearch,
     HeaderMenu,
+    Spacer,
+    Tabs,
+    Timeline,
 }
 
 impl ComponentKind {
@@ -42,6 +45,9 @@ impl ComponentKind {
             Self::Navigation,
             Self::HeaderSearch,
             Self::HeaderMenu,
+            Self::Spacer,
+            Self::Tabs,
+            Self::Timeline,
         ]
     }
 
@@ -65,6 +71,9 @@ impl ComponentKind {
             ComponentKind::Navigation => "dd-navigation",
             ComponentKind::HeaderSearch => "dd-header-search",
             ComponentKind::HeaderMenu => "dd-header-menu",
+            ComponentKind::Spacer => "dd-spacer",
+            ComponentKind::Tabs => "dd-tabs",
+            ComponentKind::Timeline => "dd-timeline",
         }
     }
 
@@ -78,24 +87,37 @@ impl ComponentKind {
                 parent_image_url: "https://dummyimage.com/1920x1080/000000/fff".to_string(),
                 parent_image_alt: "Image alt".to_string(),
                 sal: crate::model::SalAnimation::Fade,
+                sal_duration: None,
+                sal_delay: None,
                 parent_title: "Title".to_string(),
                 parent_subtitle: "Subtitle".to_string(),
                 parent_copy: "Copy".to_string(),
-                parent_link_url: Some("/path".to_string()),
-                parent_link_target: Some(crate::model::CardLinkTarget::SelfTarget),
-                parent_link_label: Some("Learn More".to_string()),
+                links: vec![crate::model::DdLink {
+                    url: "/path".to_string(),
+                    label: "Learn More".to_string(),
+                    target: crate::model::CardLinkTarget::SelfTarget,
+                    style: crate::model::ButtonStyle::Primary,
+                }],
+                parent_link_url: None,
+                parent_link_target: None,
+                parent_link_label: None,
             }),
             ComponentKind::Banner => {
                 crate::model::SectionComponent::Banner(crate::model::DdBanner {
                     parent_class: crate::model::BannerClass::BgCenterCenter,
                     sal: crate::model::SalAnimation::Fade,
+                    sal_duration: None,
+                    sal_delay: None,
                     parent_image_url: "https://dummyimage.com/1920x1080/000/fff".to_string(),
                     parent_image_alt: "Banner alt text".to_string(),
+                    media: crate::model::Media::None,
                 })
             }
             ComponentKind::Blockquote => {
                 crate::model::SectionComponent::Blockquote(crate::model::DdBlockquote {
                     sal: crate::model::SalAnimation::Fade,
+                    sal_duration: None,
+                    sal_delay: None,
                     parent_image_url: "https://dummyimage.com/512x512/000/fff".to_string(),
                     parent_image_alt: "blockquote Persons Name".to_string(),
                     parent_name: "blockquote Persons Name".to_string(),
@@ -108,6 +130,8 @@ impl ComponentKind {
                     parent_type: crate::model::AccordionType::Default,
                     parent_class: crate::model::AccordionClass::Primary,
                     sal: crate::model::SalAnimation::Fade,
+                    sal_duration: None,
+                    sal_delay: None,
                     parent_group_name: "group1".to_string(),
                     items: vec![crate::model::AccordionItem {
                         child_title: "Accordion Item".to_string(),
@@ -121,18 +145,24 @@ impl ComponentKind {
                     parent_type: crate::model::AlternatingType::Default,
                     parent_class: "-default".to_string(),
                     sal: crate::model::SalAnimation::Fade,
+                    sal_duration: None,
+                    sal_delay: None,
                     items: vec![crate::model::AlternatingItem {
                         child_image_url: "https://dummyimage.com/600x400/000/fff".to_string(),
                         child_image_alt: "Alternating image".to_string(),
                         child_title: "Alternating Item".to_string(),
                         child_subtitle: "Subtitle".to_string(),
                         child_copy: "Alternating content".to_string(),
+                        links: Vec::new(),
+                        media: crate::model::Media::None,
                     }],
                 })
             }
             ComponentKind::Card => crate::model::SectionComponent::Card(crate::model::DdCard {
                 parent_type: crate::model::CardType::Default,
                 sal: crate::model::SalAnimation::Fade,
+                sal_duration: None,
+                sal_delay: None,
                 parent_width: "dd-u-1-1 dd-u-md-12-24 dd-u-lg-8-24".to_string(),
                 items: vec![crate::model::CardItem {
                     child_image_url: "https://dummyimage.com/720x720/000/fff".to_string(),
@@ -143,12 +173,15 @@ impl ComponentKind {
                     child_link_url: Some("/front".to_string()),
                     child_link_target: Some(crate::model::CardLinkTarget::SelfTarget),
                     child_link_label: Some("Learn More".to_string()),
+                    child_link_style: crate::model::ButtonStyle::Primary,
                 }],
             }),
             ComponentKind::Filmstrip => {
                 crate::model::SectionComponent::Filmstrip(crate::model::DdFilmstrip {
                     parent_type: crate::model::FilmstripType::Default,
                     sal: crate::model::SalAnimation::Fade,
+                    sal_duration: None,
+                    sal_delay: None,
                     items: vec![crate::model::FilmstripItem {
                         child_image_url: "https://dummyimage.com/256x256/000/fff".to_string(),
                         child_image_alt: "Image alt text".to_string(),
@@ -159,6 +192,8 @@ impl ComponentKind {
             ComponentKind::Milestones => {
                 crate::model::SectionComponent::Milestones(crate::model::DdMilestones {
                     sal: crate::model::SalAnimation::Fade,
+                    sal_duration: None,
+                    sal_delay: None,
                     parent_width: "dd-u-1-1 dd-u-md-12-24".to_string(),
                     items: vec![crate::model::MilestonesItem {
                         child_percentage: "70".to_string(),
@@ -168,6 +203,7 @@ impl ComponentKind {
                         child_link_url: None,
                         child_link_target: Some(crate::model::CardLinkTarget::SelfTarget),
                         child_link_label: None,
+                        child_link_style: crate::model::ButtonStyle::Primary,
                     }],
                 })
             }
@@ -181,11 +217,18 @@ impl ComponentKind {
                     items: vec![crate::model::SliderItem {
                         child_title: "Title".to_string(),
                         child_copy: "Copy".to_string(),
-                        child_link_url: Some("/path".to_string()),
-                        child_link_target: Some(crate::model::CardLinkTarget::SelfTarget),
-                        child_link_label: Some("Learn More".to_string()),
+                        links: vec![crate::model::DdLink {
+                            url: "/path".to_string(),
+                            label: "Learn More".to_string(),
+                            target: crate::model::CardLinkTarget::SelfTarget,
+                            style: crate::model::ButtonStyle::Primary,
+                        }],
+                        child_link_url: None,
+                        child_link_target: None,
+                        child_link_label: None,
                         child_image_url: "https://dummyimage.com/720x720/000/fff".to_string(),
                         child_image_alt: "Image alt text".to_string(),
+                        media: crate::model::Media::None,
                     }],
                 })
             }
@@ -193,11 +236,15 @@ impl ComponentKind {
                 parent_type: crate::model::AlertType::Default,
                 parent_class: crate::model::AlertClass::Default,
                 sal: crate::model::SalAnimation::Fade,
+                sal_duration: None,
+                sal_delay: None,
                 parent_title: Some("Alert Title".to_string()),
                 parent_copy: "Alert content".to_string(),
             }),
             ComponentKind::Image => crate::model::SectionComponent::Image(crate::model::DdImage {
                 sal: crate::model::SalAnimation::Fade,
+                sal_duration: None,
+                sal_delay: None,
                 parent_image_url: "https://dummyimage.com/1200x600/000/fff".to_string(),
                 parent_image_url_dark: None,
                 parent_image_alt: "Image alt text".to_string(),
@@ -208,6 +255,8 @@ impl ComponentKind {
                 crate::model::SectionComponent::RichText(crate::model::DdRichText {
                     parent_class: None,
                     sal: crate::model::SalAnimation::Fade,
+                    sal_duration: None,
+                    sal_delay: None,
                     parent_copy: "Copy".to_string(),
                 })
             }
@@ -216,6 +265,8 @@ impl ComponentKind {
                     parent_type: crate::model::NavigationType::HeaderNav,
                     parent_class: crate::model::NavigationClass::MainMenu,
                     sal: crate::model::SalAnimation::Fade,
+                    sal_duration: None,
+                    sal_delay: None,
                     parent_width: "dd-u-1-1 dd-u-sm-1-1 dd-u-md-1-1 dd-u-lg-18-24".to_string(),
                     items: vec![crate::model::NavigationItem {
                         child_kind: crate::model::NavigationKind::Link,
@@ -231,12 +282,51 @@ impl ComponentKind {
                 crate::model::SectionComponent::HeaderSearch(crate::model::DdHeaderSearch {
                     parent_width: "dd-u-3-24 dd-u-sm-3-24 dd-u-md-3-24 dd-u-lg-4-24".to_string(),
                     sal: crate::model::SalAnimation::Fade,
+                    sal_duration: None,
+                    sal_delay: None,
                 })
             }
             ComponentKind::HeaderMenu => {
                 crate::model::SectionComponent::HeaderMenu(crate::model::DdHeaderMenu {
                     parent_width: "dd-u-3-24 dd-u-sm-3-24 dd-u-md-3-24".to_string(),
                     sal: crate::model::SalAnimation::Fade,
+                    sal_duration: None,
+                    sal_delay: None,
+                })
+            }
+            ComponentKind::Spacer => {
+                crate::model::SectionComponent::Spacer(crate::model::DdSpacer {
+                    size: crate::model::SpacerSize::Md,
+                    divider: false,
+                })
+            }
+            ComponentKind::Tabs => crate::model::SectionComponent::Tabs(crate::model::DdTabs {
+                parent_id: "tabs".to_string(),
+                parent_class: crate::model::TabsOrientation::Horizontal,
+                aria_label: Some("Content tabs".to_string()),
+                sal: crate::model::SalAnimation::Fade,
+                sal_duration: None,
+                sal_delay: None,
+                items: vec![crate::model::TabsItem {
+                    child_title: "Tab 1".to_string(),
+                    child_copy: "Panel copy".to_string(),
+                }],
+            }),
+            ComponentKind::Timeline => {
+                crate::model::SectionComponent::Timeline(crate::model::DdTimeline {
+                    aria_label: Some("Timeline".to_string()),
+                    sal: crate::model::SalAnimation::Fade,
+                    sal_duration: None,
+                    sal_delay: None,
+                    items: vec![crate::model::TimelineItem {
+                        child_year: "2024".to_string(),
+                        child_datetime: None,
+                        child_title: "Title".to_string(),
+                        heading_level: 3,
+                        child_copy: "Copy".to_string(),
+                        child_image_url: None,
+                        child_image_alt: None,
+                    }],
                 })
             }
         }

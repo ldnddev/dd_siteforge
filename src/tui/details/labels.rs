@@ -1,5 +1,6 @@
 //! Enum cycle helpers and component labels.
 
+#[allow(dead_code)]
 pub(in crate::tui) fn section_class_to_str(v: crate::model::SectionClass) -> &'static str {
     match v {
         crate::model::SectionClass::FullFull => "-full-full",
@@ -94,9 +95,13 @@ pub(in crate::tui) fn component_label(component: &crate::model::SectionComponent
         crate::model::SectionComponent::Navigation(_) => "dd-navigation",
         crate::model::SectionComponent::HeaderSearch(_) => "dd-header-search",
         crate::model::SectionComponent::HeaderMenu(_) => "dd-header-menu",
+        crate::model::SectionComponent::Spacer(_) => "dd-spacer",
+        crate::model::SectionComponent::Tabs(_) => "dd-tabs",
+        crate::model::SectionComponent::Timeline(_) => "dd-timeline",
     }
 }
 
+#[allow(dead_code)]
 pub(in crate::tui) fn component_blueprint_label(
     component: &crate::model::SectionComponent,
 ) -> String {
@@ -153,10 +158,37 @@ pub(in crate::tui) fn component_blueprint_label(
             "dd-blockquote | parent_name: {} | parent_role: {}",
             v.parent_name, v.parent_role
         ),
+        crate::model::SectionComponent::Spacer(v) => format!(
+            "dd-spacer | size: {}{}",
+            match v.size {
+                crate::model::SpacerSize::Sm => "-sm",
+                crate::model::SpacerSize::Md => "-md",
+                crate::model::SpacerSize::Lg => "-lg",
+                crate::model::SpacerSize::Xl => "-xl",
+                crate::model::SpacerSize::Xxl => "-xxl",
+                crate::model::SpacerSize::Xxxl => "-xxxl",
+            },
+            if v.divider { " -divider" } else { "" }
+        ),
+        crate::model::SectionComponent::Tabs(v) => format!(
+            "dd-tabs | {}",
+            v.items
+                .first()
+                .map(|i| i.child_title.as_str())
+                .unwrap_or("(none)")
+        ),
+        crate::model::SectionComponent::Timeline(v) => format!(
+            "dd-timeline | {}",
+            v.items
+                .first()
+                .map(|i| i.child_title.as_str())
+                .unwrap_or("(none)")
+        ),
         _ => component_label(component).to_string(),
     }
 }
 
+#[allow(dead_code)]
 pub(in crate::tui) fn hero_image_class_to_str(v: crate::model::HeroImageClass) -> &'static str {
     match v {
         crate::model::HeroImageClass::Contained => "-contained",
@@ -173,8 +205,10 @@ pub(in crate::tui) fn hero_image_class_to_str(v: crate::model::HeroImageClass) -
     }
 }
 
+#[allow(dead_code)]
 pub(in crate::tui) fn sal_to_str(v: crate::model::SalAnimation) -> &'static str {
     match v {
+        crate::model::SalAnimation::NoAnimation => "no-animation",
         crate::model::SalAnimation::Fade => "fade",
         crate::model::SalAnimation::SlideUp => "slide-up",
         crate::model::SalAnimation::SlideDown => "slide-down",

@@ -1,10 +1,16 @@
-<div class="dd-navigation {{parent_class}} -y-center" data-sal="{{sal}}">
+<div class="dd-navigation navigation {{parent_class}} -y-center"{{{sal_attr}}}>
   <nav itemscope itemtype="https://schema.org/SiteNavigationElement" aria-label="{{aria_label}}">
-    <button class="dd-menu__close fa-regular fa-times" type="button"><span class="visually-hidden">Menu</span></button>
+    <button class="dd-menu__close" type="button">
+      <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" class="dd-menu__toggle-close">
+        <path d="M0 0h24v24H0z" fill="none"></path>
+        <path fill="currentColor" d="m12 13.4l-4.9 4.9q-.275.275-.7.275t-.7-.275t-.275-.7t.275-.7l4.9-4.9l-4.9-4.9q-.275-.275-.275-.7t.275-.7t.7-.275t.7.275l4.9 4.9l4.9-4.9q.275-.275.7-.275t.7.275t.275.7t-.275.7L13.4 12l4.9 4.9q.275.275.275.7t-.275.7t-.7.275t-.7-.275z"></path>
+      </svg>
+      <span class="visually-hidden">Menu</span>
+    </button>
     <ul class="menu">
-{{#each items}}
-{{> dd-navigation-item}}
-{{/each}}
+      {{#each items}}
+      {{> dd-navigation-item}}
+      {{/each}}
     </ul>
   </nav>
 </div>

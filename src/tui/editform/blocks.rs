@@ -38,16 +38,9 @@ pub static CTA_FORM: EditForm = EditForm {
             required: true,
             visible_when: None,
         },
-        FormField {
-            id: "sal",
-            label: "Animation",
-            kind: FieldKind::Enum {
-                options: SAL_OPTIONS,
-                default: "fade",
-            },
-            required: true,
-            visible_when: None,
-        },
+        SAL_STYLE_FIELD,
+        SAL_DURATION_FIELD,
+        SAL_DELAY_FIELD,
         FormField {
             id: "parent_title",
             label: "Title",
@@ -73,26 +66,14 @@ pub static CTA_FORM: EditForm = EditForm {
             visible_when: None,
         },
         FormField {
-            id: "parent_link_url",
-            label: "Link URL (optional)",
-            kind: FieldKind::Url { default: "" },
-            required: false,
-            visible_when: None,
-        },
-        FormField {
-            id: "parent_link_target",
-            label: "Link Target",
-            kind: FieldKind::Enum {
-                options: &["_self", "_blank"],
-                default: "_self",
+            id: "links",
+            label: "Links",
+            kind: FieldKind::SubForm {
+                template: &LINK_ITEM_FORM,
+                min_items: 0,
+                max_items: Some(4),
+                summary_field_id: "label",
             },
-            required: false,
-            visible_when: None,
-        },
-        FormField {
-            id: "parent_link_label",
-            label: "Link Label (optional)",
-            kind: FieldKind::Text { default: "" },
             required: false,
             visible_when: None,
         },
@@ -122,46 +103,28 @@ pub static BANNER_FORM: EditForm = EditForm {
             required: true,
             visible_when: None,
         },
-        FormField {
-            id: "sal",
-            label: "Animation",
-            kind: FieldKind::Enum {
-                options: SAL_OPTIONS,
-                default: "fade",
-            },
-            required: true,
-            visible_when: None,
-        },
-        FormField {
-            id: "parent_image_url",
-            label: "Image URL",
-            kind: FieldKind::Url { default: "" },
-            required: true,
-            visible_when: None,
-        },
-        FormField {
-            id: "parent_image_alt",
-            label: "Image Alt",
-            kind: FieldKind::Text { default: "" },
-            required: true,
-            visible_when: None,
-        },
+        SAL_STYLE_FIELD,
+        SAL_DURATION_FIELD,
+        SAL_DELAY_FIELD,
+        MEDIA_KIND_FIELD,
+        MEDIA_IMAGE_URL_FIELD,
+        MEDIA_IMAGE_ALT_FIELD,
+        MEDIA_OEMBED_URL_FIELD,
+        MEDIA_LG_MP4_FIELD,
+        MEDIA_SM_MP4_FIELD,
+        MEDIA_POSTER_FIELD,
+        MEDIA_NAME_FIELD,
+        MEDIA_LOOP_FIELD,
+        MEDIA_AUTOPLAY_FIELD,
     ],
 };
 
 pub static IMAGE_FORM: EditForm = EditForm {
     title: "dd-image",
     fields: &[
-        FormField {
-            id: "sal",
-            label: "Animation",
-            kind: FieldKind::Enum {
-                options: SAL_OPTIONS,
-                default: "fade",
-            },
-            required: true,
-            visible_when: None,
-        },
+        SAL_STYLE_FIELD,
+        SAL_DURATION_FIELD,
+        SAL_DELAY_FIELD,
         FormField {
             id: "parent_image_url",
             label: "Light Mode Image",
@@ -213,16 +176,9 @@ pub static HEADER_SEARCH_FORM: EditForm = EditForm {
             required: true,
             visible_when: None,
         },
-        FormField {
-            id: "sal",
-            label: "Animation",
-            kind: FieldKind::Enum {
-                options: SAL_OPTIONS,
-                default: "fade",
-            },
-            required: true,
-            visible_when: None,
-        },
+        SAL_STYLE_FIELD,
+        SAL_DURATION_FIELD,
+        SAL_DELAY_FIELD,
     ],
 };
 
@@ -236,16 +192,9 @@ pub static HEADER_MENU_FORM: EditForm = EditForm {
             required: true,
             visible_when: None,
         },
-        FormField {
-            id: "sal",
-            label: "Animation",
-            kind: FieldKind::Enum {
-                options: SAL_OPTIONS,
-                default: "fade",
-            },
-            required: true,
-            visible_when: None,
-        },
+        SAL_STYLE_FIELD,
+        SAL_DURATION_FIELD,
+        SAL_DELAY_FIELD,
     ],
 };
 
@@ -259,16 +208,9 @@ pub static RICH_TEXT_FORM: EditForm = EditForm {
             required: false,
             visible_when: None,
         },
-        FormField {
-            id: "sal",
-            label: "Animation",
-            kind: FieldKind::Enum {
-                options: SAL_OPTIONS,
-                default: "fade",
-            },
-            required: true,
-            visible_when: None,
-        },
+        SAL_STYLE_FIELD,
+        SAL_DURATION_FIELD,
+        SAL_DELAY_FIELD,
         FormField {
             id: "parent_copy",
             label: "Copy (Markdown)",
@@ -277,6 +219,32 @@ pub static RICH_TEXT_FORM: EditForm = EditForm {
                 default: "",
             },
             required: true,
+            visible_when: None,
+        },
+    ],
+};
+
+pub static SPACER_FORM: EditForm = EditForm {
+    title: "dd-spacer",
+    fields: &[
+        FormField {
+            id: "size",
+            label: "Size",
+            kind: FieldKind::Enum {
+                options: SPACER_SIZE_OPTIONS,
+                default: "-md",
+            },
+            required: true,
+            visible_when: None,
+        },
+        FormField {
+            id: "divider",
+            label: "Divider",
+            kind: FieldKind::Enum {
+                options: BOOL_OPTIONS,
+                default: "false",
+            },
+            required: false,
             visible_when: None,
         },
     ],
@@ -305,16 +273,9 @@ pub static ALERT_FORM: EditForm = EditForm {
             required: true,
             visible_when: None,
         },
-        FormField {
-            id: "sal",
-            label: "Animation",
-            kind: FieldKind::Enum {
-                options: SAL_OPTIONS,
-                default: "fade",
-            },
-            required: true,
-            visible_when: None,
-        },
+        SAL_STYLE_FIELD,
+        SAL_DURATION_FIELD,
+        SAL_DELAY_FIELD,
         FormField {
             id: "parent_title",
             label: "Title (optional)",
@@ -361,16 +322,9 @@ pub static MODAL_FORM: EditForm = EditForm {
 pub static BLOCKQUOTE_FORM: EditForm = EditForm {
     title: "dd-blockquote",
     fields: &[
-        FormField {
-            id: "sal",
-            label: "Animation",
-            kind: FieldKind::Enum {
-                options: SAL_OPTIONS,
-                default: "fade",
-            },
-            required: true,
-            visible_when: None,
-        },
+        SAL_STYLE_FIELD,
+        SAL_DURATION_FIELD,
+        SAL_DELAY_FIELD,
         FormField {
             id: "parent_image_url",
             label: "Image URL",

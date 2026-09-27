@@ -209,6 +209,64 @@ impl App {
         }
     }
 
+    pub(in crate::tui) fn is_tabs_items_expanded(
+        &self,
+        node_idx: usize,
+        column_idx: usize,
+        component_idx: usize,
+    ) -> bool {
+        !self.expanded_tabs_items.contains(&(
+            self.selected_page,
+            node_idx,
+            column_idx,
+            component_idx,
+        ))
+    }
+
+    pub(in crate::tui) fn set_tabs_items_expanded(
+        &mut self,
+        node_idx: usize,
+        column_idx: usize,
+        component_idx: usize,
+        expanded: bool,
+    ) {
+        let key = (self.selected_page, node_idx, column_idx, component_idx);
+        if expanded {
+            self.expanded_tabs_items.remove(&key);
+        } else {
+            self.expanded_tabs_items.insert(key);
+        }
+    }
+
+    pub(in crate::tui) fn is_timeline_items_expanded(
+        &self,
+        node_idx: usize,
+        column_idx: usize,
+        component_idx: usize,
+    ) -> bool {
+        !self.expanded_timeline_items.contains(&(
+            self.selected_page,
+            node_idx,
+            column_idx,
+            component_idx,
+        ))
+    }
+
+    pub(in crate::tui) fn set_timeline_items_expanded(
+        &mut self,
+        node_idx: usize,
+        column_idx: usize,
+        component_idx: usize,
+        expanded: bool,
+    ) {
+        let key = (self.selected_page, node_idx, column_idx, component_idx);
+        if expanded {
+            self.expanded_timeline_items.remove(&key);
+        } else {
+            self.expanded_timeline_items.insert(key);
+        }
+    }
+
     pub(in crate::tui) fn toggle_selected_tree_expanded(&mut self) {
         let rows = self.build_tree_rows();
         if rows.is_empty() {
@@ -251,6 +309,18 @@ impl App {
             ..
         }
         | TreeRowKind::SliderItem {
+            node_idx,
+            column_idx,
+            component_idx,
+            ..
+        }
+        | TreeRowKind::TabsItem {
+            node_idx,
+            column_idx,
+            component_idx,
+            ..
+        }
+        | TreeRowKind::TimelineItem {
             node_idx,
             column_idx,
             component_idx,
@@ -379,6 +449,44 @@ impl App {
                 self.sync_tree_row_with_selection();
                 return;
             }
+            if matches!(
+                columns[col_i].components.get(comp_i),
+                Some(crate::model::SectionComponent::Tabs(_))
+            ) {
+                let expanded = self.is_tabs_items_expanded(node_idx, col_i, comp_i);
+                self.set_tabs_items_expanded(node_idx, col_i, comp_i, !expanded);
+                self.selected_node = node_idx;
+                self.selected_column = col_i;
+                self.selected_component = comp_i;
+                self.selected_nested_item = 0;
+                let msg = if expanded {
+                    "Collapsed tabs items.".to_string()
+                } else {
+                    "Expanded tabs items.".to_string()
+                };
+                self.push_toast(ToastLevel::Info, msg);
+                self.sync_tree_row_with_selection();
+                return;
+            }
+            if matches!(
+                columns[col_i].components.get(comp_i),
+                Some(crate::model::SectionComponent::Timeline(_))
+            ) {
+                let expanded = self.is_timeline_items_expanded(node_idx, col_i, comp_i);
+                self.set_timeline_items_expanded(node_idx, col_i, comp_i, !expanded);
+                self.selected_node = node_idx;
+                self.selected_column = col_i;
+                self.selected_component = comp_i;
+                self.selected_nested_item = 0;
+                let msg = if expanded {
+                    "Collapsed timeline items.".to_string()
+                } else {
+                    "Expanded timeline items.".to_string()
+                };
+                self.push_toast(ToastLevel::Info, msg);
+                self.sync_tree_row_with_selection();
+                return;
+            }
         }
         let node_idx = match row.kind {
             TreeRowKind::HeaderRoot { .. } => {
@@ -435,6 +543,8 @@ impl App {
             TreeRowKind::FilmstripItem { node_idx, .. } => node_idx,
             TreeRowKind::MilestonesItem { node_idx, .. } => node_idx,
             TreeRowKind::SliderItem { node_idx, .. } => node_idx,
+            TreeRowKind::TabsItem { node_idx, .. } => node_idx,
+            TreeRowKind::TimelineItem { node_idx, .. } => node_idx,
             TreeRowKind::Hero { .. } => {
                 self.push_toast(ToastLevel::Warning, "Selected row is not a section.");
                 return;

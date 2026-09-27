@@ -15,17 +15,19 @@
             </div>
             <div class="dd-slider__copy">
               {{{child_copy_html}}}
-              {{#if has_link}}
+              {{#if has_links}}
               <div class="dd-slider__links">
+                {{#each links}}
                 <div class="dd-slider__link">
-                  <a href="{{child_link_url}}" target="{{child_link_target}}" class="dd-button -primary">{{child_link_label}}</a>
+                  <a href="{{url}}" target="{{target}}" class="dd-button {{style}}">{{label}}</a>
                 </div>
+                {{/each}}
               </div>
               {{/if}}
             </div>
           </div>
           <div class="dd-slider__image dd-u-1-1 dd-u-sm-1-1 dd-u-md-1-1 dd-u-lg-12-24">
-            <img src="{{child_image_url}}" alt="{{child_image_alt}}" />
+            {{> _media media}}
           </div>
         </div>
       </div>

@@ -18,9 +18,28 @@ fields:
   - id: sal
     required: true
     type: enum
-    options: ["fade","slide-up","slide-down","slide-left","slide-right","zoom-in","zoom-out","flip-up","flip-down","flip-left","flip-right"]
+    options: ["no-animation","fade","slide-up","slide-down","slide-left","slide-right","zoom-in","zoom-out","flip-up","flip-down","flip-left","flip-right"]
     default: "fade"
     maps_to: ".dd-header__menu-icon[data-sal]"
+
+  - id: sal_duration
+    required: false
+    type: enum
+    options: [200, 250, 300, 350, 400, 450, 500, 550, 600, 650, 700, 750, 800, 850, 900, 950, 1000, 1050, 1100, 1150, 1200, 1250, 1300, 1350, 1400, 1450, 1500, 1550, 1600, 1650, 1700, 1750, 1800, 1850, 1900, 1950, 2000]
+    default: 400
+    visible_when: "sal != no-animation"
+    maps_to: "[data-sal-duration]"
+    notes: "Omitted from HTML when unset or 400 (CSS default)."
+
+  - id: sal_delay
+    required: false
+    type: enum
+    options: [0, 50, 100, 150, 200, 250, 300, 350, 400, 450, 500, 550, 600, 650, 700, 750, 800, 850, 900, 950, 1000]
+    default: 0
+    visible_when: "sal != no-animation"
+    maps_to: "[data-sal-delay]"
+    notes: "Collection items (card, alternating, milestones) add 100×index, cap 1000."
+
 
 edit_ui:
   tab_order:

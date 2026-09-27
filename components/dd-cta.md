@@ -12,9 +12,8 @@ insert:
     parent_title: "Title"
     parent_subtitle: "Subtitle"
     parent_copy: "Copy"
-    parent_link_url: "/path"
-    parent_link_target: "_self"
-    parent_link_label: "Learn More"
+    links:
+      - { url: "/path", label: "Learn More", target: "_self", style: "-primary" }
 
 fields:
   - id: parent_class
@@ -39,9 +38,28 @@ fields:
   - id: sal
     required: true
     type: enum
-    options: ["fade","slide-up","slide-down","slide-left","slide-right","zoom-in","zoom-out","flip-up","flip-down","flip-left","flip-right"]
+    options: ["no-animation","fade","slide-up","slide-down","slide-left","slide-right","zoom-in","zoom-out","flip-up","flip-down","flip-left","flip-right"]
     default: "fade"
     maps_to: ".dd-cta__content[data-sal]"
+
+  - id: sal_duration
+    required: false
+    type: enum
+    options: [200, 250, 300, 350, 400, 450, 500, 550, 600, 650, 700, 750, 800, 850, 900, 950, 1000, 1050, 1100, 1150, 1200, 1250, 1300, 1350, 1400, 1450, 1500, 1550, 1600, 1650, 1700, 1750, 1800, 1850, 1900, 1950, 2000]
+    default: 400
+    visible_when: "sal != no-animation"
+    maps_to: "[data-sal-duration]"
+    notes: "Omitted from HTML when unset or 400 (CSS default)."
+
+  - id: sal_delay
+    required: false
+    type: enum
+    options: [0, 50, 100, 150, 200, 250, 300, 350, 400, 450, 500, 550, 600, 650, 700, 750, 800, 850, 900, 950, 1000]
+    default: 0
+    visible_when: "sal != no-animation"
+    maps_to: "[data-sal-delay]"
+    notes: "Collection items (card, alternating, milestones) add 100×index, cap 1000."
+
 
   - id: parent_title
     required: true
@@ -71,22 +89,32 @@ fields:
       mouse:
         wheel: "scroll lines"
 
-  - id: parent_link_url
+  - id: links
     required: false
-    type: string
-    maps_to: ".dd-cta__link a[href]"
-
-  - id: parent_link_target
-    required: false
-    type: enum
-    options: ["_self", "_blank"]
-    default: "_self"
-    maps_to: ".dd-cta__link a[target]"
-
-  - id: parent_link_label
-    required: false
-    type: string
-    maps_to: ".dd-cta__link a"
+    type: array
+    min_items: 0
+    max_items: 4
+    item_fields:
+      - id: url
+        required: true
+        type: string
+        maps_to: ".dd-cta__link a[href]"
+      - id: label
+        required: true
+        type: string
+        maps_to: ".dd-cta__link a"
+      - id: target
+        required: false
+        type: enum
+        options: ["_self", "_blank"]
+        default: "_self"
+        maps_to: ".dd-cta__link a[target]"
+      - id: style
+        required: true
+        type: enum
+        options: ["-primary", "-secondary", "-tertiary", "-ghost"]
+        default: "-primary"
+        maps_to: ".dd-cta__link a.dd-button class token"
 
 edit_ui:
   tab_order:
@@ -97,9 +125,7 @@ edit_ui:
     - parent_title
     - parent_subtitle
     - parent_copy
-    - parent_link_url
-    - parent_link_target
-    - parent_link_label
+    - links
 
   enter_behavior:
     parent_row: "start component field editing"
@@ -146,7 +172,7 @@ blueprint:
       [[parent_copy_html]]
       <div class="dd-cta__links dd-g -x-center">
         <div class="dd-cta__link">
-          <a href="[parent_link_url]" class="dd-button -primary" target="[parent_link_target]">[parent_link_label]</a>
+          <a href="[url]" class="dd-button [style]" target="[target]">[label]</a>
         </div>
       </div>
     </div>
@@ -156,5 +182,5 @@ blueprint:
 
 ## Conditional Markup
 
-- render `.dd-cta__links` only when both `parent_link_url` and `parent_link_label` are non-empty
-- when `parent_link_target` is empty, default to `_self`
+- render `.dd-cta__links` only when `links` is non-empty
+- each link requires url and label; target defaults to `_self`; style defaults to `-primary`

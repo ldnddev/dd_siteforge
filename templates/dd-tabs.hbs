@@ -1,0 +1,18 @@
+<div class="dd-tabs {{parent_class}}" data-id="{{parent_id}}"{{{sal_attr}}}>
+  <div class="dd-tabs__content dd-g">
+    <ul class="dd-tabs__menu dd-g" role="tablist" aria-label="{{aria_label}}">
+      {{#each items}}
+      <li class="dd-tabs__menu-item" role="presentation">
+        <button type="button" class="dd-tabs__menu-link{{#if active}} -active{{/if}}" id="{{tab_id}}" role="tab" aria-selected="{{aria_selected}}" aria-controls="{{panel_id}}" tabindex="{{tabindex}}">{{child_title}}</button>
+      </li>
+      {{/each}}
+    </ul>
+    <div class="dd-tabs__items dd-g">
+      {{#each items}}
+      <div class="dd-tabs__item dd-u-1-1{{#if active}} -active{{/if}}" role="tabpanel" id="{{panel_id}}" aria-labelledby="{{tab_id}}" tabindex="0"{{#unless active}} hidden{{/unless}}>
+        {{{child_copy_html}}}
+      </div>
+      {{/each}}
+    </div>
+  </div>
+</div>

@@ -22,7 +22,10 @@ impl App {
                 Some(ModalResult::Continue)
             }
             KeyCode::Down if !key.modifiers.contains(KeyModifiers::CONTROL) => {
-                let entries = list_dir_entries(&state.cwd);
+                let entries: Vec<_> = list_dir_entries(&state.cwd)
+                    .into_iter()
+                    .filter(|e| state.file_kind.allows(&e.name, e.is_dir))
+                    .collect();
                 let filtered = filter_entries(&entries, &state.filter);
                 if !filtered.is_empty() {
                     state.selected = (state.selected + 1).min(filtered.len() - 1);
@@ -69,7 +72,10 @@ impl App {
             let Some(Modal::ImagePicker { state }) = self.modal.as_ref() else {
                 return;
             };
-            let entries = list_dir_entries(&state.cwd);
+            let entries: Vec<_> = list_dir_entries(&state.cwd)
+                .into_iter()
+                .filter(|e| state.file_kind.allows(&e.name, e.is_dir))
+                .collect();
             let filtered = filter_entries(&entries, &state.filter);
             let Some(entry) = filtered.get(state.selected) else {
                 return;
@@ -114,7 +120,7 @@ impl App {
                 {
                     state.set(&field_id, value.clone());
                     *cursor_pos = state.get(&field_id).len();
-                    self.push_toast(ToastLevel::Success, format!("Picked image: {}", value));
+                    self.push_toast(ToastLevel::Success, format!("Picked: {}", value));
                 } else {
                     self.push_toast(
                         ToastLevel::Warning,

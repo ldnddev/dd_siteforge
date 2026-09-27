@@ -187,6 +187,8 @@ pub(super) struct App {
     expanded_filmstrip_items: HashSet<(usize, usize, usize, usize)>,
     expanded_milestones_items: HashSet<(usize, usize, usize, usize)>,
     expanded_slider_items: HashSet<(usize, usize, usize, usize)>,
+    expanded_tabs_items: HashSet<(usize, usize, usize, usize)>,
+    expanded_timeline_items: HashSet<(usize, usize, usize, usize)>,
     header_column_expanded: bool,
 }
 
@@ -261,6 +263,8 @@ impl App {
             expanded_filmstrip_items: HashSet::new(),
             expanded_milestones_items: HashSet::new(),
             expanded_slider_items: HashSet::new(),
+            expanded_tabs_items: HashSet::new(),
+            expanded_timeline_items: HashSet::new(),
             header_column_expanded: true,
             dirty: false,
             dirty_since: None,

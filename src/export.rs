@@ -4,7 +4,7 @@ use std::path::Path;
 use anyhow::Context;
 
 use crate::model::{
-    DdRichText, DdSection, Page, PageNode, RobotsDirective, SchemaType, SectionClass,
+    DdRichText, DdSection, Page, PageNode, RobotsDirective, SalAnimation, SchemaType, SectionClass,
     SectionColumn, SectionComponent, SectionItemBoxClass, Site, absolute_url, page_file_name,
     page_href,
 };
@@ -163,7 +163,7 @@ fn write_404_if_missing(
         &r,
         &page,
         &crate::renderer::render_header(&r, &site.header)?,
-        &crate::renderer::render_footer(&r, &site.footer)?,
+        &crate::renderer::render_footer(&r, &site.footer, &site.name)?,
         site,
     )?;
     fs::write(output_dir.join(page_file_name("404")), html).context("failed to write 404.html")?;
@@ -191,12 +191,21 @@ fn not_found_page() -> Page {
             section_title: Some("Not Found".to_string()),
             section_class: Some(SectionClass::FullContained),
             item_box_class: Some(SectionItemBoxClass::LBox),
+            bg: None,
+            padding: None,
+            custom_css: None,
+            aria_label: None,
+            sal: SalAnimation::NoAnimation,
+            sal_duration: None,
+            sal_delay: None,
             columns: vec![SectionColumn {
                 id: "column-1".to_string(),
                 width_class: "dd-u-1-1".to_string(),
                 components: vec![SectionComponent::RichText(DdRichText {
                     parent_class: None,
                     sal: crate::model::SalAnimation::Fade,
+                    sal_duration: None,
+                    sal_delay: None,
                     parent_copy: "This page does not exist.".to_string(),
                 })],
             }],

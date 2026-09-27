@@ -1,0 +1,22 @@
+<div class="dd-timeline" role="region" aria-label="{{aria_label}}">
+  <div class="dd-timeline__content">
+    <ol class="dd-timeline__items dd-g">
+      {{#each items}}
+      <li class="dd-timeline__item dd-u-1-1"{{{sal_attr}}}>
+        <div class="dd-timeline__body dd-g">
+          {{#if child_image_url}}
+          <div class="dd-timeline__image l-box dd-u-1-1">
+            <img src="{{child_image_url}}" alt="{{child_image_alt}}" class="dd-img" />
+          </div>
+          {{/if}}
+          <div class="dd-timeline__text l-box dd-u-1-1">
+            <div class="dd-timeline__year"><time{{#if child_datetime}} datetime="{{child_datetime}}"{{/if}}>{{child_year}}</time></div>
+            <div class="dd-timeline__title">{{{title_html}}}</div>
+            <div class="dd-timeline__copy">{{{child_copy_html}}}</div>
+          </div>
+        </div>
+      </li>
+      {{/each}}
+    </ol>
+  </div>
+</div>

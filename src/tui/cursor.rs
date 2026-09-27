@@ -15,13 +15,14 @@ use anyhow::{Context, Result, anyhow};
 
 use crate::model::{
     AccordionClass, AccordionItem, AccordionType, AlertClass, AlertType, AlternatingItem,
-    AlternatingType, BannerClass, CardItem, CardLinkTarget, CardType, CtaClass, CtaTarget,
+    AlternatingType, BannerClass, ButtonStyle, CardItem, CardLinkTarget, CardType, CtaClass,
     DdAccordion, DdAlert, DdAlternating, DdBanner, DdBlockquote, DdCard, DdCta, DdFilmstrip,
-    DdFooter, DdHead, DdHeader, DdHeaderMenu, DdHeaderSearch, DdHero, DdImage, DdMilestones,
-    DdModal, DdNavigation, DdRichText, DdSection, DdSlider, FilmstripItem, FilmstripType,
-    HeroImageClass, MilestonesItem, NavigationClass, NavigationItem, NavigationKind,
-    NavigationType, PageNode, SalAnimation, SectionClass, SectionColumn, SectionComponent,
-    SectionItemBoxClass, Site, SliderItem,
+    DdFooter, DdHead, DdHeader, DdHeaderMenu, DdHeaderSearch, DdHero, DdImage, DdLink,
+    DdMilestones, DdModal, DdNavigation, DdRichText, DdSection, DdSlider, DdSpacer, DdTabs,
+    DdTimeline, FilmstripItem, FilmstripType, HeroCopyPosition, HeroImageClass, HeroOverlay, Media,
+    MilestonesItem, NavigationClass, NavigationItem, NavigationKind, NavigationType, PageNode,
+    SalAnimation, SectionBg, SectionClass, SectionColumn, SectionComponent, SectionItemBoxClass,
+    SectionPadding, Site, SliderItem, SpacerSize, TabsItem, TabsOrientation, TimelineItem,
 };
 use crate::tui::editform::{self, EditFormState, FieldKind};
 
@@ -271,6 +272,9 @@ pub fn apply_edit_form_to_component(
             SectionComponent::Accordion(a) => apply_accordion_values(a, state),
             SectionComponent::Alternating(a) => apply_alternating_values(a, state),
             SectionComponent::Navigation(n) => apply_navigation_values(n, state),
+            SectionComponent::Spacer(s) => apply_spacer_values(s, state),
+            SectionComponent::Tabs(t) => apply_tabs_values(t, state),
+            SectionComponent::Timeline(t) => apply_timeline_values(t, state),
         },
         CursorRef::Hero(hero) => apply_hero_values(hero, state),
         CursorRef::Section(section) => apply_section_values(section, state),
@@ -285,25 +289,17 @@ fn apply_cta_values(cta: &mut DdCta, state: &EditFormState) -> Result<()> {
         parse_enum::<CtaClass>(state.get("parent_class")).context("invalid parent_class")?;
     cta.parent_image_url = state.get("parent_image_url").trim().to_string();
     cta.parent_image_alt = state.get("parent_image_alt").trim().to_string();
-    cta.sal = parse_enum::<SalAnimation>(state.get("sal")).context("invalid sal")?;
+    let (sal, sal_duration, sal_delay) = apply_sal_fields(state)?;
+    cta.sal = sal;
+    cta.sal_duration = sal_duration;
+    cta.sal_delay = sal_delay;
     cta.parent_title = state.get("parent_title").to_string();
     cta.parent_subtitle = state.get("parent_subtitle").to_string();
     cta.parent_copy = state.get("parent_copy").to_string();
-
-    let link_url_raw = state.get("parent_link_url").trim().to_string();
-    let link_target_raw = state.get("parent_link_target").to_string();
-    let link_label_raw = state.get("parent_link_label").trim().to_string();
-    if link_url_raw.is_empty() && link_label_raw.is_empty() {
-        cta.parent_link_url = None;
-        cta.parent_link_target = None;
-        cta.parent_link_label = None;
-    } else {
-        cta.parent_link_url = Some(link_url_raw);
-        cta.parent_link_target = Some(
-            parse_enum::<CardLinkTarget>(&link_target_raw).context("invalid parent_link_target")?,
-        );
-        cta.parent_link_label = Some(link_label_raw);
-    }
+    cta.links = apply_links_subform(state, "links")?;
+    cta.parent_link_url = None;
+    cta.parent_link_target = None;
+    cta.parent_link_label = None;
     Ok(())
 }
 
@@ -328,6 +324,9 @@ pub fn component_to_form_state(component: &SectionComponent) -> Option<EditFormS
         SectionComponent::Accordion(a) => Some(accordion_to_form_state(a)),
         SectionComponent::Alternating(a) => Some(alternating_to_form_state(a)),
         SectionComponent::Navigation(n) => Some(navigation_to_form_state(n)),
+        SectionComponent::Spacer(s) => Some(spacer_to_form_state(s)),
+        SectionComponent::Tabs(t) => Some(tabs_to_form_state(t)),
+        SectionComponent::Timeline(t) => Some(timeline_to_form_state(t)),
     }
 }
 
@@ -337,24 +336,11 @@ pub fn cta_to_form_state(cta: &DdCta) -> EditFormState {
     state.set("parent_class", enum_serde_str(cta.parent_class));
     state.set("parent_image_url", cta.parent_image_url.clone());
     state.set("parent_image_alt", cta.parent_image_alt.clone());
-    state.set("sal", enum_serde_str(cta.sal));
+    set_sal_fields(&mut state, cta.sal, cta.sal_duration, cta.sal_delay);
     state.set("parent_title", cta.parent_title.clone());
     state.set("parent_subtitle", cta.parent_subtitle.clone());
     state.set("parent_copy", cta.parent_copy.clone());
-    state.set(
-        "parent_link_url",
-        cta.parent_link_url.clone().unwrap_or_default(),
-    );
-    state.set(
-        "parent_link_target",
-        cta.parent_link_target
-            .map(enum_serde_str)
-            .unwrap_or_else(|| "_self".to_string()),
-    );
-    state.set(
-        "parent_link_label",
-        cta.parent_link_label.clone().unwrap_or_default(),
-    );
+    set_links_subform(&mut state, "links", &cta.resolved_links());
     state
 }
 
@@ -363,23 +349,27 @@ pub fn cta_to_form_state(cta: &DdCta) -> EditFormState {
 pub fn banner_to_form_state(b: &DdBanner) -> EditFormState {
     let mut s = EditFormState::new(&editform::BANNER_FORM);
     s.set("parent_class", enum_serde_str(b.parent_class));
-    s.set("sal", enum_serde_str(b.sal));
-    s.set("parent_image_url", b.parent_image_url.clone());
-    s.set("parent_image_alt", b.parent_image_alt.clone());
+    set_sal_fields(&mut s, b.sal, b.sal_duration, b.sal_delay);
+    set_media_fields(&mut s, &b.resolved_media());
     s
 }
 fn apply_banner_values(b: &mut DdBanner, state: &EditFormState) -> Result<()> {
     b.parent_class =
         parse_enum::<BannerClass>(state.get("parent_class")).context("invalid parent_class")?;
-    b.sal = parse_enum::<SalAnimation>(state.get("sal")).context("invalid sal")?;
-    b.parent_image_url = state.get("parent_image_url").trim().to_string();
-    b.parent_image_alt = state.get("parent_image_alt").trim().to_string();
+    let (sal, sal_duration, sal_delay) = apply_sal_fields(state)?;
+    b.sal = sal;
+    b.sal_duration = sal_duration;
+    b.sal_delay = sal_delay;
+    b.media = apply_media_fields(state)?;
+    let (url, alt) = legacy_image_from_media(&b.media);
+    b.parent_image_url = url;
+    b.parent_image_alt = alt;
     Ok(())
 }
 
 pub fn image_to_form_state(i: &DdImage) -> EditFormState {
     let mut s = EditFormState::new(&editform::IMAGE_FORM);
-    s.set("sal", enum_serde_str(i.sal));
+    set_sal_fields(&mut s, i.sal, i.sal_duration, i.sal_delay);
     s.set("parent_image_url", i.parent_image_url.clone());
     s.set(
         "parent_image_url_dark",
@@ -399,7 +389,10 @@ pub fn image_to_form_state(i: &DdImage) -> EditFormState {
     s
 }
 fn apply_image_values(i: &mut DdImage, state: &EditFormState) -> Result<()> {
-    i.sal = parse_enum::<SalAnimation>(state.get("sal")).context("invalid sal")?;
+    let (sal, sal_duration, sal_delay) = apply_sal_fields(state)?;
+    i.sal = sal;
+    i.sal_duration = sal_duration;
+    i.sal_delay = sal_delay;
     i.parent_image_url = state.get("parent_image_url").trim().to_string();
     let dark = state.get("parent_image_url_dark").trim().to_string();
     i.parent_image_url_dark = if dark.is_empty() { None } else { Some(dark) };
@@ -421,38 +414,47 @@ fn apply_image_values(i: &mut DdImage, state: &EditFormState) -> Result<()> {
 pub fn header_search_to_form_state(h: &DdHeaderSearch) -> EditFormState {
     let mut s = EditFormState::new(&editform::HEADER_SEARCH_FORM);
     s.set("parent_width", h.parent_width.clone());
-    s.set("sal", enum_serde_str(h.sal));
+    set_sal_fields(&mut s, h.sal, h.sal_duration, h.sal_delay);
     s
 }
 fn apply_header_search_values(h: &mut DdHeaderSearch, state: &EditFormState) -> Result<()> {
     h.parent_width = state.get("parent_width").trim().to_string();
-    h.sal = parse_enum::<SalAnimation>(state.get("sal")).context("invalid sal")?;
+    let (sal, sal_duration, sal_delay) = apply_sal_fields(state)?;
+    h.sal = sal;
+    h.sal_duration = sal_duration;
+    h.sal_delay = sal_delay;
     Ok(())
 }
 
 pub fn header_menu_to_form_state(h: &DdHeaderMenu) -> EditFormState {
     let mut s = EditFormState::new(&editform::HEADER_MENU_FORM);
     s.set("parent_width", h.parent_width.clone());
-    s.set("sal", enum_serde_str(h.sal));
+    set_sal_fields(&mut s, h.sal, h.sal_duration, h.sal_delay);
     s
 }
 fn apply_header_menu_values(h: &mut DdHeaderMenu, state: &EditFormState) -> Result<()> {
     h.parent_width = state.get("parent_width").trim().to_string();
-    h.sal = parse_enum::<SalAnimation>(state.get("sal")).context("invalid sal")?;
+    let (sal, sal_duration, sal_delay) = apply_sal_fields(state)?;
+    h.sal = sal;
+    h.sal_duration = sal_duration;
+    h.sal_delay = sal_delay;
     Ok(())
 }
 
 pub fn rich_text_to_form_state(r: &DdRichText) -> EditFormState {
     let mut s = EditFormState::new(&editform::RICH_TEXT_FORM);
     s.set("parent_class", r.parent_class.clone().unwrap_or_default());
-    s.set("sal", enum_serde_str(r.sal));
+    set_sal_fields(&mut s, r.sal, r.sal_duration, r.sal_delay);
     s.set("parent_copy", r.parent_copy.clone());
     s
 }
 fn apply_rich_text_values(r: &mut DdRichText, state: &EditFormState) -> Result<()> {
     let class = state.get("parent_class").trim().to_string();
     r.parent_class = if class.is_empty() { None } else { Some(class) };
-    r.sal = parse_enum::<SalAnimation>(state.get("sal")).context("invalid sal")?;
+    let (sal, sal_duration, sal_delay) = apply_sal_fields(state)?;
+    r.sal = sal;
+    r.sal_duration = sal_duration;
+    r.sal_delay = sal_delay;
     r.parent_copy = state.get("parent_copy").to_string();
     Ok(())
 }
@@ -461,7 +463,7 @@ pub fn alert_to_form_state(a: &DdAlert) -> EditFormState {
     let mut s = EditFormState::new(&editform::ALERT_FORM);
     s.set("parent_type", enum_serde_str(a.parent_type));
     s.set("parent_class", enum_serde_str(a.parent_class));
-    s.set("sal", enum_serde_str(a.sal));
+    set_sal_fields(&mut s, a.sal, a.sal_duration, a.sal_delay);
     s.set("parent_title", a.parent_title.clone().unwrap_or_default());
     s.set("parent_copy", a.parent_copy.clone());
     s
@@ -471,10 +473,137 @@ fn apply_alert_values(a: &mut DdAlert, state: &EditFormState) -> Result<()> {
         parse_enum::<AlertType>(state.get("parent_type")).context("invalid parent_type")?;
     a.parent_class =
         parse_enum::<AlertClass>(state.get("parent_class")).context("invalid parent_class")?;
-    a.sal = parse_enum::<SalAnimation>(state.get("sal")).context("invalid sal")?;
+    let (sal, sal_duration, sal_delay) = apply_sal_fields(state)?;
+    a.sal = sal;
+    a.sal_duration = sal_duration;
+    a.sal_delay = sal_delay;
     let title = state.get("parent_title").trim().to_string();
     a.parent_title = if title.is_empty() { None } else { Some(title) };
     a.parent_copy = state.get("parent_copy").to_string();
+    Ok(())
+}
+
+pub fn spacer_to_form_state(s: &DdSpacer) -> EditFormState {
+    let mut state = EditFormState::new(&editform::SPACER_FORM);
+    state.set("size", enum_serde_str(s.size));
+    state.set("divider", if s.divider { "true" } else { "false" });
+    state
+}
+fn apply_spacer_values(s: &mut DdSpacer, state: &EditFormState) -> Result<()> {
+    s.size = parse_enum::<SpacerSize>(state.get("size")).context("invalid size")?;
+    s.divider = matches!(state.get("divider"), "true" | "1");
+    Ok(())
+}
+
+pub fn tabs_to_form_state(t: &DdTabs) -> EditFormState {
+    let mut s = EditFormState::new(&editform::TABS_FORM);
+    s.set("parent_id", t.parent_id.clone());
+    s.set("parent_class", enum_serde_str(t.parent_class));
+    s.set("aria_label", t.aria_label.clone().unwrap_or_default());
+    set_sal_fields(&mut s, t.sal, t.sal_duration, t.sal_delay);
+    let mut items = Vec::new();
+    for it in &t.items {
+        let mut item = EditFormState::new(&editform::TABS_ITEM_FORM);
+        item.set("child_title", it.child_title.clone());
+        item.set("child_copy", it.child_copy.clone());
+        items.push(item);
+    }
+    s.sub_state.insert("items".to_string(), items);
+    s.selected_sub_item.insert("items".to_string(), 0);
+    s
+}
+fn apply_tabs_values(t: &mut DdTabs, state: &EditFormState) -> Result<()> {
+    t.parent_id = state.get("parent_id").trim().to_string();
+    t.parent_class =
+        parse_enum::<TabsOrientation>(state.get("parent_class")).context("invalid orientation")?;
+    let aria = state.get("aria_label").trim().to_string();
+    t.aria_label = if aria.is_empty() { None } else { Some(aria) };
+    let (sal, sal_duration, sal_delay) = apply_sal_fields(state)?;
+    t.sal = sal;
+    t.sal_duration = sal_duration;
+    t.sal_delay = sal_delay;
+    t.items.clear();
+    if let Some(items) = state.sub_state.get("items") {
+        for item_s in items {
+            t.items.push(TabsItem {
+                child_title: item_s.get("child_title").to_string(),
+                child_copy: item_s.get("child_copy").to_string(),
+            });
+        }
+    }
+    Ok(())
+}
+
+pub fn timeline_to_form_state(t: &DdTimeline) -> EditFormState {
+    let mut s = EditFormState::new(&editform::TIMELINE_FORM);
+    s.set("aria_label", t.aria_label.clone().unwrap_or_default());
+    set_sal_fields(&mut s, t.sal, t.sal_duration, t.sal_delay);
+    let mut items = Vec::new();
+    for it in &t.items {
+        let mut item = EditFormState::new(&editform::TIMELINE_ITEM_FORM);
+        item.set("child_year", it.child_year.clone());
+        item.set(
+            "child_datetime",
+            it.child_datetime.clone().unwrap_or_default(),
+        );
+        item.set("child_title", it.child_title.clone());
+        item.set("heading_level", it.heading_level.to_string());
+        item.set("child_copy", it.child_copy.clone());
+        item.set(
+            "child_image_url",
+            it.child_image_url.clone().unwrap_or_default(),
+        );
+        item.set(
+            "child_image_alt",
+            it.child_image_alt.clone().unwrap_or_default(),
+        );
+        items.push(item);
+    }
+    s.sub_state.insert("items".to_string(), items);
+    s.selected_sub_item.insert("items".to_string(), 0);
+    s
+}
+fn apply_timeline_values(t: &mut DdTimeline, state: &EditFormState) -> Result<()> {
+    let aria = state.get("aria_label").trim().to_string();
+    t.aria_label = if aria.is_empty() { None } else { Some(aria) };
+    let (sal, sal_duration, sal_delay) = apply_sal_fields(state)?;
+    t.sal = sal;
+    t.sal_duration = sal_duration;
+    t.sal_delay = sal_delay;
+    t.items.clear();
+    if let Some(items) = state.sub_state.get("items") {
+        for item_s in items {
+            let datetime = item_s.get("child_datetime").trim().to_string();
+            let image_url = item_s.get("child_image_url").trim().to_string();
+            let image_alt = item_s.get("child_image_alt").trim().to_string();
+            let heading = item_s
+                .get("heading_level")
+                .trim()
+                .parse::<u8>()
+                .unwrap_or(3);
+            t.items.push(TimelineItem {
+                child_year: item_s.get("child_year").to_string(),
+                child_datetime: if datetime.is_empty() {
+                    None
+                } else {
+                    Some(datetime)
+                },
+                child_title: item_s.get("child_title").to_string(),
+                heading_level: heading,
+                child_copy: item_s.get("child_copy").to_string(),
+                child_image_url: if image_url.is_empty() {
+                    None
+                } else {
+                    Some(image_url)
+                },
+                child_image_alt: if image_alt.is_empty() {
+                    None
+                } else {
+                    Some(image_alt)
+                },
+            });
+        }
+    }
     Ok(())
 }
 
@@ -492,7 +621,7 @@ fn apply_modal_values(m: &mut DdModal, state: &EditFormState) -> Result<()> {
 
 pub fn blockquote_to_form_state(bq: &DdBlockquote) -> EditFormState {
     let mut s = EditFormState::new(&editform::BLOCKQUOTE_FORM);
-    s.set("sal", enum_serde_str(bq.sal));
+    set_sal_fields(&mut s, bq.sal, bq.sal_duration, bq.sal_delay);
     s.set("parent_image_url", bq.parent_image_url.clone());
     s.set("parent_image_alt", bq.parent_image_alt.clone());
     s.set("parent_name", bq.parent_name.clone());
@@ -501,7 +630,10 @@ pub fn blockquote_to_form_state(bq: &DdBlockquote) -> EditFormState {
     s
 }
 fn apply_blockquote_values(bq: &mut DdBlockquote, state: &EditFormState) -> Result<()> {
-    bq.sal = parse_enum::<SalAnimation>(state.get("sal")).context("invalid sal")?;
+    let (sal, sal_duration, sal_delay) = apply_sal_fields(state)?;
+    bq.sal = sal;
+    bq.sal_duration = sal_duration;
+    bq.sal_delay = sal_delay;
     bq.parent_image_url = state.get("parent_image_url").trim().to_string();
     bq.parent_image_alt = state.get("parent_image_alt").trim().to_string();
     bq.parent_name = state.get("parent_name").to_string();
@@ -515,7 +647,7 @@ fn apply_blockquote_values(bq: &mut DdBlockquote, state: &EditFormState) -> Resu
 pub fn card_to_form_state(c: &DdCard) -> EditFormState {
     let mut s = EditFormState::new(&editform::CARD_FORM);
     s.set("parent_type", enum_serde_str(c.parent_type));
-    s.set("sal", enum_serde_str(c.sal));
+    set_sal_fields(&mut s, c.sal, c.sal_duration, c.sal_delay);
     s.set("parent_width", c.parent_width.clone());
     let mut items = Vec::new();
     for it in &c.items {
@@ -539,6 +671,7 @@ pub fn card_to_form_state(c: &DdCard) -> EditFormState {
             "child_link_label",
             it.child_link_label.clone().unwrap_or_default(),
         );
+        item.set("child_link_style", enum_serde_str(it.child_link_style));
         items.push(item);
     }
     s.sub_state.insert("items".to_string(), items);
@@ -547,25 +680,16 @@ pub fn card_to_form_state(c: &DdCard) -> EditFormState {
 }
 fn apply_card_values(c: &mut DdCard, state: &EditFormState) -> Result<()> {
     c.parent_type = parse_enum::<CardType>(state.get("parent_type"))?;
-    c.sal = parse_enum::<SalAnimation>(state.get("sal"))?;
+    let (sal, sal_duration, sal_delay) = apply_sal_fields(state)?;
+    c.sal = sal;
+    c.sal_duration = sal_duration;
+    c.sal_delay = sal_delay;
     c.parent_width = state.get("parent_width").trim().to_string();
     c.items.clear();
     if let Some(items) = state.sub_state.get("items") {
         for item_s in items {
-            let link_url = item_s.get("child_link_url").trim().to_string();
-            let link_label = item_s.get("child_link_label").trim().to_string();
-            let (link_url_opt, link_target_opt, link_label_opt) =
-                if link_url.is_empty() && link_label.is_empty() {
-                    (None, None, None)
-                } else {
-                    (
-                        Some(link_url),
-                        Some(parse_enum::<CardLinkTarget>(
-                            item_s.get("child_link_target"),
-                        )?),
-                        Some(link_label),
-                    )
-                };
+            let (link_url_opt, link_target_opt, link_label_opt, link_style) =
+                apply_optional_child_link(item_s)?;
             c.items.push(CardItem {
                 child_image_url: item_s.get("child_image_url").trim().to_string(),
                 child_image_alt: item_s.get("child_image_alt").trim().to_string(),
@@ -575,6 +699,7 @@ fn apply_card_values(c: &mut DdCard, state: &EditFormState) -> Result<()> {
                 child_link_url: link_url_opt,
                 child_link_target: link_target_opt,
                 child_link_label: link_label_opt,
+                child_link_style: link_style,
             });
         }
     }
@@ -584,7 +709,7 @@ fn apply_card_values(c: &mut DdCard, state: &EditFormState) -> Result<()> {
 pub fn filmstrip_to_form_state(f: &DdFilmstrip) -> EditFormState {
     let mut s = EditFormState::new(&editform::FILMSTRIP_FORM);
     s.set("parent_type", enum_serde_str(f.parent_type));
-    s.set("sal", enum_serde_str(f.sal));
+    set_sal_fields(&mut s, f.sal, f.sal_duration, f.sal_delay);
     let mut items = Vec::new();
     for it in &f.items {
         let mut item = EditFormState::new(&editform::FILMSTRIP_ITEM_FORM);
@@ -599,7 +724,10 @@ pub fn filmstrip_to_form_state(f: &DdFilmstrip) -> EditFormState {
 }
 fn apply_filmstrip_values(f: &mut DdFilmstrip, state: &EditFormState) -> Result<()> {
     f.parent_type = parse_enum::<FilmstripType>(state.get("parent_type"))?;
-    f.sal = parse_enum::<SalAnimation>(state.get("sal"))?;
+    let (sal, sal_duration, sal_delay) = apply_sal_fields(state)?;
+    f.sal = sal;
+    f.sal_duration = sal_duration;
+    f.sal_delay = sal_delay;
     f.items.clear();
     if let Some(items) = state.sub_state.get("items") {
         for item_s in items {
@@ -615,7 +743,7 @@ fn apply_filmstrip_values(f: &mut DdFilmstrip, state: &EditFormState) -> Result<
 
 pub fn milestones_to_form_state(m: &DdMilestones) -> EditFormState {
     let mut s = EditFormState::new(&editform::MILESTONES_FORM);
-    s.set("sal", enum_serde_str(m.sal));
+    set_sal_fields(&mut s, m.sal, m.sal_duration, m.sal_delay);
     s.set("parent_width", m.parent_width.clone());
     let mut items = Vec::new();
     for it in &m.items {
@@ -638,6 +766,7 @@ pub fn milestones_to_form_state(m: &DdMilestones) -> EditFormState {
             "child_link_label",
             it.child_link_label.clone().unwrap_or_default(),
         );
+        item.set("child_link_style", enum_serde_str(it.child_link_style));
         items.push(item);
     }
     s.sub_state.insert("items".to_string(), items);
@@ -645,25 +774,16 @@ pub fn milestones_to_form_state(m: &DdMilestones) -> EditFormState {
     s
 }
 fn apply_milestones_values(m: &mut DdMilestones, state: &EditFormState) -> Result<()> {
-    m.sal = parse_enum::<SalAnimation>(state.get("sal"))?;
+    let (sal, sal_duration, sal_delay) = apply_sal_fields(state)?;
+    m.sal = sal;
+    m.sal_duration = sal_duration;
+    m.sal_delay = sal_delay;
     m.parent_width = state.get("parent_width").trim().to_string();
     m.items.clear();
     if let Some(items) = state.sub_state.get("items") {
         for item_s in items {
-            let link_url = item_s.get("child_link_url").trim().to_string();
-            let link_label = item_s.get("child_link_label").trim().to_string();
-            let (link_url_opt, link_target_opt, link_label_opt) =
-                if link_url.is_empty() && link_label.is_empty() {
-                    (None, None, None)
-                } else {
-                    (
-                        Some(link_url),
-                        Some(parse_enum::<CardLinkTarget>(
-                            item_s.get("child_link_target"),
-                        )?),
-                        Some(link_label),
-                    )
-                };
+            let (link_url_opt, link_target_opt, link_label_opt, link_style) =
+                apply_optional_child_link(item_s)?;
             m.items.push(MilestonesItem {
                 child_percentage: item_s.get("child_percentage").trim().to_string(),
                 child_title: item_s.get("child_title").to_string(),
@@ -672,6 +792,7 @@ fn apply_milestones_values(m: &mut DdMilestones, state: &EditFormState) -> Resul
                 child_link_url: link_url_opt,
                 child_link_target: link_target_opt,
                 child_link_label: link_label_opt,
+                child_link_style: link_style,
             });
         }
     }
@@ -686,22 +807,8 @@ pub fn slider_to_form_state(sl: &DdSlider) -> EditFormState {
         let mut item = EditFormState::new(&editform::SLIDER_ITEM_FORM);
         item.set("child_title", it.child_title.clone());
         item.set("child_copy", it.child_copy.clone());
-        item.set("child_image_url", it.child_image_url.clone());
-        item.set("child_image_alt", it.child_image_alt.clone());
-        item.set(
-            "child_link_url",
-            it.child_link_url.clone().unwrap_or_default(),
-        );
-        item.set(
-            "child_link_target",
-            it.child_link_target
-                .map(enum_serde_str)
-                .unwrap_or_else(|| "_self".to_string()),
-        );
-        item.set(
-            "child_link_label",
-            it.child_link_label.clone().unwrap_or_default(),
-        );
+        set_media_fields(&mut item, &it.resolved_media());
+        set_links_subform(&mut item, "links", &it.resolved_links());
         items.push(item);
     }
     s.sub_state.insert("items".to_string(), items);
@@ -713,28 +820,18 @@ fn apply_slider_values(sl: &mut DdSlider, state: &EditFormState) -> Result<()> {
     sl.items.clear();
     if let Some(items) = state.sub_state.get("items") {
         for item_s in items {
-            let link_url = item_s.get("child_link_url").trim().to_string();
-            let link_label = item_s.get("child_link_label").trim().to_string();
-            let (link_url_opt, link_target_opt, link_label_opt) =
-                if link_url.is_empty() && link_label.is_empty() {
-                    (None, None, None)
-                } else {
-                    (
-                        Some(link_url),
-                        Some(parse_enum::<CardLinkTarget>(
-                            item_s.get("child_link_target"),
-                        )?),
-                        Some(link_label),
-                    )
-                };
+            let media = apply_media_fields(item_s)?;
+            let (url, alt) = legacy_image_from_media(&media);
             sl.items.push(SliderItem {
                 child_title: item_s.get("child_title").to_string(),
                 child_copy: item_s.get("child_copy").to_string(),
-                child_image_url: item_s.get("child_image_url").trim().to_string(),
-                child_image_alt: item_s.get("child_image_alt").trim().to_string(),
-                child_link_url: link_url_opt,
-                child_link_target: link_target_opt,
-                child_link_label: link_label_opt,
+                child_image_url: url,
+                child_image_alt: alt,
+                links: apply_links_subform(item_s, "links")?,
+                child_link_url: None,
+                child_link_target: None,
+                child_link_label: None,
+                media,
             });
         }
     }
@@ -745,7 +842,7 @@ pub fn accordion_to_form_state(a: &DdAccordion) -> EditFormState {
     let mut s = EditFormState::new(&editform::ACCORDION_FORM);
     s.set("parent_type", enum_serde_str(a.parent_type));
     s.set("parent_class", enum_serde_str(a.parent_class));
-    s.set("sal", enum_serde_str(a.sal));
+    set_sal_fields(&mut s, a.sal, a.sal_duration, a.sal_delay);
     s.set("parent_group_name", a.parent_group_name.clone());
     let mut items = Vec::new();
     for it in &a.items {
@@ -761,7 +858,10 @@ pub fn accordion_to_form_state(a: &DdAccordion) -> EditFormState {
 fn apply_accordion_values(a: &mut DdAccordion, state: &EditFormState) -> Result<()> {
     a.parent_type = parse_enum::<AccordionType>(state.get("parent_type"))?;
     a.parent_class = parse_enum::<AccordionClass>(state.get("parent_class"))?;
-    a.sal = parse_enum::<SalAnimation>(state.get("sal"))?;
+    let (sal, sal_duration, sal_delay) = apply_sal_fields(state)?;
+    a.sal = sal;
+    a.sal_duration = sal_duration;
+    a.sal_delay = sal_delay;
     a.parent_group_name = state.get("parent_group_name").trim().to_string();
     a.items.clear();
     if let Some(items) = state.sub_state.get("items") {
@@ -779,15 +879,15 @@ pub fn alternating_to_form_state(a: &DdAlternating) -> EditFormState {
     let mut s = EditFormState::new(&editform::ALTERNATING_FORM);
     s.set("parent_type", enum_serde_str(a.parent_type));
     s.set("parent_class", a.parent_class.clone());
-    s.set("sal", enum_serde_str(a.sal));
+    set_sal_fields(&mut s, a.sal, a.sal_duration, a.sal_delay);
     let mut items = Vec::new();
     for it in &a.items {
         let mut item = EditFormState::new(&editform::ALTERNATING_ITEM_FORM);
-        item.set("child_image_url", it.child_image_url.clone());
-        item.set("child_image_alt", it.child_image_alt.clone());
+        set_media_fields(&mut item, &it.resolved_media());
         item.set("child_title", it.child_title.clone());
         item.set("child_subtitle", it.child_subtitle.clone());
         item.set("child_copy", it.child_copy.clone());
+        set_links_subform(&mut item, "links", &it.links);
         items.push(item);
     }
     s.sub_state.insert("items".to_string(), items);
@@ -797,16 +897,23 @@ pub fn alternating_to_form_state(a: &DdAlternating) -> EditFormState {
 fn apply_alternating_values(a: &mut DdAlternating, state: &EditFormState) -> Result<()> {
     a.parent_type = parse_enum::<AlternatingType>(state.get("parent_type"))?;
     a.parent_class = state.get("parent_class").to_string();
-    a.sal = parse_enum::<SalAnimation>(state.get("sal"))?;
+    let (sal, sal_duration, sal_delay) = apply_sal_fields(state)?;
+    a.sal = sal;
+    a.sal_duration = sal_duration;
+    a.sal_delay = sal_delay;
     a.items.clear();
     if let Some(items) = state.sub_state.get("items") {
         for item_s in items {
+            let media = apply_media_fields(item_s)?;
+            let (url, alt) = legacy_image_from_media(&media);
             a.items.push(AlternatingItem {
-                child_image_url: item_s.get("child_image_url").trim().to_string(),
-                child_image_alt: item_s.get("child_image_alt").trim().to_string(),
+                child_image_url: url,
+                child_image_alt: alt,
                 child_title: item_s.get("child_title").to_string(),
                 child_subtitle: item_s.get("child_subtitle").to_string(),
                 child_copy: item_s.get("child_copy").to_string(),
+                links: apply_links_subform(item_s, "links")?,
+                media,
             });
         }
     }
@@ -826,21 +933,17 @@ pub fn hero_to_form_state(hero: &DdHero) -> EditFormState {
             .map(enum_serde_str)
             .unwrap_or_else(|| "-full-full".to_string()),
     );
-    s.set(
-        "sal",
-        hero.sal
-            .map(enum_serde_str)
-            .unwrap_or_else(|| "fade".to_string()),
+    set_sal_fields(
+        &mut s,
+        hero.sal.unwrap_or(SalAnimation::Fade),
+        hero.sal_duration,
+        hero.sal_delay,
     );
     s.set(
         "parent_custom_css",
         hero.parent_custom_css.clone().unwrap_or_default(),
     );
-    s.set("parent_image_url", hero.parent_image_url.clone());
-    s.set(
-        "parent_image_alt",
-        hero.parent_image_alt.clone().unwrap_or_default(),
-    );
+    set_media_fields(&mut s, &hero.resolved_media());
     s.set(
         "parent_image_class",
         hero.parent_image_class
@@ -859,28 +962,21 @@ pub fn hero_to_form_state(hero: &DdHero) -> EditFormState {
         "parent_image_desktop",
         hero.parent_image_desktop.clone().unwrap_or_default(),
     );
+    set_links_subform(&mut s, "links", &hero.resolved_links());
     s.set(
-        "link_1_label",
-        hero.link_1_label.clone().unwrap_or_default(),
-    );
-    s.set("link_1_url", hero.link_1_url.clone().unwrap_or_default());
-    s.set(
-        "link_1_target",
-        hero.link_1_target
+        "overlay",
+        hero.overlay
             .map(enum_serde_str)
-            .unwrap_or_else(|| "_self".to_string()),
+            .unwrap_or_else(|| "none".to_string()),
     );
     s.set(
-        "link_2_label",
-        hero.link_2_label.clone().unwrap_or_default(),
-    );
-    s.set("link_2_url", hero.link_2_url.clone().unwrap_or_default());
-    s.set(
-        "link_2_target",
-        hero.link_2_target
+        "copy_position",
+        hero.copy_position
             .map(enum_serde_str)
-            .unwrap_or_else(|| "_self".to_string()),
+            .unwrap_or_else(|| "-left".to_string()),
     );
+    s.set("id", hero.id.clone().unwrap_or_default());
+    s.set("aria_label", hero.aria_label.clone().unwrap_or_default());
     s
 }
 fn apply_hero_values(hero: &mut DdHero, state: &EditFormState) -> Result<()> {
@@ -893,11 +989,15 @@ fn apply_hero_values(hero: &mut DdHero, state: &EditFormState) -> Result<()> {
         Some(copy)
     };
     hero.parent_class = Some(parse_enum::<HeroImageClass>(state.get("parent_class"))?);
-    hero.sal = Some(parse_enum::<SalAnimation>(state.get("sal"))?);
+    let (sal, sal_duration, sal_delay) = apply_sal_fields(state)?;
+    hero.sal = Some(sal);
+    hero.sal_duration = sal_duration;
+    hero.sal_delay = sal_delay;
     let css = state.get("parent_custom_css").trim().to_string();
     hero.parent_custom_css = if css.is_empty() { None } else { Some(css) };
-    hero.parent_image_url = state.get("parent_image_url").trim().to_string();
-    let alt = state.get("parent_image_alt").trim().to_string();
+    hero.media = apply_media_fields(state)?;
+    let (url, alt) = legacy_image_from_media(&hero.media);
+    hero.parent_image_url = url;
     hero.parent_image_alt = if alt.is_empty() { None } else { Some(alt) };
     hero.parent_image_class = Some(parse_enum::<HeroImageClass>(
         state.get("parent_image_class"),
@@ -910,47 +1010,28 @@ fn apply_hero_values(hero: &mut DdHero, state: &EditFormState) -> Result<()> {
         let v = state.get(field_id).trim().to_string();
         *slot = if v.is_empty() { None } else { Some(v) };
     }
-    apply_hero_link(
-        state,
-        "link_1_label",
-        "link_1_url",
-        "link_1_target",
-        &mut hero.link_1_label,
-        &mut hero.link_1_url,
-        &mut hero.link_1_target,
-    )?;
-    apply_hero_link(
-        state,
-        "link_2_label",
-        "link_2_url",
-        "link_2_target",
-        &mut hero.link_2_label,
-        &mut hero.link_2_url,
-        &mut hero.link_2_target,
-    )?;
-    Ok(())
-}
-fn apply_hero_link(
-    state: &EditFormState,
-    label_id: &str,
-    url_id: &str,
-    target_id: &str,
-    label_slot: &mut Option<String>,
-    url_slot: &mut Option<String>,
-    target_slot: &mut Option<CtaTarget>,
-) -> Result<()> {
-    let label = state.get(label_id).trim().to_string();
-    let url = state.get(url_id).trim().to_string();
-    let target = state.get(target_id).to_string();
-    if label.is_empty() && url.is_empty() {
-        *label_slot = None;
-        *url_slot = None;
-        *target_slot = None;
-    } else {
-        *label_slot = Some(label);
-        *url_slot = Some(url);
-        *target_slot = Some(parse_enum::<CtaTarget>(&target)?);
+    hero.links = apply_links_subform(state, "links")?;
+    if hero.links.len() > 2 {
+        hero.links.truncate(2);
     }
+    hero.link_1_label = None;
+    hero.link_1_url = None;
+    hero.link_1_target = None;
+    hero.link_2_label = None;
+    hero.link_2_url = None;
+    hero.link_2_target = None;
+    hero.overlay = match state.get("overlay") {
+        "none" | "" => None,
+        v => Some(parse_enum::<HeroOverlay>(v).context("invalid overlay")?),
+    };
+    hero.copy_position = Some(
+        parse_enum::<HeroCopyPosition>(state.get("copy_position"))
+            .context("invalid copy position")?,
+    );
+    let id = state.get("id").trim().to_string();
+    hero.id = if id.is_empty() { None } else { Some(id) };
+    let aria = state.get("aria_label").trim().to_string();
+    hero.aria_label = if aria.is_empty() { None } else { Some(aria) };
     Ok(())
 }
 
@@ -961,6 +1042,7 @@ pub fn section_to_form_state(section: &DdSection) -> EditFormState {
         "section_title",
         section.section_title.clone().unwrap_or_default(),
     );
+    s.set("aria_label", section.aria_label.clone().unwrap_or_default());
     s.set(
         "section_class",
         section
@@ -968,6 +1050,22 @@ pub fn section_to_form_state(section: &DdSection) -> EditFormState {
             .map(enum_serde_str)
             .unwrap_or_else(|| "-full-contained".to_string()),
     );
+    s.set(
+        "bg",
+        section
+            .bg
+            .map(enum_serde_str)
+            .unwrap_or_else(|| "none".to_string()),
+    );
+    s.set(
+        "padding",
+        section
+            .padding
+            .map(enum_serde_str)
+            .unwrap_or_else(|| "default".to_string()),
+    );
+    s.set("custom_css", section.custom_css.clone().unwrap_or_default());
+    set_sal_fields(&mut s, section.sal, section.sal_duration, section.sal_delay);
     s.set(
         "item_box_class",
         section
@@ -990,7 +1088,23 @@ fn apply_section_values(section: &mut DdSection, state: &EditFormState) -> Resul
     section.id = state.get("id").trim().to_string();
     let title = state.get("section_title").trim().to_string();
     section.section_title = if title.is_empty() { None } else { Some(title) };
+    let aria = state.get("aria_label").trim().to_string();
+    section.aria_label = if aria.is_empty() { None } else { Some(aria) };
     section.section_class = Some(parse_enum::<SectionClass>(state.get("section_class"))?);
+    section.bg = match state.get("bg") {
+        "none" | "" => None,
+        v => Some(parse_enum::<SectionBg>(v).context("invalid bg")?),
+    };
+    section.padding = match state.get("padding") {
+        "default" | "" => None,
+        v => Some(parse_enum::<SectionPadding>(v).context("invalid padding")?),
+    };
+    let css = state.get("custom_css").trim().to_string();
+    section.custom_css = if css.is_empty() { None } else { Some(css) };
+    let (sal, sal_duration, sal_delay) = apply_sal_fields(state)?;
+    section.sal = sal;
+    section.sal_duration = sal_duration;
+    section.sal_delay = sal_delay;
     section.item_box_class = Some(parse_enum::<SectionItemBoxClass>(
         state.get("item_box_class"),
     )?);
@@ -1087,6 +1201,8 @@ fn apply_site_values(site: &mut Site, state: &EditFormState) -> Result<()> {
     site.theme.secondary_color = secondary;
     site.theme.tertiary_color = tertiary;
     site.theme.support_color = support;
+    site.header_gtm_tag = opt_trimmed(state.get("header_gtm_tag"));
+    site.body_gtm_tag = opt_trimmed(state.get("body_gtm_tag"));
     Ok(())
 }
 
@@ -1097,6 +1213,9 @@ fn apply_header_root_values(
     header.id = state.get("id").to_string();
     let css = state.get("custom_css").trim().to_string();
     header.custom_css = if css.is_empty() { None } else { Some(css) };
+    header.cta_label = opt_trimmed(state.get("cta_label"));
+    header.cta_url = opt_trimmed(state.get("cta_url"));
+    header.banner = opt_trimmed(state.get("banner"));
     Ok(())
 }
 
@@ -1104,7 +1223,21 @@ fn apply_footer_values(footer: &mut crate::model::DdFooter, state: &EditFormStat
     footer.id = state.get("id").to_string();
     let css = state.get("custom_css").trim().to_string();
     footer.custom_css = if css.is_empty() { None } else { Some(css) };
+    footer.blurb = opt_trimmed(state.get("blurb"));
+    footer.copyright = opt_trimmed(state.get("copyright"));
+    footer.social_linkedin = opt_trimmed(state.get("social_linkedin"));
+    footer.social_x = opt_trimmed(state.get("social_x"));
+    footer.social_github = opt_trimmed(state.get("social_github"));
     Ok(())
+}
+
+fn opt_trimmed(value: &str) -> Option<String> {
+    let t = value.trim();
+    if t.is_empty() {
+        None
+    } else {
+        Some(t.to_string())
+    }
 }
 
 pub fn page_head_to_form_state(page: &crate::model::Page) -> EditFormState {
@@ -1162,6 +1295,14 @@ pub fn site_to_form_state(site: &Site) -> EditFormState {
     s.set("secondary_color", site.theme.secondary_color.clone());
     s.set("tertiary_color", site.theme.tertiary_color.clone());
     s.set("support_color", site.theme.support_color.clone());
+    s.set(
+        "header_gtm_tag",
+        site.header_gtm_tag.clone().unwrap_or_default(),
+    );
+    s.set(
+        "body_gtm_tag",
+        site.body_gtm_tag.clone().unwrap_or_default(),
+    );
     s
 }
 
@@ -1169,6 +1310,9 @@ pub fn header_root_to_form_state(header: &crate::model::DdHeader) -> EditFormSta
     let mut s = EditFormState::new(&editform::HEADER_ROOT_FORM);
     s.set("id", header.id.clone());
     s.set("custom_css", header.custom_css.clone().unwrap_or_default());
+    s.set("cta_label", header.cta_label.clone().unwrap_or_default());
+    s.set("cta_url", header.cta_url.clone().unwrap_or_default());
+    s.set("banner", header.banner.clone().unwrap_or_default());
     s
 }
 
@@ -1176,6 +1320,17 @@ pub fn footer_to_form_state(footer: &crate::model::DdFooter) -> EditFormState {
     let mut s = EditFormState::new(&editform::FOOTER_FORM);
     s.set("id", footer.id.clone());
     s.set("custom_css", footer.custom_css.clone().unwrap_or_default());
+    s.set("blurb", footer.blurb.clone().unwrap_or_default());
+    s.set("copyright", footer.copyright.clone().unwrap_or_default());
+    s.set(
+        "social_linkedin",
+        footer.social_linkedin.clone().unwrap_or_default(),
+    );
+    s.set("social_x", footer.social_x.clone().unwrap_or_default());
+    s.set(
+        "social_github",
+        footer.social_github.clone().unwrap_or_default(),
+    );
     s
 }
 
@@ -1185,7 +1340,7 @@ pub fn navigation_to_form_state(nav: &DdNavigation) -> EditFormState {
     let mut s = EditFormState::new(&editform::NAVIGATION_FORM);
     s.set("parent_type", enum_serde_str(nav.parent_type));
     s.set("parent_class", enum_serde_str(nav.parent_class));
-    s.set("sal", enum_serde_str(nav.sal));
+    set_sal_fields(&mut s, nav.sal, nav.sal_duration, nav.sal_delay);
     s.set("parent_width", nav.parent_width.clone());
     let mut items = Vec::new();
     for it in &nav.items {
@@ -1226,7 +1381,10 @@ fn nav_item_to_form_state(item: &NavigationItem) -> EditFormState {
 fn apply_navigation_values(nav: &mut DdNavigation, state: &EditFormState) -> Result<()> {
     nav.parent_type = parse_enum::<NavigationType>(state.get("parent_type"))?;
     nav.parent_class = parse_enum::<NavigationClass>(state.get("parent_class"))?;
-    nav.sal = parse_enum::<SalAnimation>(state.get("sal"))?;
+    let (sal, sal_duration, sal_delay) = apply_sal_fields(state)?;
+    nav.sal = sal;
+    nav.sal_duration = sal_duration;
+    nav.sal_delay = sal_delay;
     nav.parent_width = state.get("parent_width").trim().to_string();
     nav.items.clear();
     if let Some(items) = state.sub_state.get("items") {
@@ -1286,6 +1444,185 @@ fn enum_serde_str<T: serde::Serialize>(value: T) -> String {
 fn parse_enum<T: for<'de> serde::Deserialize<'de>>(input: &str) -> Result<T> {
     serde_json::from_value::<T>(serde_json::Value::String(input.to_string()))
         .map_err(|e| anyhow!("failed to parse '{}': {}", input, e))
+}
+
+fn apply_sal_fields(state: &EditFormState) -> Result<(SalAnimation, Option<u16>, Option<u16>)> {
+    let sal = parse_enum::<SalAnimation>(state.get("sal")).context("invalid sal")?;
+    Ok((
+        sal,
+        parse_sal_ms(state.get("sal_duration"), 400)?,
+        parse_sal_ms(state.get("sal_delay"), 0)?,
+    ))
+}
+
+fn parse_sal_ms(raw: &str, omit_value: u16) -> Result<Option<u16>> {
+    let s = raw.trim();
+    if s.is_empty() {
+        return Ok(None);
+    }
+    let v: u16 = s
+        .parse()
+        .map_err(|_| anyhow!("invalid SAL milliseconds '{s}'"))?;
+    if v == omit_value {
+        Ok(None)
+    } else {
+        Ok(Some(v))
+    }
+}
+
+fn set_sal_fields(
+    state: &mut EditFormState,
+    sal: SalAnimation,
+    duration: Option<u16>,
+    delay: Option<u16>,
+) {
+    state.set("sal", enum_serde_str(sal));
+    state.set("sal_duration", duration.unwrap_or(400).to_string());
+    state.set("sal_delay", delay.unwrap_or(0).to_string());
+}
+
+fn link_to_form_state(link: &DdLink) -> EditFormState {
+    let mut s = EditFormState::new(&editform::LINK_ITEM_FORM);
+    s.set("url", link.url.clone());
+    s.set("label", link.label.clone());
+    s.set("target", enum_serde_str(link.target));
+    s.set("style", enum_serde_str(link.style));
+    s
+}
+
+fn set_links_subform(state: &mut EditFormState, field_id: &str, links: &[DdLink]) {
+    let items: Vec<EditFormState> = links.iter().map(link_to_form_state).collect();
+    state.sub_state.insert(field_id.to_string(), items);
+    state.selected_sub_item.insert(field_id.to_string(), 0);
+}
+
+fn apply_links_subform(state: &EditFormState, field_id: &str) -> Result<Vec<DdLink>> {
+    let mut out = Vec::new();
+    let Some(items) = state.sub_state.get(field_id) else {
+        return Ok(out);
+    };
+    for (idx, item) in items.iter().enumerate() {
+        let url = item.get("url").trim().to_string();
+        let label = item.get("label").trim().to_string();
+        if url.is_empty() && label.is_empty() {
+            continue;
+        }
+        if url.is_empty() || label.is_empty() {
+            return Err(anyhow!("link {} requires both URL and label", idx + 1));
+        }
+        out.push(DdLink {
+            url,
+            label,
+            target: parse_enum(item.get("target")).context("invalid link target")?,
+            style: parse_enum(item.get("style")).context("invalid button style")?,
+        });
+    }
+    Ok(out)
+}
+
+fn set_media_fields(state: &mut EditFormState, media: &Media) {
+    state.set("media_kind", media.kind_str());
+    match media {
+        Media::None => {}
+        Media::Image { url, alt } => {
+            state.set("media_image_url", url.clone());
+            state.set("media_image_alt", alt.clone());
+        }
+        Media::Oembed { url } => {
+            state.set("media_oembed_url", url.clone());
+        }
+        Media::LocalVideo {
+            lg_mp4,
+            sm_mp4,
+            poster,
+            name,
+            loop_playback,
+            autoplay,
+        } => {
+            state.set("media_lg_mp4", lg_mp4.clone());
+            state.set("media_sm_mp4", sm_mp4.clone().unwrap_or_default());
+            state.set("media_poster", poster.clone().unwrap_or_default());
+            state.set("media_name", name.clone());
+            state.set("media_loop", if *loop_playback { "true" } else { "false" });
+            state.set("media_autoplay", if *autoplay { "true" } else { "false" });
+        }
+    }
+}
+
+fn apply_media_fields(state: &EditFormState) -> Result<Media> {
+    match state.get("media_kind") {
+        "none" | "" => Ok(Media::None),
+        "image" => {
+            let url = state.get("media_image_url").trim().to_string();
+            let alt = state.get("media_image_alt").trim().to_string();
+            if url.is_empty() {
+                Ok(Media::None)
+            } else {
+                Ok(Media::Image { url, alt })
+            }
+        }
+        "oembed" => {
+            let url = state.get("media_oembed_url").trim().to_string();
+            if url.is_empty() {
+                Ok(Media::None)
+            } else {
+                Ok(Media::Oembed { url })
+            }
+        }
+        "local-video" => {
+            let lg_mp4 = state.get("media_lg_mp4").trim().to_string();
+            if lg_mp4.is_empty() {
+                return Ok(Media::None);
+            }
+            let sm = state.get("media_sm_mp4").trim().to_string();
+            let poster = state.get("media_poster").trim().to_string();
+            Ok(Media::LocalVideo {
+                lg_mp4,
+                sm_mp4: if sm.is_empty() { None } else { Some(sm) },
+                poster: if poster.is_empty() {
+                    None
+                } else {
+                    Some(poster)
+                },
+                name: state.get("media_name").trim().to_string(),
+                loop_playback: state.get("media_loop") == "true",
+                autoplay: state.get("media_autoplay") == "true",
+            })
+        }
+        other => Err(anyhow!("invalid media kind '{other}'")),
+    }
+}
+
+fn legacy_image_from_media(media: &Media) -> (String, String) {
+    match media {
+        Media::Image { url, alt } => (url.clone(), alt.clone()),
+        _ => (String::new(), String::new()),
+    }
+}
+
+fn apply_optional_child_link(
+    item_s: &EditFormState,
+) -> Result<(
+    Option<String>,
+    Option<CardLinkTarget>,
+    Option<String>,
+    ButtonStyle,
+)> {
+    let url = item_s.get("child_link_url").trim().to_string();
+    let label = item_s.get("child_link_label").trim().to_string();
+    let style = parse_enum::<ButtonStyle>(item_s.get("child_link_style")).unwrap_or_default();
+    if url.is_empty() && label.is_empty() {
+        Ok((None, None, None, style))
+    } else {
+        Ok((
+            Some(url),
+            Some(parse_enum::<CardLinkTarget>(
+                item_s.get("child_link_target"),
+            )?),
+            Some(label),
+            style,
+        ))
+    }
 }
 
 /// Remove the last `items` index from a cursor — used to navigate out of a

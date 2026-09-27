@@ -37,7 +37,9 @@ impl App {
                 _ => return Some(ModalResult::Continue),
             };
 
-            if field_id.contains("image") {
+            let pick_images = field_id.contains("image") || field_id.contains("poster");
+            let pick_video = field_id.contains("mp4");
+            if pick_images || pick_video {
                 let base = self
                     .path
                     .as_ref()
@@ -60,6 +62,11 @@ impl App {
                         filter: String::new(),
                         selected: 0,
                         binding: ImagePickBinding::FormEditField { field_id },
+                        file_kind: if pick_video {
+                            PickerFileKind::Video
+                        } else {
+                            PickerFileKind::Image
+                        },
                     },
                 });
                 return Some(ModalResult::Continue);
@@ -220,6 +227,18 @@ impl App {
         if is_subform {
             match key.code {
                 KeyCode::Char('A') => {
+                    let max_items = match state.form.fields[focused_idx].kind {
+                        editform::FieldKind::SubForm { max_items, .. } => max_items,
+                        _ => None,
+                    };
+                    let items_len = state.sub_state.get(field_id).map(|v| v.len()).unwrap_or(0);
+                    if max_items.is_some_and(|max| items_len >= max) {
+                        self.push_toast(
+                            ToastLevel::Warning,
+                            format!("Maximum {} item(s).", max_items.unwrap()),
+                        );
+                        return Some(ModalResult::Continue);
+                    }
                     if let Some(new_item) = state.new_sub_item(field_id) {
                         let items = state.sub_state.entry(field_id.to_string()).or_default();
                         let selected = state.selected_sub_item.get(field_id).copied().unwrap_or(0);

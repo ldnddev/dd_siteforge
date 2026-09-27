@@ -35,9 +35,28 @@ fields:
   - id: sal
     required: true
     type: enum
-    options: ["fade","slide-up","slide-down","slide-left","slide-right","zoom-in","zoom-out","flip-up","flip-down","flip-left","flip-right"]
+    options: ["no-animation","fade","slide-up","slide-down","slide-left","slide-right","zoom-in","zoom-out","flip-up","flip-down","flip-left","flip-right"]
     default: "fade"
     maps_to: ".dd-card[data-sal] OR child[data-sal]"
+
+  - id: sal_duration
+    required: false
+    type: enum
+    options: [200, 250, 300, 350, 400, 450, 500, 550, 600, 650, 700, 750, 800, 850, 900, 950, 1000, 1050, 1100, 1150, 1200, 1250, 1300, 1350, 1400, 1450, 1500, 1550, 1600, 1650, 1700, 1750, 1800, 1850, 1900, 1950, 2000]
+    default: 400
+    visible_when: "sal != no-animation"
+    maps_to: "[data-sal-duration]"
+    notes: "Omitted from HTML when unset or 400 (CSS default)."
+
+  - id: sal_delay
+    required: false
+    type: enum
+    options: [0, 50, 100, 150, 200, 250, 300, 350, 400, 450, 500, 550, 600, 650, 700, 750, 800, 850, 900, 950, 1000]
+    default: 0
+    visible_when: "sal != no-animation"
+    maps_to: "[data-sal-delay]"
+    notes: "Collection items (card, alternating, milestones) add 100×index, cap 1000."
+
 
   - id: parent_width
     required: true
@@ -107,6 +126,13 @@ fields:
         required: false
         type: string
         maps_to: ".dd-card__link a"
+
+      - id: child_link_style
+        required: false
+        type: enum
+        options: ["-primary", "-secondary", "-tertiary", "-ghost"]
+        default: "-primary"
+        maps_to: ".dd-card__link a.dd-button class token"
 
 edit_ui:
   tab_order:
@@ -184,7 +210,7 @@ blueprint:
           [[child_copy_html]]
           <div class="dd-card__links dd-g">
             <div class="dd-card__link">
-              <a href="[child_link_url]" target="[child_link_target]" class="dd-button -primary">[child_link_label]</a>
+              <a href="[child_link_url]" target="[child_link_target]" class="dd-button [child_link_style]">[child_link_label]</a>
             </div>
           </div>
         </div>
