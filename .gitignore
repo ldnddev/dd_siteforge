@@ -54,6 +54,9 @@ Thumbs.db
 
 /target
 
+# WordPress ACF field-group dumps used as local mapping examples only.
+/acf-json/
+
 # Per-author local state (test site, export output, agent tooling)
 /site.json
 /site.json.backup
