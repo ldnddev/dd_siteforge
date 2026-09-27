@@ -359,7 +359,7 @@ dependencies = [
 
 [[package]]
 name = "dd_siteforge"
-version = "1.12.0"
+version = "1.12.1"
 dependencies = [
  "anyhow",
  "clap",
