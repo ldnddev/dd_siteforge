@@ -32,6 +32,7 @@ use crate::tui::editform::{self, EditFormState, FieldKind};
 pub enum Cursor {
     // --- Header region ---
     HeaderRoot,
+    HeaderAlert,
     HeaderSection {
         sec: usize,
     },
@@ -91,6 +92,7 @@ pub fn resolve_mut<'a>(site: &'a mut Site, cursor: &Cursor) -> Result<CursorRef<
     match cursor {
         Cursor::Site => Err(anyhow!("site settings are applied via dedicated path")),
         Cursor::HeaderRoot => Ok(CursorRef::HeaderRoot(&mut site.header)),
+        Cursor::HeaderAlert => Err(anyhow!("header alert is applied via dedicated path")),
         Cursor::HeaderSection { sec } => {
             let s = site
                 .header
@@ -244,6 +246,15 @@ pub fn apply_edit_form_to_component(
         }
         Cursor::HeaderRoot => {
             apply_header_root_values(&mut site.header, state)?;
+            return Ok(());
+        }
+        Cursor::HeaderAlert => {
+            let alert = site
+                .header
+                .alert
+                .as_mut()
+                .context("header has no dd-alert to edit")?;
+            apply_alert_values(alert, state)?;
             return Ok(());
         }
         Cursor::FooterRoot => {
@@ -413,12 +424,10 @@ fn apply_image_values(i: &mut DdImage, state: &EditFormState) -> Result<()> {
 
 pub fn header_search_to_form_state(h: &DdHeaderSearch) -> EditFormState {
     let mut s = EditFormState::new(&editform::HEADER_SEARCH_FORM);
-    s.set("parent_width", h.parent_width.clone());
     set_sal_fields(&mut s, h.sal, h.sal_duration, h.sal_delay);
     s
 }
 fn apply_header_search_values(h: &mut DdHeaderSearch, state: &EditFormState) -> Result<()> {
-    h.parent_width = state.get("parent_width").trim().to_string();
     let (sal, sal_duration, sal_delay) = apply_sal_fields(state)?;
     h.sal = sal;
     h.sal_duration = sal_duration;
@@ -428,12 +437,10 @@ fn apply_header_search_values(h: &mut DdHeaderSearch, state: &EditFormState) -> 
 
 pub fn header_menu_to_form_state(h: &DdHeaderMenu) -> EditFormState {
     let mut s = EditFormState::new(&editform::HEADER_MENU_FORM);
-    s.set("parent_width", h.parent_width.clone());
     set_sal_fields(&mut s, h.sal, h.sal_duration, h.sal_delay);
     s
 }
 fn apply_header_menu_values(h: &mut DdHeaderMenu, state: &EditFormState) -> Result<()> {
-    h.parent_width = state.get("parent_width").trim().to_string();
     let (sal, sal_duration, sal_delay) = apply_sal_fields(state)?;
     h.sal = sal;
     h.sal_duration = sal_duration;
@@ -1341,7 +1348,6 @@ pub fn navigation_to_form_state(nav: &DdNavigation) -> EditFormState {
     s.set("parent_type", enum_serde_str(nav.parent_type));
     s.set("parent_class", enum_serde_str(nav.parent_class));
     set_sal_fields(&mut s, nav.sal, nav.sal_duration, nav.sal_delay);
-    s.set("parent_width", nav.parent_width.clone());
     let mut items = Vec::new();
     for it in &nav.items {
         items.push(nav_item_to_form_state(it));
@@ -1385,7 +1391,6 @@ fn apply_navigation_values(nav: &mut DdNavigation, state: &EditFormState) -> Res
     nav.sal = sal;
     nav.sal_duration = sal_duration;
     nav.sal_delay = sal_delay;
-    nav.parent_width = state.get("parent_width").trim().to_string();
     nav.items.clear();
     if let Some(items) = state.sub_state.get("items") {
         for item_s in items {

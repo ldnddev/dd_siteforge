@@ -114,7 +114,7 @@ impl App {
                         state.focused_field = idx;
                         let field_id = state.form.fields.get(idx).map(|f| f.id);
                         if let Some(field_id) = field_id {
-                            *cursor_pos = state.get(field_id).len();
+                            *cursor_pos = text_end(state.get(field_id));
                         }
                     }
                     self.form_textarea_expanded = true;

@@ -218,7 +218,7 @@ impl App {
                     KeyCode::Char('E') if k.modifiers.contains(KeyModifiers::SHIFT) => {
                         self.begin_export_flow();
                     }
-                    KeyCode::Char('p') if !k.modifiers.contains(KeyModifiers::CONTROL) => {
+                    KeyCode::Char('P') if k.modifiers.contains(KeyModifiers::SHIFT) => {
                         self.begin_preview_flow();
                     }
                     KeyCode::Char('q') if k.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -265,7 +265,10 @@ impl App {
                     KeyCode::Char('s') => self.begin_save_prompt(),
                     KeyCode::Char('/') => self.open_component_picker(),
                     KeyCode::Char('d') => self.delete_selected_row(),
-                    KeyCode::Char('y') => self.duplicate_selected_row(),
+                    KeyCode::Char('y') => self.copy_selected_row(),
+                    KeyCode::Char('p') if !k.modifiers.contains(KeyModifiers::CONTROL) => {
+                        self.paste_clipboard();
+                    }
                     KeyCode::Char('u') => self.undo_last(),
                     KeyCode::Char('J') => self.move_selected_row(1),
                     KeyCode::Char('K') => self.move_selected_row(-1),

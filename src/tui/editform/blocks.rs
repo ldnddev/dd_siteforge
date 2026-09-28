@@ -168,34 +168,12 @@ pub static IMAGE_FORM: EditForm = EditForm {
 
 pub static HEADER_SEARCH_FORM: EditForm = EditForm {
     title: "dd-header-search",
-    fields: &[
-        FormField {
-            id: "parent_width",
-            label: "Width Class",
-            kind: FieldKind::Text { default: "" },
-            required: true,
-            visible_when: None,
-        },
-        SAL_STYLE_FIELD,
-        SAL_DURATION_FIELD,
-        SAL_DELAY_FIELD,
-    ],
+    fields: &[SAL_STYLE_FIELD, SAL_DURATION_FIELD, SAL_DELAY_FIELD],
 };
 
 pub static HEADER_MENU_FORM: EditForm = EditForm {
     title: "dd-header-menu",
-    fields: &[
-        FormField {
-            id: "parent_width",
-            label: "Width Class",
-            kind: FieldKind::Text { default: "" },
-            required: true,
-            visible_when: None,
-        },
-        SAL_STYLE_FIELD,
-        SAL_DURATION_FIELD,
-        SAL_DELAY_FIELD,
-    ],
+    fields: &[SAL_STYLE_FIELD, SAL_DURATION_FIELD, SAL_DELAY_FIELD],
 };
 
 pub static RICH_TEXT_FORM: EditForm = EditForm {

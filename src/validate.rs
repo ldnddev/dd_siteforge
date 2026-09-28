@@ -534,23 +534,9 @@ fn validate_section_component(
                 );
             }
         }
-        SectionComponent::HeaderSearch(search) => {
-            if search.parent_width.trim().is_empty() {
-                errors.push(format!(
-                    "Page '{}' section '{}' dd-header-search is missing parent_width.",
-                    page_id, section_id
-                ));
-            }
-        }
-        SectionComponent::HeaderMenu(menu) => {
-            if menu.parent_width.trim().is_empty() {
-                errors.push(format!(
-                    "Page '{}' section '{}' dd-header-menu is missing parent_width.",
-                    page_id, section_id
-                ));
-            }
-        }
-        SectionComponent::Spacer(_) => {}
+        SectionComponent::HeaderSearch(_)
+        | SectionComponent::HeaderMenu(_)
+        | SectionComponent::Spacer(_) => {}
         SectionComponent::Tabs(tabs) => {
             if tabs.parent_id.trim().is_empty() {
                 errors.push(format!(

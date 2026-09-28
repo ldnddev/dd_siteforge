@@ -85,7 +85,3 @@ function dd_slider() {
 document.addEventListener('DOMContentLoaded', () => {
   dd_slider();
 });
-
-document.body.addEventListener("htmx:afterSettle", function (event) {
-  dd_slider();
-});

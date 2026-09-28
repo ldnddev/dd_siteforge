@@ -285,11 +285,13 @@ impl App {
                     if items_len == 0 {
                         state.focus_prev();
                         *scroll_offset = auto_scroll_for_focus(state, *scroll_offset);
-                        *cursor_pos = state.get(state.form.fields[state.focused_field].id).len();
+                        *cursor_pos =
+                            text_end(state.get(state.form.fields[state.focused_field].id));
                     } else if selected == 0 {
                         state.focus_prev();
                         *scroll_offset = auto_scroll_for_focus(state, *scroll_offset);
-                        *cursor_pos = state.get(state.form.fields[state.focused_field].id).len();
+                        *cursor_pos =
+                            text_end(state.get(state.form.fields[state.focused_field].id));
                     } else {
                         state
                             .selected_sub_item
@@ -307,7 +309,8 @@ impl App {
                     } else {
                         state.focus_next();
                         *scroll_offset = auto_scroll_for_focus(state, *scroll_offset);
-                        *cursor_pos = state.get(state.form.fields[state.focused_field].id).len();
+                        *cursor_pos =
+                            text_end(state.get(state.form.fields[state.focused_field].id));
                     }
                     return Some(ModalResult::Continue);
                 }
@@ -335,9 +338,9 @@ impl App {
                                 .get_mut(field_id)
                                 .expect("sub_state present for SubForm field");
                             let item_state = std::mem::replace(&mut items[selected], placeholder);
-                            let item_cursor_pos = item_state
-                                .get(item_state.form.fields[item_state.focused_field].id)
-                                .len();
+                            let item_cursor_pos = text_end(
+                                item_state.get(item_state.form.fields[item_state.focused_field].id),
+                            );
                             drill_stack.push(DrillFrame {
                                 parent_state: state,
                                 parent_cursor_pos: cursor_pos,
@@ -377,12 +380,12 @@ impl App {
             KeyCode::Tab if !expanded => {
                 state.focus_next();
                 *scroll_offset = auto_scroll_for_focus(state, *scroll_offset);
-                *cursor_pos = state.get(state.form.fields[state.focused_field].id).len();
+                *cursor_pos = text_end(state.get(state.form.fields[state.focused_field].id));
             }
             KeyCode::BackTab if !expanded => {
                 state.focus_prev();
                 *scroll_offset = auto_scroll_for_focus(state, *scroll_offset);
-                *cursor_pos = state.get(state.form.fields[state.focused_field].id).len();
+                *cursor_pos = text_end(state.get(state.form.fields[state.focused_field].id));
             }
             KeyCode::Left => {
                 if is_enum {
@@ -395,7 +398,7 @@ impl App {
                 if is_enum {
                     state.cycle_enum(true);
                 } else {
-                    let len = state.get(field_id).len();
+                    let len = text_end(state.get(field_id));
                     if *cursor_pos < len {
                         *cursor_pos += 1;
                     }
@@ -412,7 +415,7 @@ impl App {
                 } else {
                     state.focus_prev();
                     *scroll_offset = auto_scroll_for_focus(state, *scroll_offset);
-                    *cursor_pos = state.get(state.form.fields[state.focused_field].id).len();
+                    *cursor_pos = text_end(state.get(state.form.fields[state.focused_field].id));
                 }
             }
             KeyCode::Down => {
@@ -426,7 +429,7 @@ impl App {
                 } else {
                     state.focus_next();
                     *scroll_offset = auto_scroll_for_focus(state, *scroll_offset);
-                    *cursor_pos = state.get(state.form.fields[state.focused_field].id).len();
+                    *cursor_pos = text_end(state.get(state.form.fields[state.focused_field].id));
                 }
             }
             KeyCode::PageUp if is_textarea => {
@@ -452,48 +455,35 @@ impl App {
                 if is_textarea {
                     *cursor_pos = textarea_line_end(state.get(field_id), *cursor_pos, wrap_width);
                 } else {
-                    *cursor_pos = state.get(field_id).len();
+                    *cursor_pos = text_end(state.get(field_id));
                 }
             }
             KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
                 if accepts_text {
-                    let current = state.get(field_id).to_string();
-                    let pos = (*cursor_pos).min(current.len());
-                    let mut new = String::with_capacity(current.len() + 1);
-                    new.push_str(&current[..pos]);
-                    new.push(c);
-                    new.push_str(&current[pos..]);
+                    let current = state.get(field_id);
+                    let (new, pos) = insert_at_char(current, *cursor_pos, &c.to_string());
                     state.set(field_id, new);
-                    *cursor_pos = pos + 1;
+                    *cursor_pos = pos;
                 }
             }
             KeyCode::Backspace => {
                 if accepts_text {
-                    let current = state.get(field_id).to_string();
-                    let pos = (*cursor_pos).min(current.len());
-                    if pos > 0 {
-                        let mut new = String::with_capacity(current.len() - 1);
-                        new.push_str(&current[..pos - 1]);
-                        new.push_str(&current[pos..]);
-                        state.set(field_id, new);
-                        *cursor_pos = pos - 1;
-                    }
+                    let current = state.get(field_id);
+                    let (new, pos) = delete_char_before(current, *cursor_pos);
+                    state.set(field_id, new);
+                    *cursor_pos = pos;
                 }
             }
             KeyCode::Enter => {
                 if is_textarea {
-                    let current = state.get(field_id).to_string();
-                    let pos = (*cursor_pos).min(current.len());
-                    let mut new = String::with_capacity(current.len() + 1);
-                    new.push_str(&current[..pos]);
-                    new.push('\n');
-                    new.push_str(&current[pos..]);
+                    let current = state.get(field_id);
+                    let (new, pos) = insert_at_char(current, *cursor_pos, "\n");
                     state.set(field_id, new);
-                    *cursor_pos = pos + 1;
+                    *cursor_pos = pos;
                 } else {
                     state.focus_next();
                     *scroll_offset = auto_scroll_for_focus(state, *scroll_offset);
-                    *cursor_pos = state.get(state.form.fields[state.focused_field].id).len();
+                    *cursor_pos = text_end(state.get(state.form.fields[state.focused_field].id));
                 }
             }
             _ => {}

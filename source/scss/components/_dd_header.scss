@@ -28,18 +28,36 @@
       display: none;
     }
   }
-  &__top {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 1rem;
-    & > .dd-section {
-      flex: 1 1 auto;
-      min-width: 0;
+  & .dd-menu__toggle {
+    &-open {
+      display: block;
+    }
+    &-close {
+      display: none;
+    }
+    &.-active {
+      & .dd-menu__toggle-open {
+        display: none;
+      }
+      & .dd-menu__toggle-close {
+        display: block;
+      }
     }
   }
-  &__cta {
-    flex: 0 0 auto;
-    margin-left: auto;
+  & .dd-search__toggle {
+    &-open {
+      display: block;
+    }
+    &-close {
+      display: none;
+    }
+    &.-active {
+      & .dd-search__toggle-open {
+        display: none;
+      }
+      & .dd-search__toggle-close {
+        display: block;
+      }
+    }
   }
 }

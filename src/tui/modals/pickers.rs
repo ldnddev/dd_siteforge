@@ -119,7 +119,7 @@ impl App {
                 }) = self.modal.as_mut()
                 {
                     state.set(&field_id, value.clone());
-                    *cursor_pos = state.get(&field_id).len();
+                    *cursor_pos = text_end(state.get(&field_id));
                     self.push_toast(ToastLevel::Success, format!("Picked: {}", value));
                 } else {
                     self.push_toast(
@@ -197,7 +197,7 @@ impl App {
                 {
                     let value = crate::model::page_href(&slug);
                     state.set(&field_id, value.clone());
-                    *cursor_pos = state.get(&field_id).len();
+                    *cursor_pos = text_end(state.get(&field_id));
                     self.push_toast(ToastLevel::Success, format!("Picked page: {}", value));
                 } else {
                     self.push_toast(

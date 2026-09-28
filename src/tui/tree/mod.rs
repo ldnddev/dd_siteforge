@@ -7,6 +7,8 @@ mod items;
 mod nav;
 mod open;
 
+pub(in crate::tui) use edit::Clipboard;
+
 #[derive(Clone, Copy)]
 pub(in crate::tui) struct TreeRow {
     pub(in crate::tui) kind: TreeRowKind,
@@ -16,6 +18,8 @@ pub(in crate::tui) struct TreeRow {
 pub(in crate::tui) enum TreeRowKind {
     SiteRoot,
     HeaderRoot,
+    /// Optional `header.alert` slot (not a column component).
+    HeaderAlert,
     HeaderSection {
         section_idx: usize,
     },

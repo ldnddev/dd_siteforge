@@ -514,8 +514,6 @@ pub struct DdNavigation {
     pub sal_duration: Option<u16>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sal_delay: Option<u16>,
-    #[serde(default = "default_navigation_parent_width")]
-    pub parent_width: String,
     pub items: Vec<NavigationItem>,
 }
 
@@ -533,8 +531,6 @@ pub struct NavigationItem {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DdHeaderSearch {
-    #[serde(default = "default_header_search_parent_width")]
-    pub parent_width: String,
     #[serde(default = "default_header_search_sal", alias = "parent_data_aos")]
     pub sal: SalAnimation,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -545,8 +541,6 @@ pub struct DdHeaderSearch {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DdHeaderMenu {
-    #[serde(default = "default_header_menu_parent_width")]
-    pub parent_width: String,
     #[serde(default = "default_header_menu_sal", alias = "parent_data_aos")]
     pub sal: SalAnimation,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -751,24 +745,12 @@ fn default_navigation_sal() -> SalAnimation {
     SalAnimation::Fade
 }
 
-fn default_navigation_parent_width() -> String {
-    "dd-u-1-1 dd-u-sm-1-1 dd-u-md-1-1 dd-u-lg-18-24".to_string()
-}
-
 fn default_navigation_child_kind() -> NavigationKind {
     NavigationKind::Link
 }
 
-fn default_header_search_parent_width() -> String {
-    "dd-u-3-24 dd-u-sm-3-24 dd-u-md-3-24 dd-u-lg-4-24".to_string()
-}
-
 fn default_header_search_sal() -> SalAnimation {
     SalAnimation::Fade
-}
-
-fn default_header_menu_parent_width() -> String {
-    "dd-u-3-24 dd-u-sm-3-24 dd-u-md-3-24".to_string()
 }
 
 fn default_header_menu_sal() -> SalAnimation {
@@ -919,6 +901,8 @@ pub enum SectionPadding {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SectionItemBoxClass {
+    #[serde(rename = "no-box")]
+    NoBox,
     #[serde(rename = "l-box")]
     LBox,
     #[serde(rename = "ll-box")]
@@ -1428,7 +1412,6 @@ impl Site {
                             width_class: "dd-u-3-24 dd-u-sm-3-24 dd-u-md-3-24 dd-u-lg-4-24"
                                 .to_string(),
                             components: vec![SectionComponent::HeaderSearch(DdHeaderSearch {
-                                parent_width: default_header_search_parent_width(),
                                 sal: SalAnimation::Fade,
                                 sal_duration: None,
                                 sal_delay: None,
@@ -1438,7 +1421,6 @@ impl Site {
                             id: "column-3".to_string(),
                             width_class: "dd-u-3-24 dd-u-sm-3-24 dd-u-md-3-24".to_string(),
                             components: vec![SectionComponent::HeaderMenu(DdHeaderMenu {
-                                parent_width: default_header_menu_parent_width(),
                                 sal: SalAnimation::Fade,
                                 sal_duration: None,
                                 sal_delay: None,

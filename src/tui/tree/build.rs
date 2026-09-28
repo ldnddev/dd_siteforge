@@ -258,6 +258,11 @@ impl App {
         rows.push(TreeRow {
             kind: TreeRowKind::HeaderRoot,
         });
+        if self.site.header.alert.is_some() {
+            rows.push(TreeRow {
+                kind: TreeRowKind::HeaderAlert,
+            });
+        }
         if self.header_column_expanded {
             for (section_idx, section) in self.site.header.sections.iter().enumerate() {
                 rows.push(TreeRow {
@@ -300,6 +305,7 @@ impl App {
                 };
                 format!("1. {} dd-header ({})", marker, self.site.header.id)
             }
+            TreeRowKind::HeaderAlert => "  dd-alert".to_string(),
             TreeRowKind::HeaderSection { section_idx } => {
                 let section_i =
                     (*section_idx).min(self.site.header.sections.len().saturating_sub(1));
@@ -705,6 +711,7 @@ impl App {
 
     pub(in crate::tui) fn apply_tree_row_selection(&mut self, row: TreeRow) {
         self.page_head_selected = matches!(row.kind, TreeRowKind::PageHead);
+        self.header_alert_selected = matches!(row.kind, TreeRowKind::HeaderAlert);
         match row.kind {
             TreeRowKind::SiteRoot => {}
             TreeRowKind::HeaderRoot { .. } => {
@@ -712,6 +719,7 @@ impl App {
                 self.selected_header_column = 0;
                 self.selected_header_component = 0;
             }
+            TreeRowKind::HeaderAlert => {}
             TreeRowKind::HeaderSection { section_idx } => {
                 self.selected_header_section = section_idx;
                 self.selected_header_column = 0;
@@ -894,7 +902,8 @@ impl App {
         }
         let row_matches_selection = |row: &TreeRow| match row.kind {
             TreeRowKind::SiteRoot => true,
-            TreeRowKind::HeaderRoot { .. } => true,
+            TreeRowKind::HeaderRoot { .. } => !self.header_alert_selected,
+            TreeRowKind::HeaderAlert => self.header_alert_selected,
             TreeRowKind::HeaderSection { section_idx } => {
                 section_idx == self.selected_header_section
             }

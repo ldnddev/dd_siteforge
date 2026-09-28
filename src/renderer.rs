@@ -954,7 +954,6 @@ fn render_header_search(
     search: &crate::model::DdHeaderSearch,
 ) -> anyhow::Result<String> {
     let data = json!({
-        "parent_width": search.parent_width,
         "sal_attr": sal_html_attrs(search.sal, search.sal_duration, search.sal_delay),
     });
     r.render("dd-header-search", &data)
@@ -962,7 +961,6 @@ fn render_header_search(
 
 fn render_header_menu(r: &Renderer, menu: &crate::model::DdHeaderMenu) -> anyhow::Result<String> {
     let data = json!({
-        "parent_width": menu.parent_width,
         "sal_attr": sal_html_attrs(menu.sal, menu.sal_duration, menu.sal_delay),
     });
     r.render("dd-header-menu", &data)
@@ -1858,6 +1856,10 @@ mod tests {
         let r = crate::templates::Renderer::bundled_only().unwrap();
         let header = super::render_header(&r, &site.header).unwrap();
         let footer = super::render_footer(&r, &site.footer, &site.name).unwrap();
+        assert!(
+            !header.contains("dd-alert"),
+            "starter header must not render dd-alert: {header}"
+        );
         let html = super::render_page_html_with_chrome(&r, &site.pages[0], &header, &footer, &site)
             .unwrap();
         assert!(html.contains("lang=\"fr\""));
@@ -2101,7 +2103,6 @@ mod tests {
                         sal: SalAnimation::Fade,
                         sal_duration: None,
                         sal_delay: None,
-                        parent_width: "dd-u-1-1".to_string(),
                         items,
                     })],
                 }],

@@ -24,7 +24,7 @@ Workflow:
 2. Images in `./source/images/` next to the JSON
 3. TUI edits pages/components/head. Autosave every 2s; `s` writes a `.backup`
 4. `npx grunt build` then export: HTML + Grunt `web/assets` + images + sitemap/robots/404
-5. `p` / `serve` starts a local HTTP server so relative `assets/` paths resolve
+5. `Shift+P` / `serve` starts a local HTTP server so relative `assets/` paths resolve
 
 Current crate version: see `Cargo.toml`.
 
@@ -66,16 +66,16 @@ Panes: `[1]` Regions · `[2]` Pages · `[3]` Layout · `[4]` Details (focusable;
 
 Toasts for success / info / warning. Modals for errors and forms.
 
-F1 Help (wrap + scroll). F2 Theme (source, status, color samples; same chrome as F1). F3 Validate. `Shift+E` Export. `p` Preview. `s` Save. `/` insert. `Ctrl+Q` quit (confirm if dirty).
+F1 Help (wrap + scroll). F2 Theme (source, status, color samples; same chrome as F1). F3 Validate. `Shift+E` Export. `Shift+P` Preview. `s` Save. `/` insert. `Ctrl+Q` quit (confirm if dirty).
 
-Pages panel: add / delete / undo / reorder / rename. Layout: nav, expand, edit, duplicate, columns.
+Pages panel: add / delete / undo / reorder / rename. Layout: nav, expand, edit, copy (`y`) / paste (`p`), columns.
 
 Edit forms: Tab between fields, click-to-focus, mouse wheel, `Ctrl+P` image or page picker on URL fields.
 
 ### Export + assets
 
 - Copy textareas with Expand (`dd-hero`, `dd-rich_text`, `dd-cta`, `dd-alert`, `dd-modal`, `dd-blockquote`, plus card / accordion / alternating / milestones / slider / tabs / timeline item copy) render CommonMark to HTML at export (headings, lists, thematic breaks, code, tables, strikethrough, raw HTML passthrough). JSON-LD `text` keeps the authored source.
-- Handlebars from crate `templates/` plus `source/templates/` overrides. Seed on `init-site` only. Re-seed with `init-templates --force`. Export never writes templates.
+- Handlebars load order (later wins): baked-in crate `templates/*.hbs`, then the crate `templates/` directory when this binary was built from a checkout that still exists, then `<site>/templates/`, then `<site>/source/templates/`. A `source/templates` file that is still an exact copy of the baked-in template yields to the live crate file. `init-templates` copies from the crate `templates/` tree when present (`--force` overwrites). Export never writes templates.
 - Build kit (Gruntfile, package.json, `.lando.yml`, `.ddev/`, `source/` except author images and templates) is embedded in the binary. `init-site` copies it once (skip existing). Optional house overlay: `~/.config/ldnddev/dd_siteforge/` (dump with `init-scaffold --global`). Re-seed a site with `init-scaffold --force`.
 - `init-site` asks for a project name (or `--name` / folder default when stdin is not a TTY) and stamps that slug into Lando, DDEV, and `package.json`.
 - CSS/JS come from Grunt (`source/{js,scss}` → `web/assets`). Host `npm install && npx grunt build` is the contract. Lando and DDEV are optional wrappers.

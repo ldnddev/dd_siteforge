@@ -18,8 +18,3 @@ function dd_milestones_count() {
 document.addEventListener('DOMContentLoaded', () => {
   dd_milestones_count();
 });
-dd_milestones_count();
-// Fire axe after HTMX settles
-document.body.addEventListener("htmx:afterSettle", function (event) {
-  dd_milestones_count();
-});

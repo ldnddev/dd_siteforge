@@ -1,0 +1,22 @@
+@use "../partials/mixins";
+@use "../partials/variables";
+
+#cookie-consent {
+  position: fixed;
+  bottom: 20px;
+  left: 20px;
+  right: 20px;
+  color: variables.$c_text_primary;
+  background-color: variables.$c_ui_neutral_300;
+  border: 1px solid variables.$c_primary_action_default_border;
+  @include mixins.pref_dark {
+    color: variables.$c_text_primary--dark;
+    background-color: variables.$c_ui_neutral_300--dark;
+    border: 1px solid variables.$c_primary_action_default_border--dark;
+  }
+  padding: 20px;
+  z-index: 1000;
+  max-width: 500px;
+  @include mixins.border_radius();
+  @include mixins.box_shadow();
+}

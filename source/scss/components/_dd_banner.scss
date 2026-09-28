@@ -4,6 +4,9 @@
 .dd-banner {
   @include mixins.position_relative();
   background-color: variables.$c_ui_neutral_200;
+  @include mixins.pref_dark {
+    background-color: variables.$c_ui_neutral_200--dark;
+  }
   background-position: center;
   background-repeat: no-repeat;
   background-size: cover;

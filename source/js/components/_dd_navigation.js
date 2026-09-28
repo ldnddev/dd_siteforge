@@ -1,32 +1,29 @@
 function dd_navigation() {
 
-    const menu_toggle = document.querySelector('.dd-menu__toggle');
-    const menu_close = document.querySelector('.dd-menu__close');
-    const main_menu = document.querySelector('.navigation.-main-menu');
+    const dd_menu_toggle = document.querySelector('.dd-menu__toggle');
+    const dd_menu_close = document.querySelector('.dd-menu__close');
+    const dd_main_menu = document.querySelector('.navigation.-main-menu');
 
-    if (menu_toggle) {
-      menu_toggle.addEventListener('click', () => {
+    if (dd_menu_toggle) {
+      dd_menu_toggle.addEventListener('click', () => {
         // Toggle the -active class on the button itself
-        menu_toggle.classList.toggle('fa-bars');
-        menu_toggle.classList.toggle('fa-times');
+        dd_menu_toggle.classList.toggle('-active');
         // Toggle the -active class on the main menu div
-        main_menu.classList.toggle('-active');
+        dd_main_menu.classList.toggle('-active');
         // Force close search
         // Toggle the -active class on the search element
-        document.querySelector('.dd-search__toggle').classList.remove('fa-times');
-        document.querySelector('.dd-search__toggle').classList.add('fa-magnifying-glass');
+        document.querySelector('.dd-search__toggle').classList.remove('-active');
         document.querySelector('.dd-search').classList.remove('-active');
       });
     }
 
-    if (menu_close) {
+    if (dd_menu_close) {
       // Used if there is a close button as part of the menu when open on mobile
-      menu_close.addEventListener('click', () => {
+      dd_menu_close.addEventListener('click', () => {
         // Toggle the -active class on the button itself
-        menu_toggle.classList.toggle('fa-times');
-        menu_toggle.classList.toggle('fa-bars');
+        dd_menu_toggle.classList.toggle('-active');
         // Toggle the -active class on the main menu div
-        main_menu.classList.toggle('-active');
+        dd_main_menu.classList.toggle('-active');
       });
     }
 
@@ -58,9 +55,5 @@ function dd_navigation() {
 
 // Initialize on initial page load
 document.addEventListener('DOMContentLoaded', () => {
-  dd_navigation();
-});
-// Fire axe after HTMX settles
-document.body.addEventListener("htmx:afterSettle", function (event) {
   dd_navigation();
 });

@@ -1,6 +1,6 @@
 ---
 component: dd-navigation
-version: 2
+version: 3
 node_scope: section_item   # one of: page_node | section_item
 
 insert:
@@ -9,7 +9,6 @@ insert:
     parent_type: "dd-header__navigation"
     parent_class: "-main-menu"
     sal: "fade"
-    parent_width: "dd-u-1-1 dd-u-sm-1-1 dd-u-md-1-1 dd-u-lg-18-24"
 
     # required children collection (recursive shape)
     items:
@@ -62,13 +61,6 @@ fields:
     visible_when: "sal != no-animation"
     maps_to: "[data-sal-delay]"
     notes: "Collection items (card, alternating, milestones) add 100×index, cap 1000."
-
-
-  - id: parent_width
-    required: true
-    type: string
-    default: "dd-u-1-1 dd-u-sm-1-1 dd-u-md-1-1 dd-u-lg-18-24"
-    maps_to: ".dd-section__item width class"
 
   # ---------------------------
   # child items[] fields (recursive tree)
@@ -126,7 +118,6 @@ edit_ui:
     - parent_type
     - parent_class
     - sal
-    - parent_width
 
     # item edit order (applies at every depth)
     - items[].child_kind
@@ -158,7 +149,6 @@ edit_ui:
       - parent_type
       - parent_class
       - sal
-      - parent_width
     item_edit_modes:
       - child_kind
       - child_link_label

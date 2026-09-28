@@ -2,57 +2,36 @@ function dd_tabs() {
   const tabsContainers = document.querySelectorAll('.dd-tabs');
 
   tabsContainers.forEach(container => {
-    const tabs = container.querySelectorAll('[role="tab"]');
-    const panels = container.querySelectorAll('[role="tabpanel"]');
+    const links = container.querySelectorAll('.dd-tabs__menu-link');
+    const items = container.querySelectorAll('.dd-tabs__item');
 
-    const activate = (tab) => {
-      const targetId = tab.getAttribute('aria-controls');
-      tabs.forEach(t => {
-        const on = t === tab;
-        t.classList.toggle('-active', on);
-        t.setAttribute('aria-selected', on ? 'true' : 'false');
-        t.setAttribute('tabindex', on ? '0' : '-1');
-      });
-      panels.forEach(panel => {
-        const on = panel.id === targetId;
-        panel.classList.toggle('-active', on);
-        if (on) {
-          panel.removeAttribute('hidden');
-        } else {
-          panel.setAttribute('hidden', '');
-        }
-      });
-    };
-
-    tabs.forEach((tab, i) => {
-      tab.addEventListener('click', function (e) {
+    links.forEach(link => {
+      link.addEventListener('click', function(e) {
         e.preventDefault();
-        activate(this);
-      });
-      tab.addEventListener('keydown', function (e) {
-        let next = null;
-        if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-          next = tabs[(i + 1) % tabs.length];
-        } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-          next = tabs[(i - 1 + tabs.length) % tabs.length];
-        } else if (e.key === 'Home') {
-          next = tabs[0];
-        } else if (e.key === 'End') {
-          next = tabs[tabs.length - 1];
-        }
-        if (next) {
-          e.preventDefault();
-          next.focus();
-          activate(next);
-        }
+        const targetId = this.getAttribute('aria-controls');
+        const targetItem = container.querySelector(`#${targetId}`);
+
+        // Remove active from all links and items in this container
+        links.forEach(l => {
+          l.classList.remove('-active');
+          l.setAttribute('aria-selected', 'false');
+        });
+        items.forEach(item => {
+          item.classList.remove('-active');
+          item.setAttribute('aria-hidden', 'true');
+        });
+
+        // Add active to clicked link and corresponding item
+        this.classList.add('-active');
+        this.setAttribute('aria-selected', 'true');
+        targetItem.classList.add('-active');
+        targetItem.setAttribute('aria-hidden', 'false');
       });
     });
   });
 }
 
+// Initialize on initial page load
 document.addEventListener('DOMContentLoaded', () => {
-  dd_tabs();
-});
-document.body.addEventListener("htmx:afterSettle", function () {
   dd_tabs();
 });

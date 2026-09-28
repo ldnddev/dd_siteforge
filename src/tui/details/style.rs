@@ -342,7 +342,7 @@ impl App {
                     component: component_idx,
                 },
             },
-            TreeRowKind::HeaderRoot => BlueprintFocus::Header {
+            TreeRowKind::HeaderRoot | TreeRowKind::HeaderAlert => BlueprintFocus::Header {
                 depth: HeaderFocusDepth::Root,
             },
             TreeRowKind::HeaderSection { section_idx } => BlueprintFocus::Header {

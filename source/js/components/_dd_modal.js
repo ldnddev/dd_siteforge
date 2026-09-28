@@ -35,7 +35,3 @@ function dd_modal() {
 document.addEventListener("DOMContentLoaded", () => {
   dd_modal();
 });
-// Fire after HTMX settles
-document.body.addEventListener("htmx:afterSettle", function (event) {
-  dd_modal();
-});

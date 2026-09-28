@@ -479,7 +479,7 @@ impl App {
         {
             if let Some(idx) = state.form.fields.iter().position(|f| f.id == focus_id) {
                 state.focused_field = idx;
-                *cursor_pos = state.get(focus_id).len();
+                *cursor_pos = text_end(state.get(focus_id));
             }
         }
     }

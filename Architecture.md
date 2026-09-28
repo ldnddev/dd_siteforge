@@ -13,7 +13,7 @@ src/
   storage.rs       JSON load/save
   validate.rs      validate_site() + validate_site_with_root() (missing-image)
   renderer.rs      typed-model → HTML via handlebars templates
-  templates.rs     load bundled + source/templates overrides; seed on init
+  templates.rs     load bundled, live crate templates/, site templates/, source/templates; seed from live crate tree when present
   scaffold.rs      embed Grunt/source/Lando/DDEV; seed on init; optional ~/.config overlay
   tui/mod.rs            App shell (struct, run loop, save/autosave)
   tui/draw.rs           header / sidebar / details / footer frame
@@ -83,7 +83,7 @@ Each component spec lives in `components/dd-*.md` (single source of truth for fi
 - Timeline: optional ARIA label default `"Timeline"`, SAL stagger on items, events with year, optional datetime, title, heading 2–6 (default 3), markdown copy, optional image. `<ol>` of events. Datetime required when year is not YYYY / YYYY-MM / YYYY-MM-DD.
 - Site options: header CTA + banner on `DdHeader`; footer blurb / copyright / socials on `DdFooter`; GTM snippets on `Site`. GTM export extracts `GTM-XXXX` and emits canonical googletagmanager.com markup.
 - Static export: `crate::export::export_site(&site, &out, site_root)`. Writes `{slug}.html`, copies Grunt `web/assets/{css,js,webfonts,favicon,vendors}` when the dest is not already `web/` (does not clobber a local `grunt build`), fills missing webfonts/favicon from `source/`, copies `<site_dir>/source/images/` → `<out>/assets/images/`, plus `sitemap.xml`, `robots.txt`, and `404.html` when no author 404 page exists.
-- Asset and page hrefs are same-directory relative (`assets/css/style.min.css`, `contact.html`). `p` / `serve` start a local HTTP server so those paths resolve.
+- Asset and page hrefs are same-directory relative (`assets/css/style.min.css`, `contact.html`). `Shift+P` / `serve` start a local HTTP server so those paths resolve.
 
 ## Validation
 
@@ -112,7 +112,7 @@ loop:
 | `F2` | Theme info modal (source + status + color details; same layout as F1) |
 | `F3` | Validate site → modal on errors, success toast otherwise |
 | `Shift+E` | Export site (validate gate → render → copy source/images/) |
-| `p` | Preview current page (validate → export → local HTTP server → browser) |
+| `Shift+P` | Preview current page (validate → export → local HTTP server → browser) |
 | `s` | Save (writes `<path>` + `<path>.backup`) |
 | `/` | Insert component fuzzy picker |
 | `Tab` / `Shift+Tab` | Next/prev page |
@@ -125,7 +125,7 @@ loop:
 
 ### Layout panel (`[3]`)
 
-`Up/Down` or `j/k` move row · `g`/`G` first/last · `h`/`l` collapse/expand · `Space` toggle expand · `Enter` edit row · `d` delete selected grain · `y` duplicate after · `u` undo · `J/K` move selected grain down/up · `C/V` add/remove column · `c/v` prev/next column · `r/f` edit column id/width-class.
+`Up/Down` or `j/k` move row · `g`/`G` first/last · `h`/`l` collapse/expand · `Space` toggle expand · `Enter` edit row · `d` delete selected grain · `y` copy · `p` paste after · `u` undo · `J/K` move selected grain down/up · `C/V` add/remove column · `c/v` prev/next column · `r/f` edit column id/width-class.
 
 ### Edit modal
 

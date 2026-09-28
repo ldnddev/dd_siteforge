@@ -184,7 +184,7 @@ $c_tertiary_action_disabled_border--dark: rgba(160, 110, 100, 1);
 $c_success_surface: rgba(233, 247, 239, 1);
 $c_success_surface--dark: rgba(11, 28, 19, 1);
 
-$c_success_text: rgba(27, 120, 66, 1); // darkened for 4.5:1 on success_surface (was 30,132,73 @ 4.27:1)
+$c_success_text: rgba(30, 132, 73, 1);
 $c_success_text--dark: rgba(130, 224, 170, 1);
 
 $c_success_border: rgba(130, 224, 170, 1);
@@ -193,7 +193,7 @@ $c_success_border--dark: rgba(39, 174, 96, 1);
 $c_warning_surface: rgba(254, 245, 231, 1);
 $c_warning_surface--dark: rgba(27, 22, 7, 1);
 
-$c_warning_text: rgba(140, 90, 10, 1); // darkened for 4.5:1 on warning_surface + 3:1 fill/arc vs track (was 185,119,14 @ 3.40:1)
+$c_warning_text: rgba(185, 119, 14, 1);
 $c_warning_text--dark: rgba(245, 196, 105, 1);
 
 $c_warning_border: rgba(245, 203, 167, 1);
@@ -319,4 +319,4 @@ $width_xl: 80em;
 $width_xxl: 120em;
 $width_xxxl: 160em;
 $width_x4k: 240em;
-$max_width: $width_xxl;
+$max-width: $width_xxl;

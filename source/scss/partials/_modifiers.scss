@@ -26,6 +26,18 @@
 [hidden] {
   display: none !important;
 }
+.-hidden-sm {
+  display: none !important;
+  @include mixins.mq(lg) {
+    display: block !important;
+  }
+}
+.-hidden-lg {
+  display: block !important;
+  @include mixins.mq(lg) {
+    display: none !important;
+  }
+}
 .visually-hidden:not(:focus):not(:active),
 .-scrn-reader-only:not(:focus):not(:active) {
   clip: rect(0 0 0 0);
@@ -40,6 +52,25 @@
 /**
  * classes for easy use
  */
+.-text-us-red {
+  color: #B22234;
+}
+.-text-us-blue {
+  color: #3C3B6E;
+}
+.-text-us-white {
+  color: #FFFFFF;
+}
+.-bg-us-red {
+  background-color: #B22234;
+}
+.-bg-us-blue {
+  background-color: #3C3B6E;
+}
+.-bg-us-white {
+  background-color: #FFFFFF;
+}
+
 .-text {
   &-primary {
     color: variables.$c_text_primary;

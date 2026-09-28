@@ -9,7 +9,7 @@ module.exports = (grunt) => {
       },
       dist: {
         src: [
-          'source/js/vendors/**/*.js',
+          'source/js/vendors/*.js',
           'source/js/components/*.js',
           'source/js/main.js',
         ],
@@ -23,7 +23,7 @@ module.exports = (grunt) => {
       },
       dist: {
         src: [
-          'source/js/vendors/**/*.js',
+          'source/js/vendors/*.js',
           'source/js/components/*.js',
           'source/js/main.js',
         ],
@@ -37,7 +37,7 @@ module.exports = (grunt) => {
           sourceMap: true
         },
         files: {
-          'web/assets/css/style.min.css': 'source/scss/style.scss'
+          'web/assets/css/style.min.css':'source/scss/style.scss'
         }
       },
       sass: {
@@ -46,18 +46,22 @@ module.exports = (grunt) => {
           sourceMap: true
         },
         files: {
-          'web/assets/css/style.css': 'source/scss/style.scss'
+          'web/assets/css/style.css':'source/scss/style.scss'
         }
       },
-
+      error: {
+        files: {
+          'web/assets/css/errors.css':'source/scss/errors.scss'
+        }
+      }
     },
     realFavicon: {
       favicons: {
         src: 'source/favicon/favicon.png',
-        dest: 'web/assets/favicon',
+        dest: 'web/assets/favicon/',
         options: {
           iconsPath: '/assets/favicon/',
-          html: ['web/includes/favicon_data.json'],
+          html: ['web/assets/favicon/favicon_data.json'],
           design: {
             ios: {
               pictureAspect: 'backgroundAndMargin',
@@ -119,18 +123,6 @@ module.exports = (grunt) => {
         }
       }
     },
-    replace: {
-      faviconStripTags: {
-        src: ['source/favicon/favicon_data.json'],
-        dest: 'source/templates/favicon.hbs',
-        replacements: [
-          {
-            from: /<html>|<\/html>|<head>|<\/head>|<body>|<\/body>/ig,
-            to: ''
-          }
-        ]
-      }
-    },
     copy: {
       favicon: {
         nonull: true,
@@ -147,31 +139,16 @@ module.exports = (grunt) => {
         src: 'node_modules/axe-core/axe.min.js',
         dest: 'web/assets/vendors/axe/axe.min.js',
       },
-      nineaxe: {
+      ddaxe: {
         nonull: true,
         src: 'source/vendors/axe/dd-axe.js',
         dest: 'web/assets/vendors/axe/dd-axe.js',
-      },
-      webfonts: {
-        expand: true,
-        cwd: 'source/webfonts',
-        src: ['**/*'],
-        dest: 'web/assets/webfonts/',
-      },
-      faviconAssets: {
-        expand: true,
-        cwd: 'source/favicon',
-        src: ['**/*'],
-        dest: 'web/assets/favicon/',
       },
     },
     clean: {
       cssjs: [
         'web/assets/css',
         'web/assets/js'
-      ],
-      webfonts: [
-        'web/assets/webfonts'
       ],
       favicon: [
         'web/assets/favicon',
@@ -181,7 +158,8 @@ module.exports = (grunt) => {
       ],
       axe: [
         'web/assets/vendors/axe/'
-      ]
+      ],
+      build: ['build']
     },
     watch: {
       css: {
@@ -193,35 +171,28 @@ module.exports = (grunt) => {
         tasks: ['concat', 'uglify']
       },
       axecli: {
-        files: 'source/vendors/axe/*.js',
-        tasks: ['copy:nineaxe']
+        files: 'source/vendors/**/*.js',
+        tasks: ['copy:ddaxe']
       }
     },
     browserSync: {
       dev: {
         bsFiles: {
-          src: [
+          src : [
             'web/assets/css/*.css',
             'web/assets/js/*.js',
-            'web/**/*.html'
+            'web/**/*.php'
           ]
         },
-        options: (function () {
-          const proxy = process.env.BROWSERSYNC_PROXY;
-          const opts = {
-            open: false,
-            watchTask: true,
-          };
-          if (proxy) {
-            opts.proxy = { target: proxy };
-            if (proxy.indexOf('https://') === 0) {
-              opts.https = true;
-            }
-          } else {
-            opts.server = { baseDir: 'web' };
+        options: {
+          https: true,
+          open: false,
+          browser: "google chrome",
+          watchTask: true,
+          proxy: {
+            target: "https://wwwldnddevcom.lndo.site/",
           }
-          return opts;
-        })(),
+        }
       }
     }
   });
@@ -234,7 +205,6 @@ module.exports = (grunt) => {
   grunt.loadNpmTasks('grunt-contrib-clean');
   grunt.loadNpmTasks('grunt-contrib-uglify');
   grunt.loadNpmTasks('grunt-real-favicon');
-  grunt.loadNpmTasks('grunt-text-replace');
   grunt.loadNpmTasks('grunt-notify');
   grunt.loadNpmTasks('grunt-browser-sync');
   grunt.loadNpmTasks('grunt-contrib-copy');
@@ -242,13 +212,10 @@ module.exports = (grunt) => {
   // Register tasks
   grunt.registerTask('build', [
     'clean:cssjs',
-    'clean:webfonts',
     'clean:axe',
     'copy:axe',
     'copy:axemin',
-    'copy:nineaxe',
-    'copy:webfonts',
-    'copy:faviconAssets',
+    'copy:ddaxe',
     'dart-sass:sass',
     'dart-sass:sassmin',
     'uglify',
@@ -256,13 +223,10 @@ module.exports = (grunt) => {
   ]);
   grunt.registerTask('dev', [
     'clean:cssjs',
-    'clean:webfonts',
     'clean:axe',
     'copy:axe',
     'copy:axemin',
-    'copy:nineaxe',
-    'copy:webfonts',
-    'copy:faviconAssets',
+    'copy:ddaxe',
     'dart-sass:sass',
     'dart-sass:sassmin',
     'uglify',
@@ -270,7 +234,9 @@ module.exports = (grunt) => {
     'browserSync',
     'watch'
   ]);
-
+  grunt.registerTask('throw', [
+    'dart-sass:error'
+  ]);
   grunt.registerTask('sync', [
     'browserSync',
     'watch'
@@ -278,7 +244,9 @@ module.exports = (grunt) => {
   grunt.registerTask('favicon', [
     'clean:favicon',
     'realFavicon',
-    'replace:faviconStripTags',
     'copy:favicon'
+  ]);
+  grunt.registerTask('default', [
+    'clean:build'
   ]);
 };

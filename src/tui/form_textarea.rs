@@ -373,6 +373,43 @@ pub(super) fn textarea_move_cursor_vertical(
     row.start + current_col.min(row.len)
 }
 
+/// Caret position at the end of `s` (Unicode scalar count, matching visual layout).
+pub(super) fn text_end(s: &str) -> usize {
+    s.chars().count()
+}
+
+fn char_byte_index(s: &str, char_pos: usize) -> usize {
+    s.char_indices()
+        .nth(char_pos)
+        .map(|(i, _)| i)
+        .unwrap_or(s.len())
+}
+
+/// Insert `insert` at `char_pos`. Returns the new string and caret (char index after the insert).
+pub(super) fn insert_at_char(s: &str, char_pos: usize, insert: &str) -> (String, usize) {
+    let pos = char_pos.min(text_end(s));
+    let byte = char_byte_index(s, pos);
+    let mut out = String::with_capacity(s.len() + insert.len());
+    out.push_str(&s[..byte]);
+    out.push_str(insert);
+    out.push_str(&s[byte..]);
+    (out, pos + insert.chars().count())
+}
+
+/// Delete the scalar before `char_pos`. Returns the new string and caret.
+pub(super) fn delete_char_before(s: &str, char_pos: usize) -> (String, usize) {
+    let pos = char_pos.min(text_end(s));
+    if pos == 0 {
+        return (s.to_string(), 0);
+    }
+    let start = char_byte_index(s, pos - 1);
+    let end = char_byte_index(s, pos);
+    let mut out = String::with_capacity(s.len() - (end - start));
+    out.push_str(&s[..start]);
+    out.push_str(&s[end..]);
+    (out, pos - 1)
+}
+
 impl App {
     /// Wrap width of the focused textarea from the last-painted box, if any.
     pub(super) fn focused_textarea_wrap_width(&self) -> Option<u16> {

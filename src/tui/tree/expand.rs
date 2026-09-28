@@ -515,7 +515,9 @@ impl App {
                 self.sync_tree_row_with_selection();
                 return;
             }
-            TreeRowKind::HeaderColumn { .. } | TreeRowKind::HeaderComponent { .. } => {
+            TreeRowKind::HeaderColumn { .. }
+            | TreeRowKind::HeaderComponent { .. }
+            | TreeRowKind::HeaderAlert => {
                 self.push_toast(ToastLevel::Info, "Press Enter to edit.");
                 return;
             }

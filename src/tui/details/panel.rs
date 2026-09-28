@@ -55,7 +55,8 @@ impl App {
                         parts.extend_from_slice(&[
                             "/:Insert",
                             "d:Del",
-                            "y:Dup",
+                            "y:Copy",
+                            "p:Paste",
                             "u:Undo-tree",
                             "r:Col-id",
                             "J/K:Move",
@@ -66,11 +67,12 @@ impl App {
                             "/:Insert",
                             "Enter:Edit",
                             "d:Del",
-                            "y:Dup",
+                            "y:Copy",
+                            "p:Paste",
                             "u:Undo-tree",
                             "r:Col-id",
                             "J/K:Move",
-                            "p:Preview",
+                            "P:Preview",
                             "Ctrl+Q:Quit",
                         ]);
                     }
@@ -396,6 +398,7 @@ impl App {
                 TreeRowKind::SiteRoot
                 | TreeRowKind::HeaderRoot { .. }
                 | TreeRowKind::FooterRoot => true,
+                TreeRowKind::HeaderAlert => clicked_line.contains("alert:"),
                 TreeRowKind::HeaderSection { section_idx }
                 | TreeRowKind::FooterSection { section_idx } => section_idx == hsec,
                 TreeRowKind::HeaderColumn {
@@ -431,8 +434,9 @@ impl App {
                 _ => false,
             }
         };
-        if let Some((i, _)) = rows.iter().enumerate().rev().find(|(_, r)| matches(r)) {
+        if let Some((i, row)) = rows.iter().enumerate().rev().find(|(_, r)| matches(r)) {
             self.selected_tree_row = i;
+            self.header_alert_selected = matches!(row.kind, TreeRowKind::HeaderAlert);
         }
     }
 

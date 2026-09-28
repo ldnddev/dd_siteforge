@@ -18,18 +18,4 @@ document.addEventListener('DOMContentLoaded', () => {
     disabled: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
   });
 
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    document.querySelectorAll('video[autoplay]').forEach((video) => {
-      video.removeAttribute('autoplay');
-      video.pause();
-    });
-  }
-
-});
-
-// Re-observe elements injected by HTMX
-document.body.addEventListener("htmx:afterSettle", function () {
-  if (window.ddSal && typeof window.ddSal.update === 'function') {
-    window.ddSal.update();
-  }
 });

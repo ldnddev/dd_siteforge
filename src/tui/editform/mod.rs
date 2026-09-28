@@ -491,7 +491,7 @@ pub(super) const SECTION_CLASS_OPTIONS: &[&str] = &[
     "-md",
 ];
 
-pub(super) const ITEM_BOX_CLASS_OPTIONS: &[&str] = &["l-box", "ll-box"];
+pub(super) const ITEM_BOX_CLASS_OPTIONS: &[&str] = &["no-box", "l-box", "ll-box"];
 
 pub(super) const SECTION_BG_OPTIONS: &[&str] = &["none", "-bg-muted"];
 pub(super) const SECTION_PADDING_OPTIONS: &[&str] = &["default", "-no-padding"];

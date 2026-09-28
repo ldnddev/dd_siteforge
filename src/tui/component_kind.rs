@@ -77,6 +77,30 @@ impl ComponentKind {
         }
     }
 
+    pub(super) fn from_section_component(c: &crate::model::SectionComponent) -> Self {
+        match c {
+            crate::model::SectionComponent::Cta(_) => Self::Cta,
+            crate::model::SectionComponent::Banner(_) => Self::Banner,
+            crate::model::SectionComponent::Blockquote(_) => Self::Blockquote,
+            crate::model::SectionComponent::Accordion(_) => Self::Accordion,
+            crate::model::SectionComponent::Alternating(_) => Self::Alternating,
+            crate::model::SectionComponent::Card(_) => Self::Card,
+            crate::model::SectionComponent::Filmstrip(_) => Self::Filmstrip,
+            crate::model::SectionComponent::Milestones(_) => Self::Milestones,
+            crate::model::SectionComponent::Modal(_) => Self::Modal,
+            crate::model::SectionComponent::Slider(_) => Self::Slider,
+            crate::model::SectionComponent::Alert(_) => Self::Alert,
+            crate::model::SectionComponent::Image(_) => Self::Image,
+            crate::model::SectionComponent::RichText(_) => Self::RichText,
+            crate::model::SectionComponent::Navigation(_) => Self::Navigation,
+            crate::model::SectionComponent::HeaderSearch(_) => Self::HeaderSearch,
+            crate::model::SectionComponent::HeaderMenu(_) => Self::HeaderMenu,
+            crate::model::SectionComponent::Spacer(_) => Self::Spacer,
+            crate::model::SectionComponent::Tabs(_) => Self::Tabs,
+            crate::model::SectionComponent::Timeline(_) => Self::Timeline,
+        }
+    }
+
     pub(super) fn default_component(self) -> crate::model::SectionComponent {
         match self {
             ComponentKind::Hero | ComponentKind::Section => {
@@ -267,7 +291,6 @@ impl ComponentKind {
                     sal: crate::model::SalAnimation::Fade,
                     sal_duration: None,
                     sal_delay: None,
-                    parent_width: "dd-u-1-1 dd-u-sm-1-1 dd-u-md-1-1 dd-u-lg-18-24".to_string(),
                     items: vec![crate::model::NavigationItem {
                         child_kind: crate::model::NavigationKind::Link,
                         child_link_label: "Home".to_string(),
@@ -280,7 +303,6 @@ impl ComponentKind {
             }
             ComponentKind::HeaderSearch => {
                 crate::model::SectionComponent::HeaderSearch(crate::model::DdHeaderSearch {
-                    parent_width: "dd-u-3-24 dd-u-sm-3-24 dd-u-md-3-24 dd-u-lg-4-24".to_string(),
                     sal: crate::model::SalAnimation::Fade,
                     sal_duration: None,
                     sal_delay: None,
@@ -288,7 +310,6 @@ impl ComponentKind {
             }
             ComponentKind::HeaderMenu => {
                 crate::model::SectionComponent::HeaderMenu(crate::model::DdHeaderMenu {
-                    parent_width: "dd-u-3-24 dd-u-sm-3-24 dd-u-md-3-24".to_string(),
                     sal: crate::model::SalAnimation::Fade,
                     sal_duration: None,
                     sal_delay: None,

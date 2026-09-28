@@ -732,6 +732,36 @@ fn textarea_expand_click_places_caret() {
 }
 
 #[test]
+fn textarea_paste_multibyte_does_not_panic() {
+    let mut app = app_with_component(ComponentKind::RichText);
+    open_form_edit_on_page_component(&mut app);
+    focus_rich_text_copy(&mut app);
+    if let Some(Modal::FormEdit {
+        state, cursor_pos, ..
+    }) = &mut app.modal
+    {
+        state.set("parent_copy", "");
+        *cursor_pos = 0;
+    }
+    // Terminal paste sends one KeyCode::Char per scalar, including 3-byte em-dashes.
+    for c in "services—high-impact web".chars() {
+        send_key(&mut app, KeyCode::Char(c), KeyModifiers::NONE);
+    }
+    assert_eq!(form_value(&app, "parent_copy"), "services—high-impact web");
+    assert_eq!(
+        form_cursor_pos(&app),
+        "services—high-impact web".chars().count()
+    );
+    send_key(&mut app, KeyCode::Backspace, KeyModifiers::NONE);
+    send_key(&mut app, KeyCode::Backspace, KeyModifiers::NONE);
+    send_key(&mut app, KeyCode::Backspace, KeyModifiers::NONE);
+    assert_eq!(form_value(&app, "parent_copy"), "services—high-impact ");
+    send_key(&mut app, KeyCode::Left, KeyModifiers::NONE);
+    send_key(&mut app, KeyCode::Char('x'), KeyModifiers::NONE);
+    assert!(form_value(&app, "parent_copy").contains("services—high-impact"));
+}
+
+#[test]
 fn tier_a_alert_form_edit_round_trip() {
     let mut app = app_with_component(ComponentKind::Alert);
     open_form_edit_on_page_component(&mut app);
@@ -2550,7 +2580,7 @@ fn current_page_slug_for_preview_returns_selected_page_slug() {
 }
 
 #[test]
-fn p_key_with_validation_errors_opens_validation_modal() {
+fn shift_p_with_validation_errors_opens_validation_modal() {
     let mut app = App::new(
         Site::starter(),
         None,
@@ -2559,12 +2589,12 @@ fn p_key_with_validation_errors_opens_validation_modal() {
         None,
     );
     app.site.pages[0].slug = "".to_string();
-    send_key(&mut app, KeyCode::Char('p'), KeyModifiers::NONE);
+    send_key(&mut app, KeyCode::Char('P'), KeyModifiers::SHIFT);
     assert!(matches!(app.modal, Some(Modal::ValidationErrors { .. })));
 }
 
 #[test]
-fn p_key_with_clean_site_and_no_export_dir_opens_preview_path_prompt() {
+fn shift_p_with_clean_site_and_no_export_dir_opens_preview_path_prompt() {
     let mut app = App::new(
         Site::starter(),
         None,
@@ -2572,7 +2602,7 @@ fn p_key_with_clean_site_and_no_export_dir_opens_preview_path_prompt() {
         "default".to_string(),
         None,
     );
-    send_key(&mut app, KeyCode::Char('p'), KeyModifiers::NONE);
+    send_key(&mut app, KeyCode::Char('P'), KeyModifiers::SHIFT);
     assert!(matches!(app.modal, Some(Modal::PreviewPathPrompt { .. })));
 }
 
@@ -2703,15 +2733,54 @@ fn d_deletes_selected_component() {
 }
 
 #[test]
-fn y_duplicates_selected_component() {
+fn y_copies_and_p_pastes_selected_component() {
     let mut app = app_with_component(ComponentKind::Banner);
     app.selected_sidebar_section = SidebarSection::Layouts;
     select_first_component_row(&mut app);
     send_key(&mut app, KeyCode::Char('y'), KeyModifiers::NONE);
     match &app.site.pages[0].nodes[1] {
+        PageNode::Section(s) => assert_eq!(s.columns[0].components.len(), 1),
+        _ => panic!("expected section"),
+    }
+    send_key(&mut app, KeyCode::Char('p'), KeyModifiers::NONE);
+    match &app.site.pages[0].nodes[1] {
         PageNode::Section(s) => assert_eq!(s.columns[0].components.len(), 2),
         _ => panic!("expected section"),
     }
+}
+
+#[test]
+fn y_copies_and_p_pastes_selected_node() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    app.selected_sidebar_section = SidebarSection::Layouts;
+    app.selected_node = 0;
+    app.page_head_selected = false;
+    app.sync_tree_row_with_selection();
+    let before = app.site.pages[0].nodes.len();
+    send_key(&mut app, KeyCode::Char('y'), KeyModifiers::NONE);
+    assert_eq!(app.site.pages[0].nodes.len(), before);
+    send_key(&mut app, KeyCode::Char('p'), KeyModifiers::NONE);
+    assert_eq!(app.site.pages[0].nodes.len(), before + 1);
+    assert!(matches!(app.site.pages[0].nodes[1], PageNode::Hero(_)));
+}
+
+#[test]
+fn p_without_copy_does_not_preview() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    send_key(&mut app, KeyCode::Char('p'), KeyModifiers::NONE);
+    assert!(app.modal.is_none());
 }
 
 #[test]
@@ -3023,11 +3092,12 @@ const FOOTER_TOKEN_ALLOWLIST: &[&str] = &[
     "j/k:Scroll",
     "/:Insert",
     "d:Del",
-    "y:Dup",
+    "y:Copy",
+    "p:Paste",
     "u:Undo-tree",
     "r:Col-id",
     "J/K:Move",
-    "p:Preview",
+    "P:Preview",
     "(mouse: click/scroll)",
 ];
 
@@ -3086,10 +3156,12 @@ fn footer_hint_layouts_includes_f2() {
     for width in [60_u16, 80, 110] {
         assert_footer_hint_shape(&app.footer_hint(width), width);
     }
-    let layouts_scoped = "F1:Help  F2:Theme  /:Insert  Enter:Edit  d:Del  y:Dup  u:Undo-tree  r:Col-id  J/K:Move  p:Preview  Ctrl+Q:Quit";
+    let layouts_scoped = "F1:Help  F2:Theme  /:Insert  Enter:Edit  d:Del  y:Copy  p:Paste  u:Undo-tree  r:Col-id  J/K:Move  P:Preview  Ctrl+Q:Quit";
     let at_110 = app.footer_hint(110);
+    assert!(at_110.contains("y:Copy"), "{at_110}");
+    assert!(at_110.contains("p:Paste"), "{at_110}");
     if layouts_scoped.chars().count() <= 110 {
-        assert!(at_110.contains("p:Preview"), "{at_110}");
+        assert!(at_110.contains("P:Preview"), "{at_110}");
     }
     let layouts_wide = format!("{layouts_scoped}  (mouse: click/scroll)");
     if layouts_wide.chars().count() <= 110 {
@@ -4053,6 +4125,7 @@ fn insert_picker_allowed_kinds_match_focused_region() {
     assert!(header.contains(&ComponentKind::Section));
     assert!(header.contains(&ComponentKind::HeaderSearch));
     assert!(header.contains(&ComponentKind::HeaderMenu));
+    assert!(header.contains(&ComponentKind::Alert));
 
     app.selected_region = SelectedRegion::Footer;
     let footer = app.filtered_component_kinds("");
@@ -4060,6 +4133,7 @@ fn insert_picker_allowed_kinds_match_focused_region() {
     assert!(footer.contains(&ComponentKind::Section));
     assert!(!footer.contains(&ComponentKind::HeaderSearch));
     assert!(!footer.contains(&ComponentKind::HeaderMenu));
+    assert!(!footer.contains(&ComponentKind::Alert));
 
     // Details focus is not a new insert target; kinds follow selected_region.
     app.selected_sidebar_section = SidebarSection::Details;
@@ -4080,6 +4154,83 @@ fn insert_picker_allowed_kinds_match_focused_region() {
 
     app.selected_region = SelectedRegion::Site;
     assert!(app.filtered_component_kinds("").is_empty());
+}
+
+#[test]
+fn insert_alert_on_page_does_not_add_header_alert() {
+    let mut app = app_with_component(ComponentKind::Banner);
+    app.selected_region = SelectedRegion::Page;
+    app.component_kind = ComponentKind::Alert;
+    app.insert_selected_component_kind();
+    assert!(app.site.header.alert.is_none());
+    let header_has_alert_component = app.site.header.sections.iter().any(|s| {
+        s.columns.iter().any(|c| {
+            c.components
+                .iter()
+                .any(|comp| matches!(comp, crate::model::SectionComponent::Alert(_)))
+        })
+    });
+    assert!(!header_has_alert_component);
+    match &app.site.pages[0].nodes[1] {
+        PageNode::Section(s) => assert!(
+            s.columns[0]
+                .components
+                .iter()
+                .any(|c| matches!(c, crate::model::SectionComponent::Alert(_)))
+        ),
+        _ => panic!("expected section"),
+    }
+}
+
+#[test]
+fn insert_alert_in_header_uses_alert_slot_not_a_column() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    app.selected_region = SelectedRegion::Header;
+    app.selected_sidebar_section = SidebarSection::Layouts;
+    app.component_kind = ComponentKind::Alert;
+    app.insert_selected_component_kind();
+    assert!(app.site.header.alert.is_some());
+    let header_column_alerts = app.site.header.sections.iter().any(|s| {
+        s.columns.iter().any(|c| {
+            c.components
+                .iter()
+                .any(|comp| matches!(comp, crate::model::SectionComponent::Alert(_)))
+        })
+    });
+    assert!(
+        !header_column_alerts,
+        "dd-alert must occupy header.alert, not a header column"
+    );
+    let rows = app.build_tree_rows();
+    assert!(
+        rows.iter()
+            .any(|r| matches!(r.kind, TreeRowKind::HeaderAlert)),
+        "header tree should show the alert slot"
+    );
+}
+
+#[test]
+fn starter_header_has_no_alert() {
+    let app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    assert!(app.site.header.alert.is_none());
+    let rows = app.build_header_tree_rows();
+    assert!(
+        !rows
+            .iter()
+            .any(|r| matches!(r.kind, TreeRowKind::HeaderAlert))
+    );
 }
 
 #[test]

@@ -37,7 +37,7 @@ impl App {
     pub(in crate::tui) fn try_open_form_edit(&mut self, row: &TreeRow) -> bool {
         // Hero and Section tree rows get the unified form too.
         if let Some((state, new_cursor, title)) = self.try_open_hero_or_section(row) {
-            let cursor_pos = state.get(state.form.fields[state.focused_field].id).len();
+            let cursor_pos = text_end(state.get(state.form.fields[state.focused_field].id));
             self.modal = Some(Modal::FormEdit {
                 state,
                 cursor: new_cursor,
@@ -51,7 +51,7 @@ impl App {
 
         // Roots like page-head, header-root, footer use the unified form too.
         if let Some((state, new_cursor, title)) = self.try_open_root(row) {
-            let cursor_pos = state.get(state.form.fields[state.focused_field].id).len();
+            let cursor_pos = text_end(state.get(state.form.fields[state.focused_field].id));
             self.modal = Some(Modal::FormEdit {
                 state,
                 cursor: new_cursor,
@@ -148,7 +148,7 @@ impl App {
             return false;
         };
         let title = state.form.title;
-        let cursor_pos = state.get(state.form.fields[state.focused_field].id).len();
+        let cursor_pos = text_end(state.get(state.form.fields[state.focused_field].id));
         self.modal = Some(Modal::FormEdit {
             state,
             cursor: new_cursor,
@@ -268,13 +268,11 @@ impl App {
             .get_mut(&items_field_id)
             .expect("sub_state present for SubForm field");
         let item_state = std::mem::replace(&mut items_vec[safe_item_idx], placeholder);
-        let item_cursor_pos = item_state
-            .get(item_state.form.fields[item_state.focused_field].id)
-            .len();
+        let item_cursor_pos =
+            text_end(item_state.get(item_state.form.fields[item_state.focused_field].id));
 
-        let parent_cursor_pos = parent_state
-            .get(parent_state.form.fields[parent_state.focused_field].id)
-            .len();
+        let parent_cursor_pos =
+            text_end(parent_state.get(parent_state.form.fields[parent_state.focused_field].id));
         let mut drill_stack: Vec<DrillFrame> = Vec::new();
         drill_stack.push(DrillFrame {
             parent_state,
@@ -383,13 +381,11 @@ impl App {
             .get_mut(&cols_field_id)
             .expect("sub_state present for columns SubForm field");
         let col_state = std::mem::replace(&mut cols_vec[safe_col_idx], placeholder);
-        let col_cursor_pos = col_state
-            .get(col_state.form.fields[col_state.focused_field].id)
-            .len();
+        let col_cursor_pos =
+            text_end(col_state.get(col_state.form.fields[col_state.focused_field].id));
 
-        let parent_cursor_pos = parent_state
-            .get(parent_state.form.fields[parent_state.focused_field].id)
-            .len();
+        let parent_cursor_pos =
+            text_end(parent_state.get(parent_state.form.fields[parent_state.focused_field].id));
 
         let mut drill_stack: Vec<DrillFrame> = Vec::new();
         drill_stack.push(DrillFrame {
@@ -486,6 +482,12 @@ impl App {
                 let cur = cursor::Cursor::HeaderRoot;
                 Some((state, cur, "dd-header-root"))
             }
+            TreeRowKind::HeaderAlert => {
+                let alert = self.site.header.alert.as_ref()?;
+                let state = cursor::alert_to_form_state(alert);
+                let cur = cursor::Cursor::HeaderAlert;
+                Some((state, cur, "dd-alert"))
+            }
             TreeRowKind::FooterRoot => {
                 let state = cursor::footer_to_form_state(&self.site.footer);
                 let cur = cursor::Cursor::FooterRoot;
@@ -512,6 +514,15 @@ impl App {
             );
             return;
         }
+        if matches!(self.component_kind, ComponentKind::Alert)
+            && self.selected_region == SelectedRegion::Footer
+        {
+            self.push_toast(
+                ToastLevel::Warning,
+                "dd-alert cannot be inserted in the footer.",
+            );
+            return;
+        }
         self.push_undo();
         match self.component_kind {
             ComponentKind::Hero => self.add_hero(),
@@ -521,6 +532,13 @@ impl App {
                 SelectedRegion::Page => self.add_section(),
                 SelectedRegion::Site => unreachable!("Site insert returns above"),
             },
+            ComponentKind::Alert if self.selected_region == SelectedRegion::Header => {
+                if self.place_header_alert(Self::default_alert()) {
+                    self.push_toast(ToastLevel::Success, "Added dd-alert to the header slot.");
+                } else {
+                    self.undo_stack.pop();
+                }
+            }
             _ => match self.selected_region {
                 SelectedRegion::Header => self.add_component_to_header_section(),
                 SelectedRegion::Footer => self.add_component_to_footer_section(),
@@ -528,6 +546,27 @@ impl App {
                 SelectedRegion::Site => unreachable!("Site insert returns above"),
             },
         }
+    }
+
+    fn default_alert() -> crate::model::DdAlert {
+        match ComponentKind::Alert.default_component() {
+            crate::model::SectionComponent::Alert(a) => a,
+            _ => unreachable!("Alert default_component is always DdAlert"),
+        }
+    }
+
+    pub(in crate::tui) fn place_header_alert(&mut self, alert: crate::model::DdAlert) -> bool {
+        if self.site.header.alert.is_some() {
+            self.push_toast(
+                ToastLevel::Warning,
+                "Header already has a dd-alert. Delete it first.",
+            );
+            return false;
+        }
+        self.site.header.alert = Some(alert);
+        self.header_alert_selected = true;
+        self.sync_tree_row_with_selection();
+        true
     }
 
     pub(in crate::tui) fn add_header_section(&mut self) {
@@ -614,6 +653,12 @@ impl App {
                 .saturating_sub(1),
         );
         let kind = self.component_kind;
+        if matches!(kind, ComponentKind::Alert) {
+            if self.place_header_alert(Self::default_alert()) {
+                self.push_toast(ToastLevel::Success, "Added dd-alert to the header slot.");
+            }
+            return;
+        }
         let component = kind.default_component();
         let col = &mut self.site.header.sections[section_idx].columns[col_idx];
         let insert_at = if col.components.is_empty() {
@@ -651,6 +696,13 @@ impl App {
                 .saturating_sub(1),
         );
         let kind = self.component_kind;
+        if matches!(kind, ComponentKind::Alert) {
+            self.push_toast(
+                ToastLevel::Warning,
+                "dd-alert cannot be inserted in the footer.",
+            );
+            return;
+        }
         let component = kind.default_component();
         let col = &mut self.site.footer.sections[section_idx].columns[col_idx];
         let insert_at = if col.components.is_empty() {
@@ -699,6 +751,10 @@ impl App {
                 ComponentKind::HeaderSearch | ComponentKind::HeaderMenu => {
                     self.selected_region == SelectedRegion::Header
                 }
+                ComponentKind::Alert => matches!(
+                    self.selected_region,
+                    SelectedRegion::Page | SelectedRegion::Header
+                ),
                 _ => true,
             })
             .collect();

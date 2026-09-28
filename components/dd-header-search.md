@@ -1,20 +1,13 @@
 ---
 component: dd-header-search
-version: 1
+version: 2
 node_scope: header_item   # header-only chrome component; cannot be used in page sections
 
 insert:
   defaults:
-    parent_width: "dd-u-3-24 dd-u-sm-3-24 dd-u-md-3-24 dd-u-lg-4-24"
     sal: "fade"
 
 fields:
-  - id: parent_width
-    required: true
-    type: string
-    default: "dd-u-3-24 dd-u-sm-3-24 dd-u-md-3-24 dd-u-lg-4-24"
-    maps_to: ".dd-header__item width class when this component is the only child of a header item (otherwise driven by the parent item)"
-
   - id: sal
     required: true
     type: enum
@@ -43,7 +36,6 @@ fields:
 
 edit_ui:
   tab_order:
-    - parent_width
     - sal
 
   enter_behavior:
@@ -51,23 +43,18 @@ edit_ui:
 
   modal_fields:
     parent_edit_modes:
-      - parent_width
       - sal
-    hide_when_editing_component:
-      - column.id
-      - column.width_class
 
 blueprint:
   label: "dd-header-search"
   show_fields:
-    - parent_width
     - sal
 ---
 
 ## HTML Template
 
 ```html
-<div class="dd-header__search-icon [parent_width] -y-center -x-center" data-sal="[sal]">
+<div class="dd-header__search-icon -y-center -x-center" data-sal="[sal]">
   <button class="dd-search__toggle fa-regular fa-magnifying-glass" type="button">
     <span class="visually-hidden">Search</span>
   </button>
@@ -78,9 +65,9 @@ blueprint:
 
 - always renders when present in a header item's `components[]`
 - the actual search dropdown panel (`<div class="dd-search">…</div>`) is still hardcoded in `dd-header.md` chrome; this component only renders the toggle button
+- layout width comes from the parent column's `width_class`
 
 ## Validation Rules
 
-- `parent_width` required and non-empty
 - `sal` required; must be one of the enum options
 - this component is only valid inside a `dd-section` that is itself a child of `site.header.sections[]`; placing it in a page-level section or in the footer must fail validation

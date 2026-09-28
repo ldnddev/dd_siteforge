@@ -629,15 +629,6 @@ pub static NAVIGATION_FORM: EditForm = EditForm {
         SAL_DURATION_FIELD,
         SAL_DELAY_FIELD,
         FormField {
-            id: "parent_width",
-            label: "Width Classes",
-            kind: FieldKind::Text {
-                default: "dd-u-1-1 dd-u-sm-1-1 dd-u-md-1-1 dd-u-lg-18-24",
-            },
-            required: true,
-            visible_when: None,
-        },
-        FormField {
             id: "items",
             label: "Menu Items",
             kind: FieldKind::SubForm {

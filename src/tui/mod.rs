@@ -120,12 +120,16 @@ pub(super) struct App {
     /// flag, `sync_tree_row_with_selection` would always fall back to the
     /// first Hero/Section row and make `[HEAD]` unreachable via j/k.
     page_head_selected: bool,
+    /// True when the header `dd-alert` slot row is selected.
+    header_alert_selected: bool,
     /// Session trash — deleted pages pushed here for `u` undo.
     /// Not persisted. Capped at 20 entries (oldest drops off).
     deleted_pages: Vec<crate::model::Page>,
     /// Site snapshots taken before structural tree edits. `u` in Layout pops.
     /// Capped at 20.
     undo_stack: Vec<crate::model::Site>,
+    /// Copied tree grain for `y` / `p`. Session-only, not persisted.
+    clipboard: Option<Clipboard>,
     /// Title captured while the TemplatePicker is open after the title prompt.
     /// None outside of the add-page flow.
     pending_new_page_title: Option<String>,
@@ -224,8 +228,10 @@ impl App {
             selected_header_column: 0,
             selected_header_component: 0,
             page_head_selected: false,
+            header_alert_selected: false,
             deleted_pages: Vec::new(),
             undo_stack: Vec::new(),
+            clipboard: None,
             pending_new_page_title: None,
             toasts: Vec::new(),
             list_area: Rect::default(),

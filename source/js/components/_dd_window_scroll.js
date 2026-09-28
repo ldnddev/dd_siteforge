@@ -1,12 +1,12 @@
 function dd_window_scroll() {
   /**
-  * Window scroll trigger. Bind to scrollEnd to use.
-  * example. jQuery(window).bind('scrollEnd', function () {});
-  **/
-  jQuery(window).scroll(function () {
-    if (this.scrollTO) clearTimeout(this.scrollTO);
-    this.scrollTO = setTimeout(function () {
-      jQuery(this).trigger('scrollEnd');
+   * Window scroll trigger. Bind to scrollEnd to use.
+   * example. window.addEventListener('scrollEnd', function () {});
+   **/
+  window.addEventListener('scroll', function () {
+    if (window.scrollTO) clearTimeout(window.scrollTO);
+    window.scrollTO = setTimeout(function () {
+      window.dispatchEvent(new Event('scrollEnd'));
     }, 0);
   });
 }

@@ -1,4 +1,5 @@
 function dd_cookie_consent() {
+  console.log('checking for cookie consent');
   // Check if consent is already stored
   const consent = localStorage.getItem('dd_cookie_consent');
   if (!consent) {
@@ -37,5 +38,8 @@ function addConsentScripts() {
     height="0" width="0" style="display:none;visibility:hidden"></iframe>`;
   document.body.insertBefore(noscript, document.body.firstChild);
 }
-// Initialize on page load
-window.onload = dd_cookie_consent;
+
+// Initialize on initial page load
+document.addEventListener('DOMContentLoaded', () => {
+  dd_cookie_consent();
+});

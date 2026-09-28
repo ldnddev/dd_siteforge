@@ -39,10 +39,10 @@ enum Command {
         #[arg(long)]
         name: Option<String>,
     },
-    /// Write default Handlebars templates into source/templates (skips files that already exist).
+    /// Copy Handlebars templates into source/templates (from the crate templates/ tree when present).
     InitTemplates {
-        /// Site JSON path; templates go next to it in source/templates/.
-        path: String,
+        /// Site JSON path; templates go next to it in source/templates/. Defaults to the current directory.
+        path: Option<String>,
         /// Overwrite existing template files.
         #[arg(long)]
         force: bool,
@@ -127,15 +127,28 @@ fn main() -> anyhow::Result<()> {
             }
         }
         Command::InitTemplates { path, force, name } => {
-            let root = site_root(&path);
+            let root = path
+                .as_deref()
+                .map(site_root)
+                .unwrap_or_else(|| PathBuf::from("."));
+            let dest = templates::templates_dir(&root);
             let report = templates::seed_templates(&root, force, name.as_deref())?;
+            if let Some(from) = &report.source {
+                println!("Seed source: {}", from.display());
+            }
             if !report.written.is_empty() {
-                println!("Wrote: {}", report.written.join(", "));
+                println!("Wrote to {}: {}", dest.display(), report.written.join(", "));
             }
             if !report.skipped.is_empty() {
                 println!(
                     "Skipped existing (use --force to overwrite): {}",
                     report.skipped.join(", ")
+                );
+            }
+            if !report.stale.is_empty() {
+                println!(
+                    "Out of date: {} (run init-templates --force to refresh)",
+                    report.stale.join(", ")
                 );
             }
         }
@@ -334,5 +347,45 @@ fn print_seed_report(report: &scaffold::SeedReport) {
             "Skipped {} existing (use --force to overwrite)",
             report.skipped.len()
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    #[test]
+    fn init_templates_defaults_to_cwd() {
+        let cli = Cli::try_parse_from(["dd_siteforge", "init-templates"]).unwrap();
+        match cli.command {
+            Command::InitTemplates { path, force, name } => {
+                assert!(path.is_none());
+                assert!(!force);
+                assert!(name.is_none());
+            }
+            other => panic!("expected InitTemplates, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn init_templates_still_accepts_site_json_and_flags() {
+        let cli = Cli::try_parse_from([
+            "dd_siteforge",
+            "init-templates",
+            "site.json",
+            "--force",
+            "--name",
+            "dd-hero",
+        ])
+        .unwrap();
+        match cli.command {
+            Command::InitTemplates { path, force, name } => {
+                assert_eq!(path.as_deref(), Some("site.json"));
+                assert!(force);
+                assert_eq!(name.as_deref(), Some("dd-hero"));
+            }
+            other => panic!("expected InitTemplates, got {other:?}"),
+        }
     }
 }

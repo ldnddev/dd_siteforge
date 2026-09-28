@@ -79,6 +79,7 @@
       flex-direction: column;
       justify-content: space-between;
       @include mixins.mq(lg) {
+        flex-direction: row;
         justify-content: flex-end;
         gap: 20px;
       }
@@ -144,8 +145,8 @@
       @include mixins.pref_dark {
         background-color: variables.$c_ui_neutral_100--dark;
       }
-      top: 90px;
-      height: calc(100vh - 90px);
+      top: 66px;
+      height: calc(100vh - 66px);
       display: flex;
       flex-direction: column;
       z-index: 9000;
@@ -153,6 +154,17 @@
       & .dd-menu__close {
         display: none; // hide because we still show main menu close icon
         padding: 15px 40px;
+      }
+      & .menu {
+        text-align: center;
+      }
+      & .menu-item {
+        @include mixins.font_size(32px);
+        line-height: 32px;
+        padding: 20px 0;
+        & a {
+          @include mixins.font_size(32px);
+        }
       }
     }
   }
@@ -186,17 +198,17 @@
         display: flex;
         justify-content: center;
         align-items: center;
+      }
+      & a {
+        display: block;
         width: 53px;
         height: 53px;
         @include mixins.font_size(22px);
         @include mixins.border_radius(50%, 50%, 50%, 50%);
         @include mixins.box_shadow();
-      }
-      & a {
-        @include mixins.font_size(22px);
-      }
-      & i {
-        @include mixins.font_size(22px);
+        &::after {
+          display: none;
+        }
       }
     }
   }

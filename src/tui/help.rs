@@ -120,7 +120,7 @@ pub(crate) fn build_help_text(theme: &AppTheme, width: usize) -> Text<'static> {
                 "Export site to HTML (validates first; prompts for output dir on first use)",
             ),
             (
-                "p",
+                "Shift+P",
                 "Preview current page: export, start local HTTP server, open browser",
             ),
             ("Ctrl+Q", "Quit"),
@@ -179,7 +179,11 @@ pub(crate) fn build_help_text(theme: &AppTheme, width: usize) -> Text<'static> {
                 "d",
                 "Delete selected row (node, component, or collection item)",
             ),
-            ("y", "Duplicate selected row after the current one"),
+            (
+                "y",
+                "Copy selected row (node, component, or collection item)",
+            ),
+            ("p", "Paste the copied row after the current selection"),
             ("u", "Undo last tree edit (session snapshots, cap 20)"),
             (
                 "J / K",

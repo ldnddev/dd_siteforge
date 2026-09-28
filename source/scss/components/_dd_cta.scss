@@ -25,7 +25,11 @@
     align-content: center;
     justify-content: center;
     @include mixins.position_relative();
+    margin: -25% auto 0 auto;
+    max-width: calc(100% - 2rem);
     @include mixins.mq(lg) {
+      margin: 0;
+      width: 100%;
       position: absolute;
     }
   }
