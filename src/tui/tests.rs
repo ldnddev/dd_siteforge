@@ -1,6 +1,6 @@
 use super::*;
 use crossterm::event::{
-    Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
+    Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
 
 fn app_with_card() -> App {
@@ -32,6 +32,11 @@ fn app_with_card() -> App {
 fn send_key(app: &mut App, code: KeyCode, modifiers: KeyModifiers) {
     app.handle_event(Event::Key(KeyEvent::new(code, modifiers)))
         .expect("key event should be handled");
+}
+
+fn send_paste(app: &mut App, text: &str) {
+    app.handle_event(Event::Paste(text.to_string()))
+        .expect("paste event should be handled");
 }
 
 fn send_mouse(app: &mut App, kind: MouseEventKind, column: u16, row: u16) {
@@ -762,6 +767,265 @@ fn textarea_paste_multibyte_does_not_panic() {
 }
 
 #[test]
+fn textarea_bracketed_paste_inserts_in_one_shot() {
+    let mut app = app_with_component(ComponentKind::RichText);
+    open_form_edit_on_page_component(&mut app);
+    focus_rich_text_copy(&mut app);
+    if let Some(Modal::FormEdit {
+        state, cursor_pos, ..
+    }) = &mut app.modal
+    {
+        state.set("parent_copy", "");
+        *cursor_pos = 0;
+    }
+    send_paste(&mut app, "services—high-impact web");
+    assert_eq!(form_value(&app, "parent_copy"), "services—high-impact web");
+    assert_eq!(
+        form_cursor_pos(&app),
+        "services—high-impact web".chars().count()
+    );
+    send_key(&mut app, KeyCode::Char('z'), KeyModifiers::CONTROL);
+    assert_eq!(form_value(&app, "parent_copy"), "");
+}
+
+#[test]
+fn textarea_word_wraps_on_spaces() {
+    let (display, _, total) = render_textarea_display_window("hello world", 0, true, 4, Some(8));
+    assert_eq!(total, 2);
+    let lines: Vec<&str> = display.lines().take(2).collect();
+    assert_eq!(lines, vec!["hello ", "world"]);
+}
+
+#[test]
+fn textarea_ctrl_arrows_and_ctrl_backspace_and_delete() {
+    let mut app = app_with_component(ComponentKind::RichText);
+    open_form_edit_on_page_component(&mut app);
+    focus_rich_text_copy(&mut app);
+    if let Some(Modal::FormEdit {
+        state, cursor_pos, ..
+    }) = &mut app.modal
+    {
+        state.set("parent_copy", "hello world");
+        *cursor_pos = "hello world".chars().count();
+    }
+    send_key(&mut app, KeyCode::Left, KeyModifiers::CONTROL);
+    assert_eq!(form_cursor_pos(&app), 6);
+    send_key(&mut app, KeyCode::Left, KeyModifiers::CONTROL);
+    assert_eq!(form_cursor_pos(&app), 0);
+    send_key(&mut app, KeyCode::Right, KeyModifiers::CONTROL);
+    assert_eq!(form_cursor_pos(&app), 6);
+    send_key(&mut app, KeyCode::Backspace, KeyModifiers::CONTROL);
+    assert_eq!(form_value(&app, "parent_copy"), "world");
+    assert_eq!(form_cursor_pos(&app), 0);
+    send_key(&mut app, KeyCode::Delete, KeyModifiers::NONE);
+    assert_eq!(form_value(&app, "parent_copy"), "orld");
+    send_key(&mut app, KeyCode::Char('z'), KeyModifiers::CONTROL);
+    assert_eq!(form_value(&app, "parent_copy"), "world");
+}
+
+#[test]
+fn navigation_key_reports_no_site_mutation() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    let mutated = app
+        .handle_event(Event::Key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE)))
+        .unwrap();
+    assert!(!mutated);
+}
+
+#[test]
+fn layout_delete_reports_site_mutation() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    app.selected_sidebar_section = SidebarSection::Layouts;
+    app.sync_tree_row_with_selection();
+    let mutated = app
+        .handle_event(Event::Key(KeyEvent::new(
+            KeyCode::Char('d'),
+            KeyModifiers::NONE,
+        )))
+        .unwrap();
+    assert!(mutated);
+}
+
+#[test]
+fn footer_hint_form_edit_includes_save_and_undo() {
+    let mut app = app_with_component(ComponentKind::RichText);
+    open_form_edit_on_page_component(&mut app);
+    let hint = app.footer_hint(120);
+    assert!(hint.contains("Ctrl+S:Save"), "{hint}");
+    assert!(hint.contains("Ctrl+Z:Undo"), "{hint}");
+    assert!(hint.contains("Esc:Cancel"), "{hint}");
+    assert_footer_hint_shape(&hint, 120);
+}
+
+#[test]
+fn idle_timeout_is_none_when_clean_without_toasts() {
+    let app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    assert!(app.next_idle_timeout().is_none());
+}
+
+fn mouse_event(kind: MouseEventKind) -> Event {
+    Event::Mouse(MouseEvent {
+        kind,
+        column: 0,
+        row: 0,
+        modifiers: KeyModifiers::NONE,
+    })
+}
+
+#[test]
+fn idle_events_are_release_mouse_move_up_and_focus() {
+    let release = Event::Key(KeyEvent::new_with_kind(
+        KeyCode::Down,
+        KeyModifiers::NONE,
+        KeyEventKind::Release,
+    ));
+    let press = Event::Key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+    let repeat = Event::Key(KeyEvent::new_with_kind(
+        KeyCode::Down,
+        KeyModifiers::NONE,
+        KeyEventKind::Repeat,
+    ));
+    assert!(App::is_idle_event(&release));
+    assert!(!App::is_idle_event(&press));
+    assert!(!App::is_idle_event(&repeat));
+    assert!(App::is_idle_event(&Event::FocusGained));
+    assert!(App::is_idle_event(&Event::FocusLost));
+    assert!(App::is_idle_event(&mouse_event(MouseEventKind::Moved)));
+    assert!(App::is_idle_event(&mouse_event(MouseEventKind::Up(
+        MouseButton::Left
+    ))));
+    assert!(!App::is_idle_event(&mouse_event(MouseEventKind::Down(
+        MouseButton::Left
+    ))));
+    assert!(!App::is_idle_event(&mouse_event(MouseEventKind::Drag(
+        MouseButton::Left
+    ))));
+    assert!(!App::is_idle_event(&Event::Resize(80, 24)));
+    assert!(!App::is_idle_event(&Event::Paste("x".into())));
+}
+
+#[test]
+fn key_release_does_not_move_selection() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    app.sync_tree_row_with_selection();
+    let before = app.selected_tree_row;
+    let mutated = app
+        .handle_event(Event::Key(KeyEvent::new_with_kind(
+            KeyCode::Down,
+            KeyModifiers::NONE,
+            KeyEventKind::Release,
+        )))
+        .unwrap();
+    assert!(!mutated);
+    assert_eq!(app.selected_tree_row, before);
+}
+
+#[test]
+fn mouse_up_clears_scrollbar_drag_without_site_mutation() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    app.scrollbar_drag = Some(ScrollbarDrag::Details);
+    let mutated = app
+        .handle_event(mouse_event(MouseEventKind::Up(MouseButton::Left)))
+        .unwrap();
+    assert!(!mutated);
+    assert_eq!(app.scrollbar_drag, None);
+}
+
+#[test]
+fn prune_toasts_reports_whether_any_expired() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    assert!(!app.prune_toasts());
+    app.push_toast(ToastLevel::Info, "fresh");
+    assert!(!app.prune_toasts());
+    app.toasts[0].shown_at =
+        std::time::Instant::now() - TOAST_TTL - std::time::Duration::from_secs(1);
+    assert!(app.prune_toasts());
+    assert!(app.toasts.is_empty());
+}
+
+#[test]
+fn poll_asset_build_is_idle_when_no_receiver() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    assert!(!app.poll_asset_build());
+}
+
+#[test]
+fn poll_asset_build_is_idle_while_channel_empty() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    let (_tx, rx) = std::sync::mpsc::channel();
+    app.build_rx = Some(rx);
+    let timeout = app.next_idle_timeout().expect("build poll wakes the loop");
+    assert!(timeout <= std::time::Duration::from_millis(200));
+    assert!(!app.poll_asset_build());
+    assert!(app.build_rx.is_some());
+}
+
+#[test]
+fn poll_asset_build_redraws_when_the_thread_finishes() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    let (tx, rx) = std::sync::mpsc::channel();
+    app.build_rx = Some(rx);
+    tx.send(Ok("Built.".to_string())).unwrap();
+    assert!(app.poll_asset_build());
+    assert!(app.build_rx.is_none());
+    assert_eq!(app.toasts.len(), 1);
+}
+
+#[test]
 fn tier_a_alert_form_edit_round_trip() {
     let mut app = app_with_component(ComponentKind::Alert);
     open_form_edit_on_page_component(&mut app);
@@ -816,13 +1080,17 @@ fn tier_a_blockquote_form_edit_round_trip() {
 }
 
 fn tab_to_items_field(app: &mut App) {
-    for _ in 0..20 {
-        if form_focused_field_id(app) == Some("items") {
+    tab_to_field(app, "items");
+}
+
+fn tab_to_field(app: &mut App, id: &str) {
+    for _ in 0..24 {
+        if form_focused_field_id(app) == Some(id) {
             return;
         }
         send_key(app, KeyCode::Tab, KeyModifiers::NONE);
     }
-    panic!("never reached items field after 20 tabs");
+    panic!("never reached {id} field after 24 tabs");
 }
 
 fn drill_stack_len(app: &App) -> usize {
@@ -891,6 +1159,70 @@ fn tier_b_tabs_drill_round_trip() {
 #[test]
 fn tier_b_timeline_drill_round_trip() {
     tier_b_drill_round_trip(ComponentKind::Timeline);
+}
+
+#[test]
+fn tier_b_data_table_rows_drill_round_trip() {
+    let mut app = app_with_component(ComponentKind::DataTable);
+    open_form_edit_on_page_component(&mut app);
+    tab_to_field(&mut app, "rows");
+    send_key(&mut app, KeyCode::Enter, KeyModifiers::NONE);
+    assert_eq!(drill_stack_len(&app), 1, "drill into row");
+    tab_to_field(&mut app, "cells");
+    send_key(&mut app, KeyCode::Enter, KeyModifiers::NONE);
+    assert_eq!(drill_stack_len(&app), 2, "drill into cell");
+    send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
+    assert_eq!(drill_stack_len(&app), 1);
+    send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
+    assert_eq!(drill_stack_len(&app), 0);
+    send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
+    assert!(app.modal.is_none());
+    match &app.site.pages[0].nodes[1] {
+        PageNode::Section(s) => match &s.columns[0].components[0] {
+            crate::model::SectionComponent::DataTable(t) => {
+                assert_eq!(t.caption, "Data table");
+                assert_eq!(t.columns.len(), 2);
+                assert_eq!(t.rows.len(), 1);
+                assert_eq!(t.rows[0].cells.len(), 2);
+            }
+            _ => panic!("expected DataTable"),
+        },
+        _ => panic!("expected Section"),
+    }
+}
+
+#[test]
+fn data_table_add_remove_rows_allows_empty() {
+    let mut app = app_with_component(ComponentKind::DataTable);
+    app.selected_sidebar_section = SidebarSection::Layouts;
+    app.sync_tree_row_with_selection();
+    match &app.site.pages[0].nodes[1] {
+        PageNode::Section(s) => match &s.columns[0].components[0] {
+            crate::model::SectionComponent::DataTable(t) => assert_eq!(t.rows.len(), 1),
+            _ => panic!("expected DataTable"),
+        },
+        _ => panic!("expected Section"),
+    }
+    send_key(&mut app, KeyCode::Char('A'), KeyModifiers::SHIFT);
+    match &app.site.pages[0].nodes[1] {
+        PageNode::Section(s) => match &s.columns[0].components[0] {
+            crate::model::SectionComponent::DataTable(t) => {
+                assert_eq!(t.rows.len(), 2);
+                assert_eq!(t.rows[1].cells.len(), 2);
+            }
+            _ => panic!("expected DataTable"),
+        },
+        _ => panic!("expected Section"),
+    }
+    send_key(&mut app, KeyCode::Char('X'), KeyModifiers::SHIFT);
+    send_key(&mut app, KeyCode::Char('X'), KeyModifiers::SHIFT);
+    match &app.site.pages[0].nodes[1] {
+        PageNode::Section(s) => match &s.columns[0].components[0] {
+            crate::model::SectionComponent::DataTable(t) => assert!(t.rows.is_empty()),
+            _ => panic!("expected DataTable"),
+        },
+        _ => panic!("expected Section"),
+    }
 }
 
 #[test]
@@ -2363,7 +2695,7 @@ fn tick_autosave_does_nothing_when_clean() {
         None,
     );
     let now = std::time::Instant::now();
-    app.tick_autosave(now);
+    assert!(!app.tick_autosave(now));
     assert!(!app.dirty);
 }
 
@@ -2379,7 +2711,7 @@ fn tick_autosave_does_nothing_when_dirty_but_no_path() {
     app.site.pages[0].head.title = "x".to_string();
     app.mark_dirty_if_changed();
     let later = app.dirty_since.unwrap() + std::time::Duration::from_secs(10);
-    app.tick_autosave(later);
+    assert!(!app.tick_autosave(later));
     assert!(app.dirty, "no path means no autosave; site stays dirty");
 }
 
@@ -2408,7 +2740,10 @@ fn tick_autosave_writes_when_dirty_and_debounce_elapsed() {
     assert!(app.dirty);
 
     let due = app.dirty_since.unwrap() + std::time::Duration::from_millis(2_100);
-    app.tick_autosave(due);
+    assert!(
+        app.tick_autosave(due),
+        "elapsed debounce with a path must paint"
+    );
     assert!(!app.dirty, "autosave should clear the dirty flag");
     assert!(app.dirty_since.is_none());
     let on_disk = std::fs::read_to_string(&json_path).unwrap();
@@ -2428,7 +2763,7 @@ fn tick_autosave_holds_off_within_debounce_window() {
     app.site.pages[0].head.title = "x".to_string();
     app.mark_dirty_if_changed();
     let still_in_window = app.dirty_since.unwrap() + std::time::Duration::from_millis(500);
-    app.tick_autosave(still_in_window);
+    assert!(!app.tick_autosave(still_in_window));
     assert!(app.dirty);
 }
 
@@ -2591,6 +2926,89 @@ fn shift_p_with_validation_errors_opens_validation_modal() {
     app.site.pages[0].slug = "".to_string();
     send_key(&mut app, KeyCode::Char('P'), KeyModifiers::SHIFT);
     assert!(matches!(app.modal, Some(Modal::ValidationErrors { .. })));
+}
+
+#[test]
+fn second_preview_reuses_server_and_asks_for_refresh() {
+    let tmp = std::env::temp_dir().join(format!(
+        "dd_preview_reuse_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let imgs = tmp.join("source").join("images");
+    std::fs::create_dir_all(&imgs).unwrap();
+    std::fs::write(imgs.join("hero.jpg"), b"fake").unwrap();
+    let web = tmp.join("web");
+    std::fs::create_dir_all(web.join("assets").join("css")).unwrap();
+    std::fs::write(
+        web.join("assets").join("css").join("style.min.css"),
+        b"/* grunt */",
+    )
+    .unwrap();
+    let mut app = App::new(
+        Site::starter(),
+        Some(tmp.join("site.json")),
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    app.site.export_dir = Some("web".to_string());
+    crate::export::export_site(&app.site, &web, Some(&tmp)).unwrap();
+    app.preview_server = Some(crate::serve::StaticServer::start(web.clone()).unwrap());
+    app.toasts.clear();
+    app.commit_preview_to("web".to_string());
+    assert!(
+        app.toasts
+            .iter()
+            .any(|t| t.message.contains("Preview updated")),
+        "expected refresh toast, got {:?}",
+        app.toasts.iter().map(|t| &t.message).collect::<Vec<_>>()
+    );
+    assert!(
+        app.toasts.iter().all(|t| !t.message.contains("Opening")),
+        "must not reopen the browser when the server is already running"
+    );
+    std::fs::remove_dir_all(&tmp).ok();
+}
+
+#[test]
+fn form_save_refreshes_running_preview() {
+    let tmp = std::env::temp_dir().join(format!(
+        "dd_preview_formsave_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let imgs = tmp.join("source").join("images");
+    std::fs::create_dir_all(&imgs).unwrap();
+    std::fs::write(imgs.join("hero.jpg"), b"fake").unwrap();
+    let web = tmp.join("web");
+    std::fs::create_dir_all(web.join("assets").join("css")).unwrap();
+    std::fs::write(
+        web.join("assets").join("css").join("style.min.css"),
+        b"/* grunt */",
+    )
+    .unwrap();
+    let mut app = app_with_component(ComponentKind::RichText);
+    app.path = Some(tmp.join("site.json"));
+    app.site.export_dir = Some("web".to_string());
+    crate::export::export_site(&app.site, &web, Some(&tmp)).unwrap();
+    app.preview_server = Some(crate::serve::StaticServer::start(web.clone()).unwrap());
+    open_form_edit_on_page_component(&mut app);
+    app.toasts.clear();
+    send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
+    assert!(app.modal.is_none(), "Ctrl+S should close the form");
+    assert!(
+        app.toasts
+            .iter()
+            .any(|t| t.message.contains("Preview updated")),
+        "expected preview refresh toast, got {:?}",
+        app.toasts.iter().map(|t| &t.message).collect::<Vec<_>>()
+    );
+    std::fs::remove_dir_all(&tmp).ok();
 }
 
 #[test]
@@ -3098,6 +3516,11 @@ const FOOTER_TOKEN_ALLOWLIST: &[&str] = &[
     "r:Col-id",
     "J/K:Move",
     "P:Preview",
+    "Ctrl+S:Save",
+    "Tab:Field",
+    "Ctrl+E:Expand",
+    "Ctrl+Z:Undo",
+    "Esc:Cancel",
     "(mouse: click/scroll)",
 ];
 
@@ -4508,4 +4931,176 @@ fn site_shift_a_does_not_add_collection_items() {
     let last = app.toasts.last().expect("expected warning toast");
     assert_eq!(last.level, ToastLevel::Warning);
     assert_eq!(last.message, "Not available on Site settings.");
+}
+
+#[test]
+fn find_home_jumps_to_page_head() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    send_key(&mut app, KeyCode::Char('?'), KeyModifiers::NONE);
+    assert!(matches!(app.modal, Some(Modal::Find { .. })));
+    send_key(&mut app, KeyCode::Char('H'), KeyModifiers::NONE);
+    send_key(&mut app, KeyCode::Char('o'), KeyModifiers::NONE);
+    send_key(&mut app, KeyCode::Char('m'), KeyModifiers::NONE);
+    send_key(&mut app, KeyCode::Char('e'), KeyModifiers::NONE);
+    send_key(&mut app, KeyCode::Enter, KeyModifiers::NONE);
+    assert!(app.modal.is_none());
+    assert!(app.page_head_selected);
+    assert!(matches!(app.selected_region, SelectedRegion::Page));
+}
+
+#[test]
+fn find_hero_title_jumps_to_hero() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    app.open_find();
+    if let Some(Modal::Find { query, .. }) = &mut app.modal {
+        *query = "dd-framework".into();
+    }
+    send_key(&mut app, KeyCode::Enter, KeyModifiers::NONE);
+    assert!(matches!(
+        app.build_tree_rows()
+            .get(app.selected_tree_row)
+            .map(|r| r.kind),
+        Some(TreeRowKind::Hero { .. })
+    ));
+}
+
+#[test]
+fn ctrl_f_opens_find_and_colon_opens_palette() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    send_key(&mut app, KeyCode::Char('f'), KeyModifiers::CONTROL);
+    assert!(matches!(app.modal, Some(Modal::Find { .. })));
+    send_key(&mut app, KeyCode::Esc, KeyModifiers::NONE);
+    send_key(&mut app, KeyCode::Char(':'), KeyModifiers::NONE);
+    assert!(matches!(app.modal, Some(Modal::Palette { .. })));
+    send_key(&mut app, KeyCode::Char('h'), KeyModifiers::NONE);
+    send_key(&mut app, KeyCode::Char('e'), KeyModifiers::NONE);
+    send_key(&mut app, KeyCode::Char('l'), KeyModifiers::NONE);
+    send_key(&mut app, KeyCode::Char('p'), KeyModifiers::NONE);
+    send_key(&mut app, KeyCode::Enter, KeyModifiers::NONE);
+    assert!(matches!(app.overlay, Some(Overlay::Help { .. })));
+}
+
+#[test]
+fn f4_opens_page_health() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    send_key(&mut app, KeyCode::F(4), KeyModifiers::NONE);
+    match &app.modal {
+        Some(Modal::PageHealth { items, .. }) => {
+            assert!(items.iter().any(|i| i.message.contains("Meta")));
+        }
+        other => panic!(
+            "expected PageHealth, got {:?}",
+            other.as_ref().map(|m| m.variant_name())
+        ),
+    }
+}
+
+#[test]
+fn page_head_details_include_health() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    app.page_head_selected = true;
+    app.sync_tree_row_with_selection();
+    let view = app.page_details_text(80);
+    let joined = view.lines.join("\n");
+    assert!(joined.contains("Page health"), "{joined}");
+    assert!(joined.contains("Meta"), "{joined}");
+}
+
+#[test]
+fn redo_restores_deleted_node() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    app.selected_region = SelectedRegion::Page;
+    app.selected_sidebar_section = SidebarSection::Layouts;
+    app.page_head_selected = false;
+    app.selected_node = 0;
+    app.sync_tree_row_with_selection();
+    let before = app.site.pages[0].nodes.len();
+    send_key(&mut app, KeyCode::Char('d'), KeyModifiers::NONE);
+    assert_eq!(app.site.pages[0].nodes.len(), before - 1);
+    send_key(&mut app, KeyCode::Char('u'), KeyModifiers::NONE);
+    assert_eq!(app.site.pages[0].nodes.len(), before);
+    send_key(&mut app, KeyCode::Char('r'), KeyModifiers::CONTROL);
+    assert_eq!(app.site.pages[0].nodes.len(), before - 1);
+}
+
+#[test]
+fn dot_repeats_last_insert() {
+    let mut app = app_with_component(ComponentKind::Banner);
+    app.component_kind = ComponentKind::Spacer;
+    app.insert_selected_component_kind();
+    let count_after_first = match &app.site.pages[0].nodes[1] {
+        PageNode::Section(s) => s.columns[0].components.len(),
+        _ => panic!("expected section"),
+    };
+    send_key(&mut app, KeyCode::Char('.'), KeyModifiers::NONE);
+    let count_after_dot = match &app.site.pages[0].nodes[1] {
+        PageNode::Section(s) => s.columns[0].components.len(),
+        _ => panic!("expected section"),
+    };
+    assert_eq!(count_after_dot, count_after_first + 1);
+}
+
+#[test]
+fn restore_selection_clamps_tree_row() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    app.restore_selection(0, 999, SelectedRegion::Page);
+    let rows = app.build_tree_rows();
+    assert_eq!(app.selected_tree_row, rows.len() - 1);
+    app.restore_selection(0, 0, SelectedRegion::Page);
+    assert!(app.page_head_selected);
+}
+
+#[test]
+fn palette_filters_preview() {
+    let app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    let items = app.palette_item_labels("prev");
+    assert!(items.iter().any(|s| s.contains("Preview")), "{items:?}");
 }

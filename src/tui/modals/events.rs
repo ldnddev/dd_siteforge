@@ -49,8 +49,95 @@ impl App {
         }
     }
 
+    fn handle_modal_paste(&mut self, text: &str) -> ModalResult {
+        match &self.modal {
+            Some(Modal::FormEdit { .. }) => {
+                self.paste_into_form(text);
+                ModalResult::Continue
+            }
+            Some(Modal::SavePrompt { path }) => {
+                let mut path = path.clone();
+                path.push_str(&sanitize_paste(text, false));
+                self.modal = Some(Modal::SavePrompt { path });
+                ModalResult::Continue
+            }
+            Some(Modal::NewPageTitlePrompt { title }) => {
+                let mut title = title.clone();
+                title.push_str(&sanitize_paste(text, false));
+                self.modal = Some(Modal::NewPageTitlePrompt { title });
+                ModalResult::Continue
+            }
+            Some(Modal::RenamePagePrompt { title, page_idx }) => {
+                let mut title = title.clone();
+                let page_idx = *page_idx;
+                title.push_str(&sanitize_paste(text, false));
+                self.modal = Some(Modal::RenamePagePrompt { title, page_idx });
+                ModalResult::Continue
+            }
+            Some(Modal::ExportPathPrompt { path }) => {
+                let mut path = path.clone();
+                path.push_str(&sanitize_paste(text, false));
+                self.modal = Some(Modal::ExportPathPrompt { path });
+                ModalResult::Continue
+            }
+            Some(Modal::PreviewPathPrompt { path }) => {
+                let mut path = path.clone();
+                path.push_str(&sanitize_paste(text, false));
+                self.modal = Some(Modal::PreviewPathPrompt { path });
+                ModalResult::Continue
+            }
+            Some(Modal::ComponentPicker { query, selected }) => {
+                let mut query = query.clone();
+                let selected = *selected;
+                query.push_str(&sanitize_paste(text, false));
+                self.modal = Some(Modal::ComponentPicker { query, selected });
+                ModalResult::Continue
+            }
+            Some(Modal::OpenSite { query, selected }) => {
+                let mut query = query.clone();
+                let selected = *selected;
+                query.push_str(&sanitize_paste(text, false));
+                self.modal = Some(Modal::OpenSite { query, selected });
+                ModalResult::Continue
+            }
+            Some(Modal::Find { query, selected }) => {
+                let mut query = query.clone();
+                let selected = *selected;
+                query.push_str(&sanitize_paste(text, false));
+                self.modal = Some(Modal::Find { query, selected });
+                ModalResult::Continue
+            }
+            Some(Modal::Palette { query, selected }) => {
+                let mut query = query.clone();
+                let selected = *selected;
+                query.push_str(&sanitize_paste(text, false));
+                self.modal = Some(Modal::Palette { query, selected });
+                ModalResult::Continue
+            }
+            Some(Modal::ImagePicker { .. }) => {
+                if let Some(Modal::ImagePicker { state }) = self.modal.as_mut() {
+                    state.filter.push_str(&sanitize_paste(text, false));
+                    state.selected = 0;
+                }
+                ModalResult::Continue
+            }
+            Some(Modal::PagePicker { .. }) => {
+                if let Some(Modal::PagePicker { state }) = self.modal.as_mut() {
+                    state.filter.push_str(&sanitize_paste(text, false));
+                    state.selected = 0;
+                }
+                ModalResult::Continue
+            }
+            _ => ModalResult::Continue,
+        }
+    }
+
     pub(in crate::tui) fn handle_modal_event(&mut self, evt: Event) -> Option<ModalResult> {
         let _ = self.modal.as_ref()?;
+
+        if let Event::Paste(text) = &evt {
+            return Some(self.handle_modal_paste(text));
+        }
 
         if let Event::Key(key) = &evt {
             if key.code == KeyCode::F(1) {
@@ -75,6 +162,10 @@ impl App {
                 Modal::ValidationErrors { .. } => self.handle_validation_errors_event(key),
                 Modal::ImagePicker { .. } => self.handle_image_picker_event(key),
                 Modal::PagePicker { .. } => self.handle_page_picker_event(key),
+                Modal::OpenSite { .. } => self.handle_open_site_event(key),
+                Modal::Find { .. } => self.handle_find_event(key),
+                Modal::Palette { .. } => self.handle_palette_event(key),
+                Modal::PageHealth { .. } => self.handle_page_health_event(key),
             };
         }
 

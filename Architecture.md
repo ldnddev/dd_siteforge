@@ -81,6 +81,7 @@ Each component spec lives in `components/dd-*.md` (single source of truth for fi
 - Spacer: size tokens `-sm`…`-xxxl`, optional `-divider`, `aria-hidden="true"`. No SAL.
 - Tabs: `parent_id`, orientation `-horizontal`/`-vertical`, ARIA label default `"Content tabs"`, SAL on the root, items of label + markdown panel. Buttons with APG tablist roles; first tab active.
 - Timeline: optional ARIA label default `"Timeline"`, SAL stagger on items, events with year, optional datetime, title, heading 2–6 (default 3), markdown copy, optional image. `<ol>` of events. Datetime required when year is not YYYY / YYYY-MM / YYYY-MM-DD.
+- Data table: required caption, optional `-dense`, optional scroll label (default `"{caption}, scrollable"`), optional empty message, 1–5 columns (label / align / sortable), rows of text or `dd-badge` cells. First cell is `<th scope="row">`. No SAL. `sort_key` is derived from the column label slug. JS owns overflow `tabindex`/`role`/`aria-label`.
 - Site options: header CTA + banner on `DdHeader`; footer blurb / copyright / socials on `DdFooter`; GTM snippets on `Site`. GTM export extracts `GTM-XXXX` and emits canonical googletagmanager.com markup.
 - Static export: `crate::export::export_site(&site, &out, site_root)`. Writes `{slug}.html`, copies Grunt `web/assets/{css,js,webfonts,favicon,vendors}` when the dest is not already `web/` (does not clobber a local `grunt build`), fills missing webfonts/favicon from `source/`, copies `<site_dir>/source/images/` → `<out>/assets/images/`, plus `sitemap.xml`, `robots.txt`, and `404.html` when no author 404 page exists.
 - Asset and page hrefs are same-directory relative (`assets/css/style.min.css`, `contact.html`). `Shift+P` / `serve` start a local HTTP server so those paths resolve.
@@ -96,13 +97,19 @@ Each component spec lives in `components/dd-*.md` (single source of truth for fi
 `fn run<B: Backend>(&mut self, terminal: &mut Terminal<B>)`:
 
 ```
+draw once
 loop:
-  tick_autosave(now)              # write site.json if dirty + 2s elapsed
-  terminal.draw(|f| self.draw(f)) # paints fixed 3-line header (dd_siteforge + random tagline) + panels + 1-line adaptive footer keys + modals + toasts (per LDNDDEV standard)
-  if event::poll(100ms):
-    handle_event(evt)             # routes to modal handler or main key dispatch
-    mark_dirty_if_changed()       # JSON snapshot diff vs last_saved_json
+  poll a running Lando/npx grunt build (toast when it finishes)
+  wait until an event, autosave due, toast expiry, or ~200ms while a build is running
+  drain every pending event, then mark_dirty_if_changed only if a handler mutated the site
+  prune expired toasts
+  tick_autosave(now)
+  draw only if the UI changed
 ```
+
+Key release, mouse move/up, and focus events skip the following frame. The 200ms build poll does not paint unless a message arrived. Toast expiry and a successful autosave (header `*`) still force a redraw. `Event::Resize` always redraws so mouse hit-tests stay current.
+
+Bracketed paste is enabled for the session. `Event::Paste` inserts the clipboard as one string in forms and prompts. Navigation keys skip the JSON dirty snapshot.
 
 ### Key bindings (global)
 
@@ -111,12 +118,18 @@ loop:
 | `F1` | Help (scrollable) |
 | `F2` | Theme info modal (source + status + color details; same layout as F1) |
 | `F3` | Validate site → modal on errors, success toast otherwise |
+| `F4` | Page health for the current page (SEO, alt text, headings, internal links) |
 | `Shift+E` | Export site (validate gate → render → copy source/images/) |
-| `Shift+P` | Preview current page (validate → export → local HTTP server → browser) |
+| `Shift+P` | Preview current page (validate → export → local HTTP server → browser). A second press re-exports and reuses the tab. Local HTML includes a live-reload snippet |
+| `Shift+B` | Build CSS/JS: `lando grunt build` when `.lando.yml` exists, else `npx grunt build` |
+| `?` / `Ctrl+F` | Find in the site (page titles, copy, field values) and jump the tree |
+| `:` / `Ctrl+K` | Command palette |
 | `s` | Save (writes `<path>` + `<path>.backup`) |
 | `/` | Insert component fuzzy picker |
+| `.` | Repeat last insert |
 | `Tab` / `Shift+Tab` | Next/prev page |
 | `1` / `2` / `3` | Sidebar focus: Regions / Pages / Layout |
+| `Ctrl+R` | Redo last tree edit |
 | `Ctrl+Q` | Quit (confirms if unsaved) |
 
 ### Pages panel (`[2] Pages`)
@@ -125,11 +138,11 @@ loop:
 
 ### Layout panel (`[3]`)
 
-`Up/Down` or `j/k` move row · `g`/`G` first/last · `h`/`l` collapse/expand · `Space` toggle expand · `Enter` edit row · `d` delete selected grain · `y` copy · `p` paste after · `u` undo · `J/K` move selected grain down/up · `C/V` add/remove column · `c/v` prev/next column · `r/f` edit column id/width-class.
+`Up/Down` or `j/k` move row · `g`/`G` first/last · `h`/`l` collapse/expand · `Space` toggle expand · `Enter` edit row · `d` delete selected grain · `y` copy · `p` paste after · `u` undo · `Ctrl+R` redo · `.` repeat last insert · `J/K` move selected grain down/up · `C/V` add/remove column · `c/v` prev/next column · `r/f` edit column id/width-class. Selecting `[HEAD]` prepends a page-health checklist in Details.
 
 ### Edit modal
 
-`Tab` / `Up/Down` navigate fields · `Left/Right` cycle enum values · `Ctrl+S` save · `Esc` cancel · `Ctrl+P` (in URL field) opens image picker (image fields) or page picker (link fields). Click any input box to focus it. Mouse wheel scrolls the field list.
+`Tab` / `Up/Down` navigate fields · `Left/Right` cycle enum values · `Ctrl+←` / `Ctrl+→` word jump · `Ctrl+Backspace` delete word · `Delete` forward-delete · `Ctrl+Z` undo last text edit · terminal paste inserts in one shot · `Ctrl+S` save (refreshes a running preview) · `Esc` cancel · `Ctrl+P` (in URL field) opens image picker (image fields) or page picker (link fields). Click any input box to focus it. Mouse wheel scrolls the field list. Textareas wrap on word boundaries.
 
 ### Image / Page pickers
 

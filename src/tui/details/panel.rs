@@ -3,7 +3,10 @@ use super::super::*;
 use super::*;
 
 fn is_footer_chrome(part: &str) -> bool {
-    matches!(part, "F1:Help" | "F2:Theme" | "Esc:Close" | "Ctrl+Q:Quit")
+    matches!(
+        part,
+        "F1:Help" | "F2:Theme" | "Esc:Close" | "Esc:Cancel" | "Ctrl+S:Save" | "Ctrl+Q:Quit"
+    )
 }
 
 const MOUSE_HINT: &str = "(mouse: click/scroll)";
@@ -14,8 +17,23 @@ impl App {
             return String::new();
         }
         let overlay = self.overlay.is_some() || self.modal.is_some();
+        let form_edit =
+            self.overlay.is_none() && matches!(self.modal, Some(Modal::FormEdit { .. }));
         let mut parts: Vec<&str> = vec!["F1:Help", "F2:Theme"];
-        if overlay {
+        if form_edit {
+            if width < 80 {
+                parts.extend_from_slice(&["Ctrl+S:Save", "Esc:Cancel", "Ctrl+Q:Quit"]);
+            } else {
+                parts.extend_from_slice(&[
+                    "Ctrl+S:Save",
+                    "Tab:Field",
+                    "Ctrl+E:Expand",
+                    "Ctrl+Z:Undo",
+                    "Esc:Cancel",
+                    "Ctrl+Q:Quit",
+                ]);
+            }
+        } else if overlay {
             parts.push("Esc:Close");
             parts.push("Ctrl+Q:Quit");
         } else {
@@ -231,6 +249,14 @@ impl App {
         }
         let focus = self.blueprint_focus();
         let mut view = DetailsView::new();
+        if self.page_head_selected {
+            view.push_styled("Page health".to_string(), BlueprintStyle::Label);
+            for item in crate::health::page_health(&self.site, self.selected_page) {
+                let mark = if item.ok { "OK" } else { "!!" };
+                view.push_plain(format!("  {mark}  {}", item.message));
+            }
+            view.push_plain("");
+        }
         view.push_styled(
             format!("Page blueprint: {}", page.head.title),
             BlueprintStyle::Label,

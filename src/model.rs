@@ -158,6 +158,7 @@ pub enum SectionComponent {
     Spacer(DdSpacer),
     Tabs(DdTabs),
     Timeline(DdTimeline),
+    DataTable(DdDataTable),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -456,6 +457,151 @@ pub struct TimelineItem {
     pub child_image_url: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub child_image_alt: Option<String>,
+}
+
+pub const DATA_TABLE_MAX_COLUMNS: usize = 5;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum DataTableAlign {
+    #[default]
+    Start,
+    Center,
+    End,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum DataTableCellType {
+    #[default]
+    Text,
+    Badge,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum DataTableBadge {
+    #[serde(rename = "-critical")]
+    Critical,
+    #[serde(rename = "-warning")]
+    Warning,
+    #[default]
+    #[serde(rename = "-info")]
+    Info,
+    #[serde(rename = "-pass")]
+    Pass,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DataTableColumn {
+    pub label: String,
+    #[serde(default)]
+    pub align: DataTableAlign,
+    #[serde(default)]
+    pub sortable: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct DataTableCell {
+    #[serde(rename = "type", default)]
+    pub kind: DataTableCellType,
+    #[serde(default)]
+    pub text: String,
+    #[serde(default)]
+    pub badge: DataTableBadge,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct DataTableRow {
+    #[serde(default)]
+    pub cells: Vec<DataTableCell>,
+}
+
+impl DataTableRow {
+    pub fn pad_to(&mut self, n: usize) {
+        let n = n.min(DATA_TABLE_MAX_COLUMNS);
+        if self.cells.len() > n {
+            self.cells.truncate(n);
+        }
+        while self.cells.len() < n {
+            self.cells.push(DataTableCell::default());
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DdDataTable {
+    pub caption: String,
+    #[serde(default)]
+    pub dense: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scroll_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub empty_message: Option<String>,
+    pub columns: Vec<DataTableColumn>,
+    #[serde(default)]
+    pub rows: Vec<DataTableRow>,
+}
+
+impl DdDataTable {
+    pub fn pad_rows_to_columns(&mut self) {
+        let n = self.columns.len().min(DATA_TABLE_MAX_COLUMNS);
+        for row in &mut self.rows {
+            row.pad_to(n);
+        }
+    }
+
+    pub fn seed() -> Self {
+        Self {
+            caption: "Data table".to_string(),
+            dense: false,
+            scroll_label: None,
+            empty_message: None,
+            columns: vec![
+                DataTableColumn {
+                    label: "ID".to_string(),
+                    align: DataTableAlign::Start,
+                    sortable: false,
+                },
+                DataTableColumn {
+                    label: "Status".to_string(),
+                    align: DataTableAlign::Start,
+                    sortable: false,
+                },
+            ],
+            rows: vec![DataTableRow {
+                cells: vec![
+                    DataTableCell {
+                        kind: DataTableCellType::Text,
+                        text: "ROW-001".to_string(),
+                        badge: DataTableBadge::Info,
+                    },
+                    DataTableCell {
+                        kind: DataTableCellType::Badge,
+                        text: "Info".to_string(),
+                        badge: DataTableBadge::Info,
+                    },
+                ],
+            }],
+        }
+    }
+
+    pub fn new_row(&self) -> DataTableRow {
+        let n = self.columns.len().clamp(1, DATA_TABLE_MAX_COLUMNS);
+        let next = self.rows.len() + 1;
+        let mut cells = Vec::with_capacity(n);
+        for i in 0..n {
+            cells.push(if i == 0 {
+                DataTableCell {
+                    kind: DataTableCellType::Text,
+                    text: format!("ROW-{next:03}"),
+                    badge: DataTableBadge::Info,
+                }
+            } else {
+                DataTableCell::default()
+            });
+        }
+        DataTableRow { cells }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

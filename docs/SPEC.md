@@ -22,9 +22,11 @@ Workflow:
 
 1. `init-site` → starter `site.json`, build kit (`source/`, Grunt, Lando/DDEV), and `source/templates/`
 2. Images in `./source/images/` next to the JSON
-3. TUI edits pages/components/head. Autosave every 2s; `s` writes a `.backup`
-4. `npx grunt build` then export: HTML + Grunt `web/assets` + images + sitemap/robots/404
-5. `Shift+P` / `serve` starts a local HTTP server so relative `assets/` paths resolve
+3. `dd_siteforge` in a folder with `site.json` opens the TUI (or a recents/path picker). Last page and tree row restore from `~/.config/ldnddev/dd_siteforge/session.json`
+4. TUI edits pages/components/head. Autosave every 2s; `s` writes a `.backup`
+5. `Shift+B` runs `lando grunt build` when `.lando.yml` exists, else `npx grunt build`
+6. Export: HTML + Grunt `web/assets` + images + sitemap/robots/404
+7. `Shift+P` / `serve` starts a local HTTP server so relative `assets/` paths resolve; preview HTML live-reloads after save/export/build
 
 Current crate version: see `Cargo.toml`.
 
@@ -34,7 +36,7 @@ Current crate version: see `Cargo.toml`.
 
 ### CLI
 
-`init-site` (`--name`) · `init-templates` (`--force`, `--name`) · `init-scaffold` (`--force`, `--global`, `--name`) · `tui` · `validate-site` · `export-html` · `serve` · `show-site`
+Bare `dd_siteforge` (or `dd_siteforge site.json`) opens the TUI. `init-site` (`--name`) · `init-templates` (`--force`, `--name`) · `init-scaffold` (`--force`, `--global`, `--name`) · `tui` · `validate-site` · `export-html` · `serve` · `show-site`
 
 ### Content model
 
@@ -54,7 +56,7 @@ Hero overlay / copy position: optional overlay (`-overlay-light` / `-overlay-dar
 
 Site options: header root has CTA label/URL (empty URL hides the button; default label `"Contact"`) and a plain-text alert banner (`.dd-header__banner`, separate from the optional header `dd-alert`). Footer root has blurb, copyright override (empty falls back to `© {year} {site.name}`), and LinkedIn / X / GitHub URLs. Site settings holds header and body GTM snippets; export extracts a `GTM-XXXX` id and emits canonical googletagmanager.com script/noscript. Unrecognized snippets are omitted from HTML and fail validation.
 
-Spacer, tabs, and timeline are section components. Spacer is size (`-sm`…`-xxxl`) plus optional divider; no SAL; `aria-hidden="true"`. Tabs have a slug `parent_id`, orientation (`-horizontal` / `-vertical`), ARIA label (default `"Content tabs"`), SAL on the root, and items of label + markdown panel (min 1). Timeline has ARIA label (default `"Timeline"`), SAL stagger on events, and items of year, optional datetime, title, heading level 2–6 (default 3), markdown copy, and optional image. Datetime is required when year is not YYYY / YYYY-MM / YYYY-MM-DD.
+Spacer, tabs, timeline, and data table are section components. Spacer is size (`-sm`…`-xxxl`) plus optional divider; no SAL; `aria-hidden="true"`. Tabs have a slug `parent_id`, orientation (`-horizontal` / `-vertical`), ARIA label (default `"Content tabs"`), SAL on the root, and items of label + markdown panel (min 1). Timeline has ARIA label (default `"Timeline"`), SAL stagger on events, and items of year, optional datetime, title, heading level 2–6 (default 3), markdown copy, and optional image. Datetime is required when year is not YYYY / YYYY-MM / YYYY-MM-DD. Data table has a required caption, optional dense spacing, optional scroll label (default `"{caption}, scrollable"`), optional empty message, 1–5 columns (label, align `start`/`center`/`end`, sortable), and rows of cells (`text` or `badge` with `-critical`/`-warning`/`-info`/`-pass`). First column/cell is the row header. No SAL. Sort keys are derived from column labels. Scroll `tabindex`/`role`/`aria-label` are JS-owned.
 
 Media on hero, banner, alternating items, and slider items is `Media`: `none` / `image` / `oembed` / `local-video`. Image requires URL + alt. oEmbed stores a YouTube or Vimeo URL and exports a nocookie/player iframe. Local video needs large MP4 + accessible name; small MP4, poster, loop, and autoplay are optional. Autoplay is muted and stripped when `prefers-reduced-motion: reduce`. Legacy `parent_image_url`/`alt` (and `child_image_*`) load as `image` when `media` is absent. CTA, card, filmstrip, blockquote, and `dd-image` stay image-only. Hero image class and breakpoint URLs show when kind is `image`. Ctrl+P on image/poster fields lists images; on `mp4` fields lists `.mp4` in `./source/images/`.
 
@@ -66,11 +68,11 @@ Panes: `[1]` Regions · `[2]` Pages · `[3]` Layout · `[4]` Details (focusable;
 
 Toasts for success / info / warning. Modals for errors and forms.
 
-F1 Help (wrap + scroll). F2 Theme (source, status, color samples; same chrome as F1). F3 Validate. `Shift+E` Export. `Shift+P` Preview. `s` Save. `/` insert. `Ctrl+Q` quit (confirm if dirty).
+F1 Help (wrap + scroll). F2 Theme (source, status, color samples; same chrome as F1). F3 Validate. F4 page health. `Shift+E` Export. `Shift+P` Preview (live-reload on the local server). `Shift+B` Lando/npx grunt. `?` / `Ctrl+F` find. `:` / `Ctrl+K` command palette. `s` Save. `/` insert. `.` repeat last insert. `Ctrl+R` redo. `Ctrl+Q` quit (confirm if dirty). Selecting `[HEAD]` prepends a page-health checklist in Details.
 
 Pages panel: add / delete / undo / reorder / rename. Layout: nav, expand, edit, copy (`y`) / paste (`p`), columns.
 
-Edit forms: Tab between fields, click-to-focus, mouse wheel, `Ctrl+P` image or page picker on URL fields.
+Edit forms: Tab between fields, click-to-focus, mouse wheel, `Ctrl+P` image or page picker on URL fields. Terminal paste inserts a clipboard dump in one shot. `Ctrl+Z` undoes the last text edit. `Ctrl+←` / `Ctrl+→` / `Ctrl+Backspace` / `Delete` edit by word or forward-delete. Textareas wrap on spaces. `Ctrl+S` also re-exports when a preview server is already running; `Shift+P` again re-exports without opening a new browser tab.
 
 ### Export + assets
 
@@ -78,7 +80,7 @@ Edit forms: Tab between fields, click-to-focus, mouse wheel, `Ctrl+P` image or p
 - Handlebars load order (later wins): baked-in crate `templates/*.hbs`, then the crate `templates/` directory when this binary was built from a checkout that still exists, then `<site>/templates/`, then `<site>/source/templates/`. A `source/templates` file that is still an exact copy of the baked-in template yields to the live crate file. `init-templates` copies from the crate `templates/` tree when present (`--force` overwrites). Export never writes templates.
 - Build kit (Gruntfile, package.json, `.lando.yml`, `.ddev/`, `source/` except author images and templates) is embedded in the binary. `init-site` copies it once (skip existing). Optional house overlay: `~/.config/ldnddev/dd_siteforge/` (dump with `init-scaffold --global`). Re-seed a site with `init-scaffold --force`.
 - `init-site` asks for a project name (or `--name` / folder default when stdin is not a TTY) and stamps that slug into Lando, DDEV, and `package.json`.
-- CSS/JS come from Grunt (`source/{js,scss}` → `web/assets`). Host `npm install && npx grunt build` is the contract. Lando and DDEV are optional wrappers.
+- CSS/JS come from Grunt (`source/{js,scss}` → `web/assets`). `Shift+B` in the TUI runs `lando grunt build` when `.lando.yml` is present (Lando owns Node); otherwise `npx grunt build`. If Lando is configured but missing or not started, the TUI shows the error instead of falling back to host Node. Host `npm install && npx grunt build` remains valid from a shell. DDEV is still an optional wrapper.
 - Export copies Grunt `web/assets/{css,js,webfonts,favicon,vendors}` unless dest is already that tree (does not clobber a local grunt build). Fills missing webfonts/favicon from `source/`. Copies `source/images/` → `<out>/assets/images/`.
 
 ### Validation

@@ -1,14 +1,32 @@
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
+use std::time::UNIX_EPOCH;
 
 use crate::model::page_file_name;
+
+const RELOAD_PATH: &str = "/__siteforge/reload";
+const RELOAD_SNIPPET: &str = r#"<script>
+(function(){
+  var last=null;
+  function tick(){
+    fetch("/__siteforge/reload",{cache:"no-store"}).then(function(r){return r.text();}).then(function(t){
+      if(last===null) last=t;
+      else if(t!==last) location.reload();
+    }).catch(function(){});
+    setTimeout(tick,1000);
+  }
+  tick();
+})();
+</script>"#;
 
 pub struct StaticServer {
     pub port: u16,
     root: Arc<Mutex<PathBuf>>,
+    generation: Arc<AtomicU64>,
 }
 
 impl StaticServer {
@@ -16,24 +34,36 @@ impl StaticServer {
         let listener = TcpListener::bind("127.0.0.1:0")?;
         let port = listener.local_addr()?.port();
         let root = Arc::new(Mutex::new(root));
+        let generation = Arc::new(AtomicU64::new(0));
         let serve_root = Arc::clone(&root);
+        let serve_gen = Arc::clone(&generation);
         thread::spawn(move || {
             for stream in listener.incoming() {
                 if let Ok(stream) = stream {
                     let serve_root = Arc::clone(&serve_root);
+                    let serve_gen = Arc::clone(&serve_gen);
                     thread::spawn(move || {
-                        let _ = handle_client(stream, &serve_root);
+                        let _ = handle_client(stream, &serve_root, &serve_gen);
                     });
                 }
             }
         });
-        Ok(Self { port, root })
+        Ok(Self {
+            port,
+            root,
+            generation,
+        })
     }
 
     pub fn set_root(&self, root: PathBuf) {
         if let Ok(mut guard) = self.root.lock() {
             *guard = root;
         }
+        self.bump_generation();
+    }
+
+    pub fn bump_generation(&self) {
+        self.generation.fetch_add(1, Ordering::Relaxed);
     }
 
     pub fn url_for(&self, slug: &str) -> String {
@@ -44,6 +74,7 @@ impl StaticServer {
 pub fn serve_dir_blocking(root: PathBuf, port: u16) -> std::io::Result<()> {
     let listener = TcpListener::bind(("127.0.0.1", port))?;
     let root = Arc::new(Mutex::new(root));
+    let generation = Arc::new(AtomicU64::new(0));
     eprintln!(
         "Serving {} at http://127.0.0.1:{}/",
         root.lock().unwrap().display(),
@@ -52,15 +83,20 @@ pub fn serve_dir_blocking(root: PathBuf, port: u16) -> std::io::Result<()> {
     for stream in listener.incoming() {
         if let Ok(stream) = stream {
             let root = Arc::clone(&root);
+            let generation = Arc::clone(&generation);
             thread::spawn(move || {
-                let _ = handle_client(stream, &root);
+                let _ = handle_client(stream, &root, &generation);
             });
         }
     }
     Ok(())
 }
 
-fn handle_client(mut stream: TcpStream, root: &Arc<Mutex<PathBuf>>) -> std::io::Result<()> {
+fn handle_client(
+    mut stream: TcpStream,
+    root: &Arc<Mutex<PathBuf>>,
+    generation: &Arc<AtomicU64>,
+) -> std::io::Result<()> {
     let mut buf = [0u8; 4096];
     let n = stream.read(&mut buf)?;
     if n == 0 {
@@ -72,28 +108,85 @@ fn handle_client(mut stream: TcpStream, root: &Arc<Mutex<PathBuf>>) -> std::io::
         .lock()
         .map(|g| g.clone())
         .unwrap_or_else(|e| e.into_inner().clone());
-    let (status, body, ctype) = match resolve_file(&root_path, path) {
-        Some((bytes, mime)) => ("200 OK", bytes, mime),
+
+    if path == RELOAD_PATH {
+        let token = reload_token(&root_path, generation.load(Ordering::Relaxed));
+        let header = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nCache-Control: no-store\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            token.len()
+        );
+        stream.write_all(header.as_bytes())?;
+        stream.write_all(token.as_bytes())?;
+        return Ok(());
+    }
+
+    let (status, mut body, ctype, extra_cache) = match resolve_file(&root_path, path) {
+        Some((bytes, mime)) => ("200 OK", bytes, mime, html_cache_header(mime)),
         None => {
             let fallback = root_path.join("404.html");
             if let Ok(bytes) = std::fs::read(&fallback) {
-                ("404 Not Found", bytes, "text/html; charset=utf-8")
+                (
+                    "404 Not Found",
+                    bytes,
+                    "text/html; charset=utf-8",
+                    "Cache-Control: no-cache\r\n",
+                )
             } else {
                 (
                     "404 Not Found",
                     b"Not Found".to_vec(),
                     "text/plain; charset=utf-8",
+                    "",
                 )
             }
         }
     };
+    if ctype.starts_with("text/html") {
+        inject_reload_script(&mut body);
+    }
     let header = format!(
-        "HTTP/1.1 {status}\r\nContent-Type: {ctype}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        "HTTP/1.1 {status}\r\nContent-Type: {ctype}\r\n{extra_cache}Content-Length: {}\r\nConnection: close\r\n\r\n",
         body.len()
     );
     stream.write_all(header.as_bytes())?;
     stream.write_all(&body)?;
     Ok(())
+}
+
+fn html_cache_header(mime: &str) -> &'static str {
+    if mime.starts_with("text/html") {
+        "Cache-Control: no-cache\r\n"
+    } else {
+        ""
+    }
+}
+
+fn reload_token(root: &Path, generation: u64) -> String {
+    let mtime = std::fs::metadata(root.join("index.html"))
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    format!("{generation}-{mtime}")
+}
+
+fn inject_reload_script(body: &mut Vec<u8>) {
+    let Ok(html) = std::str::from_utf8(body) else {
+        return;
+    };
+    if html.contains(RELOAD_PATH) {
+        return;
+    }
+    if let Some(idx) = html.rfind("</body>") {
+        let mut out = String::with_capacity(html.len() + RELOAD_SNIPPET.len());
+        out.push_str(&html[..idx]);
+        out.push_str(RELOAD_SNIPPET);
+        out.push_str(&html[idx..]);
+        *body = out.into_bytes();
+    } else {
+        body.extend_from_slice(RELOAD_SNIPPET.as_bytes());
+    }
 }
 
 fn parse_path(req: &str) -> Option<&str> {
@@ -182,8 +275,20 @@ mod tests {
         let server = StaticServer::start(dir.clone()).expect("bind");
         let body = http_get(server.port, "/");
         assert!(body.contains("<h1>hi</h1>"), "got: {body}");
+        assert!(
+            body.contains("/__siteforge/reload"),
+            "preview HTML should inject live-reload: {body}"
+        );
         let denied = http_get(server.port, "/../Cargo.toml");
         assert!(denied.contains("Not Found") || denied.contains("404"));
+        let reload = http_get(server.port, "/__siteforge/reload");
+        assert!(reload.contains("\r\n\r\n"), "{reload}");
+        let token = reload.split("\r\n\r\n").nth(1).unwrap_or("");
+        assert!(token.contains('-'), "token={token}");
+        server.bump_generation();
+        let reload2 = http_get(server.port, "/__siteforge/reload");
+        let token2 = reload2.split("\r\n\r\n").nth(1).unwrap_or("");
+        assert_ne!(token, token2, "generation bump should change reload token");
         std::fs::remove_dir_all(&dir).ok();
     }
 

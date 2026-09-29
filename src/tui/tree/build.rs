@@ -244,6 +244,26 @@ impl App {
                                         }
                                     }
                                 }
+                                if let Some(crate::model::SectionComponent::DataTable(table)) =
+                                    col.components.get(component_idx)
+                                {
+                                    if self.is_data_table_rows_expanded(
+                                        node_idx,
+                                        column_idx,
+                                        component_idx,
+                                    ) {
+                                        for (item_idx, _) in table.rows.iter().enumerate() {
+                                            rows.push(TreeRow {
+                                                kind: TreeRowKind::DataTableRow {
+                                                    node_idx,
+                                                    column_idx,
+                                                    component_idx,
+                                                    item_idx,
+                                                },
+                                            });
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -494,6 +514,13 @@ impl App {
                         "[+]"
                     };
                     format!("    - {} {} {}", comp_i + 1, marker, label)
+                } else if matches!(component, crate::model::SectionComponent::DataTable(_)) {
+                    let marker = if self.is_data_table_rows_expanded(*node_idx, col_i, comp_i) {
+                        "[-]"
+                    } else {
+                        "[+]"
+                    };
+                    format!("    - {} {} {}", comp_i + 1, marker, label)
                 } else {
                     format!("    - {} {}", comp_i + 1, label)
                 }
@@ -706,6 +733,36 @@ impl App {
                     truncate_ascii(&item.child_title, 40)
                 )
             }
+            TreeRowKind::DataTableRow {
+                node_idx,
+                column_idx,
+                component_idx,
+                item_idx,
+            } => {
+                let page = self.current_page();
+                let PageNode::Section(section) = &page.nodes[*node_idx] else {
+                    return format!("      - row {}", item_idx + 1);
+                };
+                let columns = section_columns_ref(section);
+                let col_i = (*column_idx).min(columns.len().saturating_sub(1));
+                let comp_i =
+                    (*component_idx).min(columns[col_i].components.len().saturating_sub(1));
+                let table = match &columns[col_i].components[comp_i] {
+                    crate::model::SectionComponent::DataTable(t) => t,
+                    _ => return format!("      - row {}", item_idx + 1),
+                };
+                if table.rows.is_empty() {
+                    return format!("      - row {}", item_idx + 1);
+                }
+                let item_i = (*item_idx).min(table.rows.len().saturating_sub(1));
+                let header = table.rows[item_i]
+                    .cells
+                    .first()
+                    .map(|c| c.text.as_str())
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or("row");
+                format!("      - {}: {}", item_i + 1, truncate_ascii(header, 40))
+            }
         }
     }
 
@@ -891,6 +948,17 @@ impl App {
                 self.selected_component = component_idx;
                 self.selected_nested_item = item_idx;
             }
+            TreeRowKind::DataTableRow {
+                node_idx,
+                column_idx,
+                component_idx,
+                item_idx,
+            } => {
+                self.selected_node = node_idx;
+                self.selected_column = column_idx;
+                self.selected_component = component_idx;
+                self.selected_nested_item = item_idx;
+            }
         }
     }
 
@@ -1021,6 +1089,17 @@ impl App {
                     && item_idx == self.selected_nested_item
             }
             TreeRowKind::TimelineItem {
+                node_idx,
+                column_idx,
+                component_idx,
+                item_idx,
+            } => {
+                node_idx == self.selected_node
+                    && column_idx == self.selected_column
+                    && component_idx == self.selected_component
+                    && item_idx == self.selected_nested_item
+            }
+            TreeRowKind::DataTableRow {
                 node_idx,
                 column_idx,
                 component_idx,

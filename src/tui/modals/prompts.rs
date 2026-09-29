@@ -336,6 +336,78 @@ impl App {
         frame.render_widget(footer, footer_area);
     }
 
+    pub(in crate::tui) fn render_page_health_modal(
+        &self,
+        frame: &mut ratatui::Frame,
+        items: &[crate::health::HealthItem],
+        scroll_offset: usize,
+    ) {
+        let area = centered_rect(70, 60, frame.area());
+        frame.render_widget(Clear, area);
+        let issues = items.iter().filter(|i| !i.ok).count();
+        let title = format!(" Page health — {issues} issue(s) ");
+        let modal_block = Block::default()
+            .title(title)
+            .borders(Borders::ALL)
+            .style(Style::default().bg(self.theme.modal_background))
+            .border_style(Style::default().fg(self.theme.border_active))
+            .title_style(
+                Style::default()
+                    .fg(self.theme.modal_header)
+                    .add_modifier(Modifier::BOLD),
+            );
+        frame.render_widget(modal_block.clone(), area);
+        let inner = modal_block.inner(area);
+        if inner.width < 4 || inner.height < 3 {
+            return;
+        }
+        let padding_x: u16 = 2;
+        let content_x = inner.x + padding_x;
+        let content_w = inner.width.saturating_sub(padding_x * 2);
+        let list_height = inner.height.saturating_sub(1);
+        let lines: Vec<String> = items
+            .iter()
+            .map(|item| {
+                let mark = if item.ok { "OK" } else { "!!" };
+                format!("{mark}  {}", item.message)
+            })
+            .collect();
+        let visible: Vec<String> = lines
+            .iter()
+            .skip(scroll_offset)
+            .take(list_height as usize)
+            .cloned()
+            .collect();
+        let body = Paragraph::new(visible.join("\n")).style(
+            Style::default()
+                .fg(self.theme.text_primary)
+                .bg(self.theme.modal_background),
+        );
+        frame.render_widget(
+            body,
+            Rect {
+                x: content_x,
+                y: inner.y,
+                width: content_w,
+                height: list_height,
+            },
+        );
+        let footer = Paragraph::new("j / k to scroll  |  Enter or Esc to dismiss").style(
+            Style::default()
+                .fg(self.theme.text_secondary)
+                .bg(self.theme.modal_background),
+        );
+        frame.render_widget(
+            footer,
+            Rect {
+                x: content_x,
+                y: inner.y + inner.height.saturating_sub(1),
+                width: content_w,
+                height: 1,
+            },
+        );
+    }
+
     pub(in crate::tui) fn wrap_validation_lines(
         &self,
         errors: &[String],

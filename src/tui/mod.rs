@@ -5,8 +5,8 @@ use std::time::Duration;
 
 pub(super) use crate::model::{PageNode, SectionColumn, Site};
 pub(super) use crossterm::event::{
-    self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers, MouseButton,
-    MouseEventKind,
+    self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
+    Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind,
 };
 use crossterm::execute;
 use crossterm::terminal::{
@@ -20,8 +20,16 @@ pub(super) use ratatui::widgets::{
     Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap,
 };
 pub(super) const AUTOSAVE_DEBOUNCE: std::time::Duration = std::time::Duration::from_secs(2);
+pub(super) const TOAST_TTL: std::time::Duration = std::time::Duration::from_secs(5);
 pub(super) const TEXTAREA_MAX_DISPLAY_ROWS: u16 = 35;
 pub(super) const DOUBLE_CLICK_THRESHOLD_MS: u128 = 420;
+
+/// One-level text undo for the open FormEdit field.
+pub(super) struct FormTextUndo {
+    pub(super) field_id: String,
+    pub(super) value: String,
+    pub(super) cursor_pos: usize,
+}
 
 mod component_kind;
 pub mod cursor;
@@ -29,9 +37,13 @@ mod details;
 mod draw;
 pub mod editform;
 mod events;
+mod find;
 mod form_textarea;
+mod grunt;
 mod help;
 mod modals;
+mod open_site;
+mod palette;
 mod scrollbar;
 #[cfg(test)]
 mod tests;
@@ -49,24 +61,62 @@ use theme::*;
 use tree::*;
 use util::*;
 
+#[allow(dead_code)]
 pub fn run_tui(site: Site, path: Option<PathBuf>) -> anyhow::Result<()> {
     let (theme, theme_source, load_warning) = AppTheme::load();
+    let app = App::new(site, path, theme, theme_source, load_warning.clone());
+    launch_app(app, load_warning)
+}
 
+pub fn run_tui_restored(
+    site: Site,
+    path: PathBuf,
+    page: usize,
+    tree_row: usize,
+    region: &str,
+) -> anyhow::Result<()> {
+    let (theme, theme_source, load_warning) = AppTheme::load();
+    let mut app = App::new(site, Some(path), theme, theme_source, load_warning.clone());
+    app.restore_selection(page, tree_row, open_site::region_from_name(region));
+    launch_app(app, load_warning)
+}
+
+pub fn run_tui_open_picker() -> anyhow::Result<()> {
+    let (theme, theme_source, load_warning) = AppTheme::load();
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        theme,
+        theme_source,
+        load_warning.clone(),
+    );
+    app.awaiting_site = true;
+    app.open_site_picker();
+    launch_app(app, load_warning)
+}
+
+fn launch_app(mut app: App, load_warning: Option<String>) -> anyhow::Result<()> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+    execute!(
+        stdout,
+        EnterAlternateScreen,
+        EnableMouseCapture,
+        EnableBracketedPaste
+    )?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut app = App::new(site, path, theme, theme_source, load_warning.clone());
     if let Some(msg) = load_warning {
         app.push_toast(ToastLevel::Warning, msg);
     }
     let run_res = app.run(&mut terminal);
+    app.persist_session();
 
     disable_raw_mode()?;
     execute!(
         terminal.backend_mut(),
+        DisableBracketedPaste,
         LeaveAlternateScreen,
         DisableMouseCapture
     )?;
@@ -128,6 +178,14 @@ pub(super) struct App {
     /// Site snapshots taken before structural tree edits. `u` in Layout pops.
     /// Capped at 20.
     undo_stack: Vec<crate::model::Site>,
+    /// Snapshots undone with `u`; `Ctrl+R` pops. Cleared on a new `push_undo`.
+    redo_stack: Vec<crate::model::Site>,
+    /// Last successful insert kind, repeated with `.`.
+    last_insert_kind: Option<ComponentKind>,
+    /// Background `lando grunt build` / `npx grunt build`.
+    build_rx: Option<std::sync::mpsc::Receiver<Result<String, String>>>,
+    /// True until the OpenSite picker loads a JSON file. Blocks layout editing.
+    awaiting_site: bool,
     /// Copied tree grain for `y` / `p`. Session-only, not persisted.
     clipboard: Option<Clipboard>,
     /// Title captured while the TemplatePicker is open after the title prompt.
@@ -182,6 +240,8 @@ pub(super) struct App {
     /// When true, FormEdit paints the focused textarea full-size. Esc
     /// returns to the compact form; Ctrl+S still saves the component.
     form_textarea_expanded: bool,
+    /// Last text-field mutation in the open FormEdit, for Ctrl+Z.
+    form_text_undo: Option<FormTextUndo>,
     /// Draw-time hit targets for `[Expand]` on textarea field labels.
     form_expand_hits: std::cell::RefCell<Vec<(usize, Rect)>>,
     expanded_sections: HashSet<(usize, usize)>,
@@ -193,6 +253,7 @@ pub(super) struct App {
     expanded_slider_items: HashSet<(usize, usize, usize, usize)>,
     expanded_tabs_items: HashSet<(usize, usize, usize, usize)>,
     expanded_timeline_items: HashSet<(usize, usize, usize, usize)>,
+    expanded_data_table_rows: HashSet<(usize, usize, usize, usize)>,
     header_column_expanded: bool,
 }
 
@@ -231,6 +292,10 @@ impl App {
             header_alert_selected: false,
             deleted_pages: Vec::new(),
             undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
+            last_insert_kind: None,
+            build_rx: None,
+            awaiting_site: false,
             clipboard: None,
             pending_new_page_title: None,
             toasts: Vec::new(),
@@ -261,6 +326,7 @@ impl App {
             modal_field_areas: std::cell::RefCell::new(Vec::new()),
             paused_form_edit_modal: None,
             form_textarea_expanded: false,
+            form_text_undo: None,
             form_expand_hits: std::cell::RefCell::new(Vec::new()),
             expanded_sections: HashSet::new(),
             expanded_accordion_items: HashSet::new(),
@@ -271,6 +337,7 @@ impl App {
             expanded_slider_items: HashSet::new(),
             expanded_tabs_items: HashSet::new(),
             expanded_timeline_items: HashSet::new(),
+            expanded_data_table_rows: HashSet::new(),
             header_column_expanded: true,
             dirty: false,
             dirty_since: None,
@@ -307,18 +374,96 @@ impl App {
     where
         B::Error: Send + Sync + 'static,
     {
+        terminal.draw(|f| self.draw(f))?;
         while !self.should_quit {
-            self.tick_autosave(std::time::Instant::now());
-            terminal.draw(|f| self.draw(f))?;
-
-            if event::poll(Duration::from_millis(100))? {
-                let evt = event::read()?;
-                self.handle_event(evt)?;
-                self.mark_dirty_if_changed();
+            let mut redraw = self.poll_asset_build();
+            match self.next_idle_timeout() {
+                Some(timeout) => {
+                    if event::poll(timeout)? {
+                        redraw |= self.drain_pending_events()?;
+                    }
+                }
+                None => {
+                    redraw |= self.drain_pending_events()?;
+                }
+            }
+            redraw |= self.prune_toasts();
+            redraw |= self.tick_autosave(std::time::Instant::now());
+            if redraw {
+                terminal.draw(|f| self.draw(f))?;
             }
         }
 
         Ok(())
+    }
+
+    /// Events that never change pixels: skip the following frame.
+    /// Mouse Up still clears `scrollbar_drag` in `handle_event`; the last Drag already painted.
+    pub(super) fn is_idle_event(evt: &Event) -> bool {
+        match evt {
+            Event::Key(k) => k.kind == KeyEventKind::Release,
+            Event::FocusGained | Event::FocusLost => true,
+            Event::Mouse(m) => matches!(m.kind, MouseEventKind::Moved | MouseEventKind::Up(_)),
+            _ => false,
+        }
+    }
+
+    /// Soonest deadline for autosave or toast expiry. `None` means block on the next event.
+    pub(super) fn next_idle_timeout(&self) -> Option<Duration> {
+        let now = std::time::Instant::now();
+        let mut wait: Option<Duration> = None;
+        let consider = |wait: &mut Option<Duration>, d: Duration| {
+            *wait = Some(wait.map(|w| w.min(d)).unwrap_or(d));
+        };
+
+        if self.dirty && self.path.is_some() {
+            match self.dirty_since {
+                Some(since) => {
+                    let elapsed = now.saturating_duration_since(since);
+                    if elapsed >= AUTOSAVE_DEBOUNCE {
+                        consider(&mut wait, Duration::ZERO);
+                    } else {
+                        consider(&mut wait, AUTOSAVE_DEBOUNCE - elapsed);
+                    }
+                }
+                None => consider(&mut wait, AUTOSAVE_DEBOUNCE),
+            }
+        }
+
+        for toast in &self.toasts {
+            let elapsed = now.saturating_duration_since(toast.shown_at);
+            if elapsed >= TOAST_TTL {
+                consider(&mut wait, Duration::ZERO);
+            } else {
+                consider(&mut wait, TOAST_TTL - elapsed);
+            }
+        }
+        if self.build_rx.is_some() {
+            consider(&mut wait, Duration::from_millis(200));
+        }
+        wait
+    }
+
+    fn drain_pending_events(&mut self) -> anyhow::Result<bool> {
+        let mut check_dirty = false;
+        let mut redraw = false;
+        loop {
+            let evt = event::read()?;
+            let idle = Self::is_idle_event(&evt);
+            if self.handle_event(evt)? {
+                check_dirty = true;
+                redraw = true;
+            } else if !idle {
+                redraw = true;
+            }
+            if !event::poll(Duration::ZERO)? {
+                break;
+            }
+        }
+        if check_dirty {
+            self.mark_dirty_if_changed();
+        }
+        Ok(redraw)
     }
 
     pub(super) fn begin_save_prompt(&mut self) {
@@ -392,31 +537,33 @@ impl App {
     /// write `self.site` to the active path and refresh the saved snapshot.
     /// Errors are surfaced as an error toast and leave `dirty` set so the
     /// next tick can retry.
-    pub(super) fn tick_autosave(&mut self, now: std::time::Instant) {
+    pub(super) fn tick_autosave(&mut self, now: std::time::Instant) -> bool {
         if !self.dirty {
-            return;
+            return false;
         }
         let Some(since) = self.dirty_since else {
             // Defensive: dirty without a timestamp shouldn't happen; treat as
             // freshly dirty.
             self.dirty_since = Some(now);
-            return;
+            return false;
         };
         if now.duration_since(since) < AUTOSAVE_DEBOUNCE {
-            return;
+            return false;
         }
         let Some(path) = self.path.clone() else {
-            return;
+            return false;
         };
         match crate::storage::save_site(&path, &self.site) {
             Ok(()) => {
                 self.last_saved_json = serde_json::to_string(&self.site).unwrap_or_default();
                 self.dirty = false;
                 self.dirty_since = None;
+                true
             }
             Err(e) => {
                 let msg = format!("Autosave failed: {}", e);
                 self.push_toast(ToastLevel::Error, msg);
+                true
             }
         }
     }

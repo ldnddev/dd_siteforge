@@ -116,18 +116,61 @@ impl App {
             ToastLevel::Success,
             format!("Exported {} page(s) to {}", count, display),
         );
+        let already_running = self.preview_server.is_some();
         match self.ensure_preview_server(out.clone()) {
-            Ok(url) => match open_in_browser(&url) {
-                Ok(()) => {
-                    self.push_toast(ToastLevel::Info, format!("Opening {} in browser…", url));
+            Ok(url) => {
+                if already_running {
+                    self.push_toast(ToastLevel::Info, format!("Preview updated — refresh {url}"));
+                } else {
+                    match open_in_browser(&url) {
+                        Ok(()) => {
+                            self.push_toast(
+                                ToastLevel::Info,
+                                format!("Opening {} in browser…", url),
+                            );
+                        }
+                        Err(e) => {
+                            self.push_toast(
+                                ToastLevel::Error,
+                                format!("Browser open failed: {}", e),
+                            );
+                        }
+                    }
                 }
-                Err(e) => {
-                    self.push_toast(ToastLevel::Error, format!("Browser open failed: {}", e));
-                }
-            },
+            }
             Err(e) => {
                 self.push_toast(ToastLevel::Error, format!("Preview server failed: {}", e));
             }
+        }
+    }
+
+    /// Re-export into the running preview server after a form save. Leaves the browser tab alone.
+    pub(in crate::tui) fn refresh_preview_if_running(&mut self) {
+        if self.preview_server.is_none() {
+            return;
+        }
+        let Some(rel) = self.site.export_dir.clone() else {
+            return;
+        };
+        if rel.trim().is_empty() {
+            return;
+        }
+        use std::path::{Path, PathBuf};
+        let normalized = normalize_relative_path(&rel);
+        let base = self
+            .path
+            .as_ref()
+            .and_then(|p| p.parent().map(PathBuf::from))
+            .unwrap_or_else(|| PathBuf::from("."));
+        let out = base.join(Path::new(&normalized));
+        if let Err(e) = crate::export::export_site(&self.site, &out, Some(&base)) {
+            self.push_toast(ToastLevel::Error, format!("Preview refresh failed: {}", e));
+            return;
+        }
+        if let Some(server) = self.preview_server.as_ref() {
+            server.set_root(out);
+            let url = server.url_for(&self.current_page_slug_for_preview());
+            self.push_toast(ToastLevel::Info, format!("Preview updated — refresh {url}"));
         }
     }
 

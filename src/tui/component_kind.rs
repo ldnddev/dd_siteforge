@@ -22,6 +22,7 @@ pub(super) enum ComponentKind {
     Spacer,
     Tabs,
     Timeline,
+    DataTable,
 }
 
 impl ComponentKind {
@@ -48,6 +49,7 @@ impl ComponentKind {
             Self::Spacer,
             Self::Tabs,
             Self::Timeline,
+            Self::DataTable,
         ]
     }
 
@@ -74,6 +76,7 @@ impl ComponentKind {
             ComponentKind::Spacer => "dd-spacer",
             ComponentKind::Tabs => "dd-tabs",
             ComponentKind::Timeline => "dd-timeline",
+            ComponentKind::DataTable => "dd-data-table",
         }
     }
 
@@ -98,6 +101,7 @@ impl ComponentKind {
             crate::model::SectionComponent::Spacer(_) => Self::Spacer,
             crate::model::SectionComponent::Tabs(_) => Self::Tabs,
             crate::model::SectionComponent::Timeline(_) => Self::Timeline,
+            crate::model::SectionComponent::DataTable(_) => Self::DataTable,
         }
     }
 
@@ -349,6 +353,9 @@ impl ComponentKind {
                         child_image_alt: None,
                     }],
                 })
+            }
+            ComponentKind::DataTable => {
+                crate::model::SectionComponent::DataTable(crate::model::DdDataTable::seed())
             }
         }
     }

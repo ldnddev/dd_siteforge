@@ -116,13 +116,28 @@ pub(crate) fn build_help_text(theme: &AppTheme, width: usize) -> Text<'static> {
             ("F2", "Open/close theme source + color details (F2:Theme)"),
             ("F3", "Validate site (shows errors in a modal)"),
             (
+                "F4",
+                "Page health (SEO, alt text, headings, internal links)",
+            ),
+            (
                 "Shift+E",
                 "Export site to HTML (validates first; prompts for output dir on first use)",
             ),
             (
                 "Shift+P",
-                "Preview current page: export, start local HTTP server, open browser",
+                "Preview current page: export, start local HTTP server, open browser. Repeat to re-export without opening a new tab. Local preview HTML live-reloads after save/export/build",
             ),
+            (
+                "Shift+B",
+                "Build CSS/JS: `lando grunt build` when .lando.yml exists, else `npx grunt build`",
+            ),
+            (
+                "? / Ctrl+F",
+                "Find in the site (titles, copy, field values)",
+            ),
+            (": / Ctrl+K", "Command palette"),
+            ("Ctrl+R", "Redo last tree edit"),
+            (".", "Repeat last insert"),
             ("Ctrl+Q", "Quit"),
             (
                 "s",
@@ -185,6 +200,8 @@ pub(crate) fn build_help_text(theme: &AppTheme, width: usize) -> Text<'static> {
             ),
             ("p", "Paste the copied row after the current selection"),
             ("u", "Undo last tree edit (session snapshots, cap 20)"),
+            ("Ctrl+R", "Redo last tree edit"),
+            (".", "Repeat last component insert"),
             (
                 "J / K",
                 "Move selected row down / up (node, component, item, or column)",
@@ -276,6 +293,7 @@ pub(crate) fn build_help_text(theme: &AppTheme, width: usize) -> Text<'static> {
             ("Ctrl+P (link)", "Open page picker (lists site pages)"),
             ("Ctrl+E", "Expand focused textarea to a full-size editor"),
             ("←/→ (options)", "Cycle choices for type/option fields"),
+            ("Ctrl+← / Ctrl+→", "Jump by word in a text field"),
             (
                 "Enter",
                 "Newline in textarea / next field / drill into SubForm item",
@@ -284,9 +302,15 @@ pub(crate) fn build_help_text(theme: &AppTheme, width: usize) -> Text<'static> {
                 "Home / End",
                 "Start/end of the current wrapped line in a textarea",
             ),
-            ("Ctrl+S", "Save"),
+            ("Ctrl+S", "Save (also refreshes a running preview)"),
+            ("Ctrl+Z", "Undo last text edit or paste in this form"),
             ("Esc", "Close expanded textarea, or cancel edit"),
-            ("Backspace", "Delete character"),
+            ("Backspace / Delete", "Delete previous / next character"),
+            ("Ctrl+Backspace", "Delete the previous word"),
+            (
+                "Paste",
+                "Terminal paste inserts the clipboard in one shot (bracketed paste)",
+            ),
             (
                 "multiline ↑/↓/Enter",
                 "Move/copy lines; Enter newline; Ctrl+S saves",

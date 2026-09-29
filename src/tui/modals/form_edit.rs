@@ -8,6 +8,12 @@ impl App {
     ) -> Option<ModalResult> {
         use crossterm::event::{KeyCode, KeyModifiers};
 
+        // Ctrl+Z: restore the last text-field mutation in this form.
+        if matches!(key.code, KeyCode::Char('z')) && key.modifiers.contains(KeyModifiers::CONTROL) {
+            self.restore_form_text_undo();
+            return Some(ModalResult::Continue);
+        }
+
         // Ctrl+E: expand the focused textarea to a full-size editor.
         if matches!(key.code, KeyCode::Char('e')) && key.modifiers.contains(KeyModifiers::CONTROL) {
             let is_textarea = matches!(
@@ -140,8 +146,10 @@ impl App {
                 match cursor::apply_edit_form_to_component(&mut self.site, &cursor, &state) {
                     Ok(()) => {
                         self.form_textarea_expanded = false;
+                        self.form_text_undo = None;
                         let msg = format!("Saved {}.", state.form.title);
                         self.push_toast(ToastLevel::Success, msg);
+                        self.refresh_preview_if_running();
                         return Some(ModalResult::CloseSuccess);
                     }
                     Err(e) => {
@@ -188,6 +196,7 @@ impl App {
                 }
             }
             self.form_textarea_expanded = false;
+            self.form_text_undo = None;
             self.modal = None;
             return Some(ModalResult::CloseCancel);
         }
@@ -387,6 +396,16 @@ impl App {
                 *scroll_offset = auto_scroll_for_focus(state, *scroll_offset);
                 *cursor_pos = text_end(state.get(state.form.fields[state.focused_field].id));
             }
+            KeyCode::Left if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                if accepts_text {
+                    *cursor_pos = word_left(state.get(field_id), *cursor_pos);
+                }
+            }
+            KeyCode::Right if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                if accepts_text {
+                    *cursor_pos = word_right(state.get(field_id), *cursor_pos);
+                }
+            }
             KeyCode::Left => {
                 if is_enum {
                     state.cycle_enum(false);
@@ -461,25 +480,78 @@ impl App {
             KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
                 if accepts_text {
                     let current = state.get(field_id);
+                    let undo = FormTextUndo {
+                        field_id: field_id.to_string(),
+                        value: current.to_string(),
+                        cursor_pos: *cursor_pos,
+                    };
                     let (new, pos) = insert_at_char(current, *cursor_pos, &c.to_string());
                     state.set(field_id, new);
                     *cursor_pos = pos;
+                    self.form_text_undo = Some(undo);
+                }
+            }
+            KeyCode::Backspace if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                if accepts_text {
+                    let current = state.get(field_id);
+                    let from = word_left(current, *cursor_pos);
+                    if from < *cursor_pos {
+                        let undo = FormTextUndo {
+                            field_id: field_id.to_string(),
+                            value: current.to_string(),
+                            cursor_pos: *cursor_pos,
+                        };
+                        let (new, pos) = delete_char_range(current, from, *cursor_pos);
+                        state.set(field_id, new);
+                        *cursor_pos = pos;
+                        self.form_text_undo = Some(undo);
+                    }
                 }
             }
             KeyCode::Backspace => {
                 if accepts_text {
                     let current = state.get(field_id);
-                    let (new, pos) = delete_char_before(current, *cursor_pos);
-                    state.set(field_id, new);
-                    *cursor_pos = pos;
+                    if *cursor_pos > 0 {
+                        let undo = FormTextUndo {
+                            field_id: field_id.to_string(),
+                            value: current.to_string(),
+                            cursor_pos: *cursor_pos,
+                        };
+                        let (new, pos) = delete_char_before(current, *cursor_pos);
+                        state.set(field_id, new);
+                        *cursor_pos = pos;
+                        self.form_text_undo = Some(undo);
+                    }
+                }
+            }
+            KeyCode::Delete => {
+                if accepts_text {
+                    let current = state.get(field_id);
+                    if *cursor_pos < text_end(current) {
+                        let undo = FormTextUndo {
+                            field_id: field_id.to_string(),
+                            value: current.to_string(),
+                            cursor_pos: *cursor_pos,
+                        };
+                        let (new, pos) = delete_char_after(current, *cursor_pos);
+                        state.set(field_id, new);
+                        *cursor_pos = pos;
+                        self.form_text_undo = Some(undo);
+                    }
                 }
             }
             KeyCode::Enter => {
                 if is_textarea {
                     let current = state.get(field_id);
+                    let undo = FormTextUndo {
+                        field_id: field_id.to_string(),
+                        value: current.to_string(),
+                        cursor_pos: *cursor_pos,
+                    };
                     let (new, pos) = insert_at_char(current, *cursor_pos, "\n");
                     state.set(field_id, new);
                     *cursor_pos = pos;
+                    self.form_text_undo = Some(undo);
                 } else {
                     state.focus_next();
                     *scroll_offset = auto_scroll_for_focus(state, *scroll_offset);
@@ -490,5 +562,65 @@ impl App {
         }
 
         Some(ModalResult::Continue)
+    }
+
+    pub(in crate::tui) fn paste_into_form(&mut self, raw: &str) {
+        let Some(Modal::FormEdit {
+            state, cursor_pos, ..
+        }) = self.modal.as_mut()
+        else {
+            return;
+        };
+        let focused_idx = state.focused_field;
+        let Some(field) = state.form.fields.get(focused_idx) else {
+            return;
+        };
+        let accepts_text = matches!(
+            field.kind,
+            editform::FieldKind::Text { .. }
+                | editform::FieldKind::Url { .. }
+                | editform::FieldKind::Textarea { .. }
+        );
+        if !accepts_text {
+            return;
+        }
+        let is_textarea = matches!(field.kind, editform::FieldKind::Textarea { .. });
+        let text = sanitize_paste(raw, is_textarea);
+        if text.is_empty() {
+            return;
+        }
+        let field_id = field.id;
+        let current = state.get(field_id);
+        let undo = FormTextUndo {
+            field_id: field_id.to_string(),
+            value: current.to_string(),
+            cursor_pos: *cursor_pos,
+        };
+        let (new, pos) = insert_at_char(current, *cursor_pos, &text);
+        state.set(field_id, new);
+        *cursor_pos = pos;
+        self.form_text_undo = Some(undo);
+    }
+
+    fn restore_form_text_undo(&mut self) {
+        let Some(undo) = self.form_text_undo.take() else {
+            return;
+        };
+        let Some(Modal::FormEdit {
+            state,
+            cursor_pos,
+            scroll_offset,
+            ..
+        }) = self.modal.as_mut()
+        else {
+            self.form_text_undo = Some(undo);
+            return;
+        };
+        if let Some(idx) = state.form.fields.iter().position(|f| f.id == undo.field_id) {
+            state.focused_field = idx;
+            *scroll_offset = auto_scroll_for_focus(state, *scroll_offset);
+        }
+        state.set(&undo.field_id, undo.value);
+        *cursor_pos = undo.cursor_pos;
     }
 }

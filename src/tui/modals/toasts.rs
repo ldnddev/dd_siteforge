@@ -13,10 +13,12 @@ impl App {
         }
     }
 
-    pub(in crate::tui) fn prune_toasts(&mut self) {
+    pub(in crate::tui) fn prune_toasts(&mut self) -> bool {
+        let before = self.toasts.len();
         let now = std::time::Instant::now();
         self.toasts
-            .retain(|t| now.duration_since(t.shown_at) < std::time::Duration::from_secs(5));
+            .retain(|t| now.duration_since(t.shown_at) < TOAST_TTL);
+        self.toasts.len() != before
     }
 
     pub(in crate::tui) fn render_toasts(&self, frame: &mut ratatui::Frame, area: Rect) {

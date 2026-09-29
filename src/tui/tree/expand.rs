@@ -267,6 +267,35 @@ impl App {
         }
     }
 
+    pub(in crate::tui) fn is_data_table_rows_expanded(
+        &self,
+        node_idx: usize,
+        column_idx: usize,
+        component_idx: usize,
+    ) -> bool {
+        !self.expanded_data_table_rows.contains(&(
+            self.selected_page,
+            node_idx,
+            column_idx,
+            component_idx,
+        ))
+    }
+
+    pub(in crate::tui) fn set_data_table_rows_expanded(
+        &mut self,
+        node_idx: usize,
+        column_idx: usize,
+        component_idx: usize,
+        expanded: bool,
+    ) {
+        let key = (self.selected_page, node_idx, column_idx, component_idx);
+        if expanded {
+            self.expanded_data_table_rows.remove(&key);
+        } else {
+            self.expanded_data_table_rows.insert(key);
+        }
+    }
+
     pub(in crate::tui) fn toggle_selected_tree_expanded(&mut self) {
         let rows = self.build_tree_rows();
         if rows.is_empty() {
@@ -321,6 +350,12 @@ impl App {
             ..
         }
         | TreeRowKind::TimelineItem {
+            node_idx,
+            column_idx,
+            component_idx,
+            ..
+        }
+        | TreeRowKind::DataTableRow {
             node_idx,
             column_idx,
             component_idx,
@@ -487,6 +522,25 @@ impl App {
                 self.sync_tree_row_with_selection();
                 return;
             }
+            if matches!(
+                columns[col_i].components.get(comp_i),
+                Some(crate::model::SectionComponent::DataTable(_))
+            ) {
+                let expanded = self.is_data_table_rows_expanded(node_idx, col_i, comp_i);
+                self.set_data_table_rows_expanded(node_idx, col_i, comp_i, !expanded);
+                self.selected_node = node_idx;
+                self.selected_column = col_i;
+                self.selected_component = comp_i;
+                self.selected_nested_item = 0;
+                let msg = if expanded {
+                    "Collapsed data table rows.".to_string()
+                } else {
+                    "Expanded data table rows.".to_string()
+                };
+                self.push_toast(ToastLevel::Info, msg);
+                self.sync_tree_row_with_selection();
+                return;
+            }
         }
         let node_idx = match row.kind {
             TreeRowKind::HeaderRoot { .. } => {
@@ -547,6 +601,7 @@ impl App {
             TreeRowKind::SliderItem { node_idx, .. } => node_idx,
             TreeRowKind::TabsItem { node_idx, .. } => node_idx,
             TreeRowKind::TimelineItem { node_idx, .. } => node_idx,
+            TreeRowKind::DataTableRow { node_idx, .. } => node_idx,
             TreeRowKind::Hero { .. } => {
                 self.push_toast(ToastLevel::Warning, "Selected row is not a section.");
                 return;

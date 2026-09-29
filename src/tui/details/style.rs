@@ -335,6 +335,12 @@ impl App {
                 column_idx,
                 component_idx,
                 ..
+            }
+            | TreeRowKind::DataTableRow {
+                node_idx,
+                column_idx,
+                component_idx,
+                ..
             } => BlueprintFocus::Page {
                 node: node_idx,
                 depth: FocusDepth::Component {

@@ -383,6 +383,7 @@ fn content_field_label(field_id: &str) -> Option<&'static str> {
         "cta_label" => "cta",
         "blurb" => "blurb",
         "copyright" => "copyright",
+        "caption" => "caption",
         _ => return None,
     })
 }
@@ -416,6 +417,25 @@ fn blueprint_content_lines_skipping(
                     let joined = labels.join(", ");
                     let max = width.saturating_sub(7);
                     lines.push(format!("links: {}", truncate_ascii(&joined, max.max(4))));
+                }
+            }
+            FieldKind::SubForm { .. } if field.id == "columns" => {
+                let labels = column_labels(state, field.id);
+                if !labels.is_empty() {
+                    let joined = labels.join(", ");
+                    let max = width.saturating_sub(9);
+                    lines.push(format!("columns: {}", truncate_ascii(&joined, max.max(4))));
+                }
+            }
+            FieldKind::SubForm { .. } if field.id == "rows" => {
+                let headers = row_headers(state, field.id);
+                for (i, header) in headers.iter().enumerate() {
+                    let max = width.saturating_sub(8);
+                    lines.push(format!(
+                        "row {}: {}",
+                        i + 1,
+                        truncate_ascii(header, max.max(4))
+                    ));
                 }
             }
             FieldKind::SubForm { .. } => {
@@ -471,6 +491,35 @@ fn link_labels(state: &EditFormState, field_id: &str) -> Vec<String> {
         .map(|item| item.get("label").trim())
         .filter(|s| !s.is_empty())
         .map(str::to_string)
+        .collect()
+}
+
+fn column_labels(state: &EditFormState, field_id: &str) -> Vec<String> {
+    link_labels(state, field_id)
+}
+
+fn row_headers(state: &EditFormState, field_id: &str) -> Vec<String> {
+    state
+        .sub_state
+        .get(field_id)
+        .into_iter()
+        .flatten()
+        .map(|row| {
+            row.sub_state
+                .get("cells")
+                .and_then(|cells| cells.first())
+                .map(|cell| cell.get("text").trim().to_string())
+                .filter(|s| !s.is_empty())
+                .or_else(|| {
+                    let label = row.get("label").trim();
+                    if label.is_empty() {
+                        None
+                    } else {
+                        Some(label.to_string())
+                    }
+                })
+                .unwrap_or_else(|| "row".to_string())
+        })
         .collect()
 }
 

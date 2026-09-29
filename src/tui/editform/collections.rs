@@ -680,6 +680,161 @@ pub static TIMELINE_FORM: EditForm = EditForm {
     ],
 };
 
+pub(super) const DATA_TABLE_ALIGN_OPTIONS: &[&str] = &["start", "center", "end"];
+pub(super) const DATA_TABLE_DENSE_OPTIONS: &[&str] = &["comfortable", "dense"];
+pub(super) const DATA_TABLE_CELL_TYPE_OPTIONS: &[&str] = &["text", "badge"];
+pub(super) const DATA_TABLE_BADGE_OPTIONS: &[&str] = &["-critical", "-warning", "-info", "-pass"];
+
+pub static DATA_TABLE_COLUMN_FORM: EditForm = EditForm {
+    title: "dd-data-table column",
+    fields: &[
+        FormField {
+            id: "label",
+            label: "Label",
+            kind: FieldKind::Text { default: "" },
+            required: true,
+            visible_when: None,
+        },
+        FormField {
+            id: "align",
+            label: "Align",
+            kind: FieldKind::Enum {
+                options: DATA_TABLE_ALIGN_OPTIONS,
+                default: "start",
+            },
+            required: true,
+            visible_when: None,
+        },
+        FormField {
+            id: "sortable",
+            label: "Sortable",
+            kind: FieldKind::Enum {
+                options: BOOL_OPTIONS,
+                default: "false",
+            },
+            required: false,
+            visible_when: None,
+        },
+    ],
+};
+
+pub static DATA_TABLE_CELL_FORM: EditForm = EditForm {
+    title: "dd-data-table cell",
+    fields: &[
+        FormField {
+            id: "type",
+            label: "Type",
+            kind: FieldKind::Enum {
+                options: DATA_TABLE_CELL_TYPE_OPTIONS,
+                default: "text",
+            },
+            required: true,
+            visible_when: None,
+        },
+        FormField {
+            id: "text",
+            label: "Text",
+            kind: FieldKind::Text { default: "" },
+            required: false,
+            visible_when: None,
+        },
+        FormField {
+            id: "badge",
+            label: "Badge",
+            kind: FieldKind::Enum {
+                options: DATA_TABLE_BADGE_OPTIONS,
+                default: "-info",
+            },
+            required: false,
+            visible_when: Some(FieldPredicate::FieldEquals {
+                other_id: "type",
+                value: "badge",
+            }),
+        },
+    ],
+};
+
+pub static DATA_TABLE_ROW_FORM: EditForm = EditForm {
+    title: "dd-data-table row",
+    fields: &[FormField {
+        id: "cells",
+        label: "Cells",
+        kind: FieldKind::SubForm {
+            template: &DATA_TABLE_CELL_FORM,
+            min_items: 0,
+            max_items: Some(5),
+            summary_field_id: "text",
+        },
+        required: false,
+        visible_when: None,
+    }],
+};
+
+pub static DATA_TABLE_FORM: EditForm = EditForm {
+    title: "dd-data-table",
+    fields: &[
+        FormField {
+            id: "caption",
+            label: "Caption",
+            kind: FieldKind::Text {
+                default: "Data table",
+            },
+            required: true,
+            visible_when: None,
+        },
+        FormField {
+            id: "dense",
+            label: "Density",
+            kind: FieldKind::Enum {
+                options: DATA_TABLE_DENSE_OPTIONS,
+                default: "comfortable",
+            },
+            required: true,
+            visible_when: None,
+        },
+        FormField {
+            id: "scroll_label",
+            label: "Scroll label",
+            kind: FieldKind::Text { default: "" },
+            required: false,
+            visible_when: None,
+        },
+        FormField {
+            id: "empty_message",
+            label: "Empty message",
+            kind: FieldKind::Text {
+                default: "No data to display.",
+            },
+            required: false,
+            visible_when: None,
+        },
+        FormField {
+            id: "columns",
+            label: "Columns",
+            kind: FieldKind::SubForm {
+                template: &DATA_TABLE_COLUMN_FORM,
+                min_items: 1,
+                max_items: Some(5),
+                summary_field_id: "label",
+            },
+            required: true,
+            visible_when: None,
+        },
+        FormField {
+            id: "rows",
+            label: "Rows",
+            kind: FieldKind::SubForm {
+                template: &DATA_TABLE_ROW_FORM,
+                min_items: 0,
+                max_items: None,
+                summary_field_id: "label",
+            },
+            required: false,
+            visible_when: None,
+        },
+    ],
+};
+
 pub static ALTERNATING_FORM: EditForm = EditForm {
     title: "dd-alternating",
     fields: &[

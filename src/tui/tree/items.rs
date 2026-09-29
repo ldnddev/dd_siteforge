@@ -24,6 +24,9 @@ impl App {
             Some(crate::model::SectionComponent::Slider(_)) => self.add_selected_slider_item(),
             Some(crate::model::SectionComponent::Tabs(_)) => self.add_selected_tabs_item(),
             Some(crate::model::SectionComponent::Timeline(_)) => self.add_selected_timeline_item(),
+            Some(crate::model::SectionComponent::DataTable(_)) => {
+                self.add_selected_data_table_row()
+            }
             Some(_) => {
                 self.push_toast(
                     ToastLevel::Warning,
@@ -59,6 +62,9 @@ impl App {
             Some(crate::model::SectionComponent::Tabs(_)) => self.remove_selected_tabs_item(),
             Some(crate::model::SectionComponent::Timeline(_)) => {
                 self.remove_selected_timeline_item()
+            }
+            Some(crate::model::SectionComponent::DataTable(_)) => {
+                self.remove_selected_data_table_row()
             }
             Some(_) => {
                 self.push_toast(
@@ -1087,6 +1093,121 @@ impl App {
         if let Some(item_i) = result.0 {
             self.selected_nested_item = item_i;
             self.set_timeline_items_expanded(ni, selected_column, selected_component, true);
+            self.sync_tree_row_with_selection();
+        }
+        self.push_toast(ToastLevel::Info, result.1);
+    }
+
+    pub(in crate::tui) fn add_selected_data_table_row(&mut self) {
+        let rows = self.build_page_tree_rows();
+        if rows.is_empty() {
+            self.push_toast(ToastLevel::Warning, "No selected section.");
+            return;
+        }
+        let row = rows[self.selected_tree_row.min(rows.len() - 1)];
+        let selected = self.selected_node;
+        let selected_column = self.selected_column;
+        let selected_component = self.selected_component;
+        let preferred_insert_after = match row.kind {
+            TreeRowKind::DataTableRow { item_idx, .. } => Some(item_idx),
+            _ => None,
+        };
+        let Some(page) = self.current_page_mut() else {
+            return;
+        };
+        if page.nodes.is_empty() {
+            self.push_toast(ToastLevel::Warning, "No selected section.");
+            return;
+        }
+        let ni = selected.min(page.nodes.len() - 1);
+        let result = match &mut page.nodes[ni] {
+            PageNode::Section(section) => {
+                normalize_section_columns(section);
+                let col_i = selected_column.min(section.columns.len().saturating_sub(1));
+                let components = &mut section.columns[col_i].components;
+                if let Some(ci) = component_index(components.len(), selected_component) {
+                    if let crate::model::SectionComponent::DataTable(table) = &mut components[ci] {
+                        let insert_idx = preferred_insert_after
+                            .map(|i| (i + 1).min(table.rows.len()))
+                            .unwrap_or(table.rows.len());
+                        let new_row = table.new_row();
+                        table.rows.insert(insert_idx, new_row);
+                        (
+                            Some(insert_idx),
+                            format!("Added data table row {}.", insert_idx + 1),
+                        )
+                    } else {
+                        (None, "Selected component is not dd-data-table.".to_string())
+                    }
+                } else {
+                    (None, "Section has no components.".to_string())
+                }
+            }
+            _ => (None, "Selected node is not a section.".to_string()),
+        };
+        if let Some(item_i) = result.0 {
+            self.selected_nested_item = item_i;
+            self.set_data_table_rows_expanded(ni, selected_column, selected_component, true);
+            self.sync_tree_row_with_selection();
+        }
+        self.push_toast(ToastLevel::Info, result.1);
+    }
+
+    pub(in crate::tui) fn remove_selected_data_table_row(&mut self) {
+        let rows = self.build_page_tree_rows();
+        if rows.is_empty() {
+            self.push_toast(ToastLevel::Warning, "No selected section.");
+            return;
+        }
+        let row = rows[self.selected_tree_row.min(rows.len() - 1)];
+        let selected = self.selected_node;
+        let selected_column = self.selected_column;
+        let selected_component = self.selected_component;
+        let selected_nested_item = self.selected_nested_item;
+        let preferred_remove = match row.kind {
+            TreeRowKind::DataTableRow { item_idx, .. } => Some(item_idx),
+            _ => None,
+        };
+        let Some(page) = self.current_page_mut() else {
+            return;
+        };
+        if page.nodes.is_empty() {
+            self.push_toast(ToastLevel::Warning, "No selected section.");
+            return;
+        }
+        let ni = selected.min(page.nodes.len() - 1);
+        let result = match &mut page.nodes[ni] {
+            PageNode::Section(section) => {
+                normalize_section_columns(section);
+                let col_i = selected_column.min(section.columns.len().saturating_sub(1));
+                let components = &mut section.columns[col_i].components;
+                if let Some(ci) = component_index(components.len(), selected_component) {
+                    if let crate::model::SectionComponent::DataTable(table) = &mut components[ci] {
+                        if table.rows.is_empty() {
+                            (None, "dd-data-table has no rows to remove.".to_string())
+                        } else {
+                            let remove_i = preferred_remove.unwrap_or_else(|| {
+                                selected_nested_item.min(table.rows.len().saturating_sub(1))
+                            });
+                            table.rows.remove(remove_i);
+                            let next_i = remove_i.min(table.rows.len().saturating_sub(1));
+                            (
+                                Some(next_i),
+                                format!("Removed data table row {}.", remove_i + 1),
+                            )
+                        }
+                    } else {
+                        (None, "Selected component is not dd-data-table.".to_string())
+                    }
+                } else {
+                    (None, "Section has no components.".to_string())
+                }
+            }
+            _ => (None, "Selected node is not a section.".to_string()),
+        };
+        if let Some(item_i) = result.0 {
+            self.selected_nested_item = item_i;
+            self.set_data_table_rows_expanded(ni, selected_column, selected_component, true);
             self.sync_tree_row_with_selection();
         }
         self.push_toast(ToastLevel::Info, result.1);

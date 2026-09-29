@@ -98,6 +98,7 @@ pub(in crate::tui) fn component_label(component: &crate::model::SectionComponent
         crate::model::SectionComponent::Spacer(_) => "dd-spacer",
         crate::model::SectionComponent::Tabs(_) => "dd-tabs",
         crate::model::SectionComponent::Timeline(_) => "dd-timeline",
+        crate::model::SectionComponent::DataTable(_) => "dd-data-table",
     }
 }
 
@@ -184,6 +185,14 @@ pub(in crate::tui) fn component_blueprint_label(
                 .map(|i| i.child_title.as_str())
                 .unwrap_or("(none)")
         ),
+        crate::model::SectionComponent::DataTable(v) => {
+            let caption = v.caption.trim();
+            if caption.is_empty() {
+                "dd-data-table".to_string()
+            } else {
+                format!("dd-data-table | {caption}")
+            }
+        }
         _ => component_label(component).to_string(),
     }
 }

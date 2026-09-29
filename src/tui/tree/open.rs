@@ -209,6 +209,12 @@ impl App {
                 column_idx,
                 component_idx,
                 item_idx,
+            }
+            | TreeRowKind::DataTableRow {
+                node_idx,
+                column_idx,
+                component_idx,
+                item_idx,
             } => (node_idx, column_idx, component_idx, item_idx),
             _ => return false,
         };
@@ -231,12 +237,11 @@ impl App {
         let Some(mut parent_state) = cursor::component_to_form_state(&component) else {
             return false;
         };
-        // Find the SubForm field (by convention named "items"). If the
-        // parent doesn't have one, give up.
-        let items_field_idx =
-            parent_state.form.fields.iter().position(|f| {
-                f.id == "items" && matches!(f.kind, editform::FieldKind::SubForm { .. })
-            });
+        // Find the tree-collection SubForm (`items` or data-table `rows`).
+        let items_field_idx = parent_state.form.fields.iter().position(|f| {
+            matches!(f.id, "items" | "rows")
+                && matches!(f.kind, editform::FieldKind::SubForm { .. })
+        });
         let Some(items_field_idx) = items_field_idx else {
             return false;
         };
@@ -523,7 +528,9 @@ impl App {
             );
             return;
         }
+        let kind = self.component_kind;
         self.push_undo();
+        let mut ok = true;
         match self.component_kind {
             ComponentKind::Hero => self.add_hero(),
             ComponentKind::Section => match self.selected_region {
@@ -537,6 +544,7 @@ impl App {
                     self.push_toast(ToastLevel::Success, "Added dd-alert to the header slot.");
                 } else {
                     self.undo_stack.pop();
+                    ok = false;
                 }
             }
             _ => match self.selected_region {
@@ -545,6 +553,9 @@ impl App {
                 SelectedRegion::Page => self.add_selected_component_to_section(),
                 SelectedRegion::Site => unreachable!("Site insert returns above"),
             },
+        }
+        if ok {
+            self.last_insert_kind = Some(kind);
         }
     }
 

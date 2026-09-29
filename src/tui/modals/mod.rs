@@ -46,6 +46,17 @@ pub(in crate::tui) enum Modal {
     ImagePicker { state: ImagePickerState },
     /// Page picker — lists site pages and writes `/<slug>` to a URL field.
     PagePicker { state: PagePickerState },
+    /// Recents + path picker when launched with no site.json.
+    OpenSite { query: String, selected: usize },
+    /// Find in page titles, copy, and field values.
+    Find { query: String, selected: usize },
+    /// Command palette.
+    Palette { query: String, selected: usize },
+    /// Per-page authoring health (SEO, alt, headings, internal links).
+    PageHealth {
+        items: Vec<crate::health::HealthItem>,
+        scroll_offset: usize,
+    },
     /// Unified form editor: all fields of a component rendered together,
     /// Tab moves between fields, Left/Right cycles enums, Ctrl+S saves via
     /// `cursor::apply_edit_form_to_component`.
@@ -202,6 +213,10 @@ impl Modal {
             Modal::ValidationErrors { .. } => "ValidationErrors",
             Modal::ImagePicker { .. } => "ImagePicker",
             Modal::PagePicker { .. } => "PagePicker",
+            Modal::OpenSite { .. } => "OpenSite",
+            Modal::Find { .. } => "Find",
+            Modal::Palette { .. } => "Palette",
+            Modal::PageHealth { .. } => "PageHealth",
         }
     }
 }

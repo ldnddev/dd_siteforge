@@ -537,6 +537,37 @@ fn validate_section_component(
         SectionComponent::HeaderSearch(_)
         | SectionComponent::HeaderMenu(_)
         | SectionComponent::Spacer(_) => {}
+        SectionComponent::DataTable(table) => {
+            if table.caption.trim().is_empty() {
+                errors.push(format!(
+                    "Page '{}' section '{}' dd-data-table is missing caption.",
+                    page_id, section_id
+                ));
+            }
+            if table.columns.is_empty() {
+                errors.push(format!(
+                    "Page '{}' section '{}' dd-data-table has no columns.",
+                    page_id, section_id
+                ));
+            } else if table.columns.len() > crate::model::DATA_TABLE_MAX_COLUMNS {
+                errors.push(format!(
+                    "Page '{}' section '{}' dd-data-table has more than {} columns.",
+                    page_id,
+                    section_id,
+                    crate::model::DATA_TABLE_MAX_COLUMNS
+                ));
+            }
+            for (idx, col) in table.columns.iter().enumerate() {
+                if col.label.trim().is_empty() {
+                    errors.push(format!(
+                        "Page '{}' section '{}' dd-data-table column {} is missing a label.",
+                        page_id,
+                        section_id,
+                        idx + 1
+                    ));
+                }
+            }
+        }
         SectionComponent::Tabs(tabs) => {
             if tabs.parent_id.trim().is_empty() {
                 errors.push(format!(
@@ -793,9 +824,10 @@ fn component_sal(component: &SectionComponent) -> Option<(SalAnimation, Option<u
         SectionComponent::HeaderMenu(c) => Some((c.sal, c.sal_duration, c.sal_delay)),
         SectionComponent::Tabs(c) => Some((c.sal, c.sal_duration, c.sal_delay)),
         SectionComponent::Timeline(c) => Some((c.sal, c.sal_duration, c.sal_delay)),
-        SectionComponent::Slider(_) | SectionComponent::Modal(_) | SectionComponent::Spacer(_) => {
-            None
-        }
+        SectionComponent::Slider(_)
+        | SectionComponent::Modal(_)
+        | SectionComponent::Spacer(_)
+        | SectionComponent::DataTable(_) => None,
     }
 }
 
@@ -938,6 +970,7 @@ fn section_component_type_name(component: &SectionComponent) -> &'static str {
         SectionComponent::Spacer(_) => "dd-spacer",
         SectionComponent::Tabs(_) => "dd-tabs",
         SectionComponent::Timeline(_) => "dd-timeline",
+        SectionComponent::DataTable(_) => "dd-data-table",
     }
 }
 

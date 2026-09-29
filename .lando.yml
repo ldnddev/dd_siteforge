@@ -1,11 +1,10 @@
-# Optional. Host Node is the real build:
-#   npm install && npx grunt build
-#
-# Lando wraps the same commands and serves ./web.
+# Lando owns Node for this site. TUI Shift+B runs `lando grunt build`.
 #   lando start
 #   lando npm install   # first time / after package.json change
 #   lando grunt build
 #   open https://dd-siteforge.lndo.site  (or http://localhost:8888)
+#
+# Without this file, Shift+B falls back to host `npx grunt build`.
 #
 name: dd-siteforge
 recipe: lamp

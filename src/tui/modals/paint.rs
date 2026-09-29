@@ -57,6 +57,43 @@ impl App {
             }
             Modal::ImagePicker { state } => self.render_image_picker_modal(frame, state),
             Modal::PagePicker { state } => self.render_page_picker_modal(frame, state),
+            Modal::OpenSite { query, selected } => {
+                let items = self.open_site_item_labels(query);
+                self.render_filter_list_modal(
+                    frame,
+                    "Open site",
+                    query,
+                    &items,
+                    *selected,
+                    "Type a path | Up/Down: select | Enter: open | Esc: quit",
+                );
+            }
+            Modal::Find { query, selected } => {
+                let items = self.find_item_labels(query);
+                self.render_filter_list_modal(
+                    frame,
+                    "Find in site",
+                    query,
+                    &items,
+                    *selected,
+                    "Type to search | Up/Down: select | Enter: jump | Esc: cancel",
+                );
+            }
+            Modal::Palette { query, selected } => {
+                let items = self.palette_item_labels(query);
+                self.render_filter_list_modal(
+                    frame,
+                    "Command palette",
+                    query,
+                    &items,
+                    *selected,
+                    "Type to filter | Up/Down: select | Enter: run | Esc: cancel",
+                );
+            }
+            Modal::PageHealth {
+                items,
+                scroll_offset,
+            } => self.render_page_health_modal(frame, items, *scroll_offset),
         }
     }
 
@@ -100,9 +137,9 @@ impl App {
             Some(editform::FieldKind::Textarea { .. })
         );
         let help_text = if focused_is_textarea {
-            "Tab/Up/Down: navigate | Ctrl+E: expand | Ctrl+S: save | Esc: cancel"
+            "Tab: fields | Ctrl+E: expand | Ctrl+S: save | Ctrl+Z: undo | Esc: cancel"
         } else {
-            "Tab/Up/Down: navigate | Ctrl+S: save | Esc: cancel"
+            "Tab: fields | Ctrl+S: save | Ctrl+Z: undo | Esc: cancel"
         };
         frame.render_widget(
             Paragraph::new(help_text).style(
@@ -351,7 +388,7 @@ impl App {
         let help_rect = Rect::new(inner.x, inner.y, inner.width, 1);
         frame.render_widget(
             Paragraph::new(
-                "Esc: back to form | Ctrl+S: save | Enter: newline | Home/End: line | click: caret",
+                "Esc: back to form | Ctrl+S: save | Ctrl+Z: undo | Enter: newline | Home/End: line | click: caret",
             )
             .style(
                 Style::default()

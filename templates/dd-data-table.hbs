@@ -1,0 +1,31 @@
+<div class="dd-data-table{{#if dense}} -dense{{/if}}">
+  <div class="dd-data-table__scroll" data-label="{{scroll_label}}">
+    <table class="dd-data-table__table">
+      <caption class="dd-data-table__caption">{{caption}}</caption>
+      <thead>
+        <tr>
+          {{#each columns}}
+          <th scope="col" class="dd-data-table__th" data-align="{{align}}"{{#if sortable}} aria-sort="none"{{/if}}>{{#if sortable}}<button type="button" class="dd-data-table__sort" data-sort-key="{{sort_key}}">{{label}}<span class="dd-data-table__sort-ind" aria-hidden="true"></span></button>{{else}}{{label}}{{/if}}</th>
+          {{/each}}
+        </tr>
+      </thead>
+      <tbody>
+        {{#if is_empty}}
+        <tr class="dd-data-table__row -empty"><td class="dd-data-table__td" colspan="{{colspan}}">{{empty_message}}</td></tr>
+        {{else}}
+        {{#each rows}}
+        <tr class="dd-data-table__row">
+          {{#each cells}}
+          {{#if is_header}}
+          <th scope="row" class="dd-data-table__td" data-align="{{align}}">{{#if is_badge}}<span class="dd-badge {{badge}}"><span class="dd-badge__label">{{text}}</span></span>{{else}}{{text}}{{/if}}</th>
+          {{else}}
+          <td class="dd-data-table__td" data-align="{{align}}">{{#if is_badge}}<span class="dd-badge {{badge}}"><span class="dd-badge__label">{{text}}</span></span>{{else}}{{text}}{{/if}}</td>
+          {{/if}}
+          {{/each}}
+        </tr>
+        {{/each}}
+        {{/if}}
+      </tbody>
+    </table>
+  </div>
+</div>

@@ -19,6 +19,7 @@ pub(in crate::tui) enum CollectionClip {
     Slider(crate::model::SliderItem),
     Tabs(crate::model::TabsItem),
     Timeline(crate::model::TimelineItem),
+    DataTable(crate::model::DataTableRow),
 }
 
 impl Clipboard {
@@ -35,6 +36,7 @@ impl Clipboard {
             Clipboard::CollectionItem(CollectionClip::Slider(_)) => "slider item",
             Clipboard::CollectionItem(CollectionClip::Tabs(_)) => "tabs item",
             Clipboard::CollectionItem(CollectionClip::Timeline(_)) => "timeline item",
+            Clipboard::CollectionItem(CollectionClip::DataTable(_)) => "data table row",
         }
     }
 }
@@ -67,6 +69,7 @@ impl App {
 
     pub(in crate::tui) fn push_undo(&mut self) {
         self.undo_stack.push(self.site.clone());
+        self.redo_stack.clear();
         if self.undo_stack.len() > 20 {
             self.undo_stack.remove(0);
         }
@@ -77,12 +80,45 @@ impl App {
             self.push_toast(ToastLevel::Warning, "Nothing to undo.");
             return;
         };
+        self.redo_stack.push(self.site.clone());
+        if self.redo_stack.len() > 20 {
+            self.redo_stack.remove(0);
+        }
         self.site = site;
         if self.selected_page >= self.site.pages.len() {
             self.selected_page = self.site.pages.len().saturating_sub(1);
         }
         self.sync_tree_row_with_selection();
         self.push_toast(ToastLevel::Success, "Undid last change.");
+    }
+
+    pub(in crate::tui) fn redo_last(&mut self) {
+        let Some(site) = self.redo_stack.pop() else {
+            self.push_toast(ToastLevel::Warning, "Nothing to redo.");
+            return;
+        };
+        self.undo_stack.push(self.site.clone());
+        if self.undo_stack.len() > 20 {
+            self.undo_stack.remove(0);
+        }
+        self.site = site;
+        if self.selected_page >= self.site.pages.len() {
+            self.selected_page = self.site.pages.len().saturating_sub(1);
+        }
+        self.sync_tree_row_with_selection();
+        self.push_toast(ToastLevel::Success, "Redid last change.");
+    }
+
+    pub(in crate::tui) fn repeat_last_insert(&mut self) {
+        let Some(kind) = self.last_insert_kind else {
+            self.push_toast(
+                ToastLevel::Warning,
+                "Nothing to repeat. Insert with / first.",
+            );
+            return;
+        };
+        self.component_kind = kind;
+        self.insert_selected_component_kind();
     }
 
     pub(in crate::tui) fn request_quit(&mut self) {
@@ -154,7 +190,8 @@ impl App {
             | TreeRowKind::MilestonesItem { .. }
             | TreeRowKind::SliderItem { .. }
             | TreeRowKind::TabsItem { .. }
-            | TreeRowKind::TimelineItem { .. } => {
+            | TreeRowKind::TimelineItem { .. }
+            | TreeRowKind::DataTableRow { .. } => {
                 self.push_undo();
                 self.remove_selected_collection_item();
                 self.sync_tree_row_with_selection();
@@ -345,7 +382,8 @@ impl App {
             | TreeRowKind::MilestonesItem { .. }
             | TreeRowKind::SliderItem { .. }
             | TreeRowKind::TabsItem { .. }
-            | TreeRowKind::TimelineItem { .. } => self
+            | TreeRowKind::TimelineItem { .. }
+            | TreeRowKind::DataTableRow { .. } => self
                 .collection_clip_from_selected()
                 .map(Clipboard::CollectionItem),
             _ => {
@@ -607,6 +645,9 @@ impl App {
             crate::model::SectionComponent::Timeline(a) => {
                 a.items.get(item_idx).cloned().map(CollectionClip::Timeline)
             }
+            crate::model::SectionComponent::DataTable(a) => {
+                a.rows.get(item_idx).cloned().map(CollectionClip::DataTable)
+            }
             _ => None,
         }
     }
@@ -728,6 +769,17 @@ impl App {
                 self.selected_nested_item = at;
                 true
             }
+            (crate::model::SectionComponent::DataTable(a), CollectionClip::DataTable(item)) => {
+                let at = if a.rows.is_empty() {
+                    0
+                } else {
+                    (item_idx + 1).min(a.rows.len())
+                };
+                a.rows.insert(at, item);
+                a.pad_rows_to_columns();
+                self.selected_nested_item = at;
+                true
+            }
             _ => false,
         };
         if !inserted {
@@ -817,7 +869,8 @@ impl App {
             | TreeRowKind::MilestonesItem { .. }
             | TreeRowKind::SliderItem { .. }
             | TreeRowKind::TabsItem { .. }
-            | TreeRowKind::TimelineItem { .. } => {
+            | TreeRowKind::TimelineItem { .. }
+            | TreeRowKind::DataTableRow { .. } => {
                 self.push_undo();
                 if self.move_selected_collection_item(delta) {
                     self.push_toast(ToastLevel::Info, "Moved item.");
@@ -934,6 +987,10 @@ impl App {
             }
             crate::model::SectionComponent::Timeline(a) if dest < a.items.len() => {
                 a.items.swap(item_idx, dest);
+                true
+            }
+            crate::model::SectionComponent::DataTable(a) if dest < a.rows.len() => {
+                a.rows.swap(item_idx, dest);
                 true
             }
             _ => false,

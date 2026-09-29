@@ -16,13 +16,15 @@ use anyhow::{Context, Result, anyhow};
 use crate::model::{
     AccordionClass, AccordionItem, AccordionType, AlertClass, AlertType, AlternatingItem,
     AlternatingType, BannerClass, ButtonStyle, CardItem, CardLinkTarget, CardType, CtaClass,
-    DdAccordion, DdAlert, DdAlternating, DdBanner, DdBlockquote, DdCard, DdCta, DdFilmstrip,
-    DdFooter, DdHead, DdHeader, DdHeaderMenu, DdHeaderSearch, DdHero, DdImage, DdLink,
-    DdMilestones, DdModal, DdNavigation, DdRichText, DdSection, DdSlider, DdSpacer, DdTabs,
-    DdTimeline, FilmstripItem, FilmstripType, HeroCopyPosition, HeroImageClass, HeroOverlay, Media,
-    MilestonesItem, NavigationClass, NavigationItem, NavigationKind, NavigationType, PageNode,
-    SalAnimation, SectionBg, SectionClass, SectionColumn, SectionComponent, SectionItemBoxClass,
-    SectionPadding, Site, SliderItem, SpacerSize, TabsItem, TabsOrientation, TimelineItem,
+    DATA_TABLE_MAX_COLUMNS, DataTableAlign, DataTableBadge, DataTableCell, DataTableCellType,
+    DataTableColumn, DataTableRow, DdAccordion, DdAlert, DdAlternating, DdBanner, DdBlockquote,
+    DdCard, DdCta, DdDataTable, DdFilmstrip, DdFooter, DdHead, DdHeader, DdHeaderMenu,
+    DdHeaderSearch, DdHero, DdImage, DdLink, DdMilestones, DdModal, DdNavigation, DdRichText,
+    DdSection, DdSlider, DdSpacer, DdTabs, DdTimeline, FilmstripItem, FilmstripType,
+    HeroCopyPosition, HeroImageClass, HeroOverlay, Media, MilestonesItem, NavigationClass,
+    NavigationItem, NavigationKind, NavigationType, PageNode, SalAnimation, SectionBg,
+    SectionClass, SectionColumn, SectionComponent, SectionItemBoxClass, SectionPadding, Site,
+    SliderItem, SpacerSize, TabsItem, TabsOrientation, TimelineItem,
 };
 use crate::tui::editform::{self, EditFormState, FieldKind};
 
@@ -286,6 +288,7 @@ pub fn apply_edit_form_to_component(
             SectionComponent::Spacer(s) => apply_spacer_values(s, state),
             SectionComponent::Tabs(t) => apply_tabs_values(t, state),
             SectionComponent::Timeline(t) => apply_timeline_values(t, state),
+            SectionComponent::DataTable(t) => apply_data_table_values(t, state),
         },
         CursorRef::Hero(hero) => apply_hero_values(hero, state),
         CursorRef::Section(section) => apply_section_values(section, state),
@@ -338,6 +341,7 @@ pub fn component_to_form_state(component: &SectionComponent) -> Option<EditFormS
         SectionComponent::Spacer(s) => Some(spacer_to_form_state(s)),
         SectionComponent::Tabs(t) => Some(tabs_to_form_state(t)),
         SectionComponent::Timeline(t) => Some(timeline_to_form_state(t)),
+        SectionComponent::DataTable(t) => Some(data_table_to_form_state(t)),
     }
 }
 
@@ -611,6 +615,107 @@ fn apply_timeline_values(t: &mut DdTimeline, state: &EditFormState) -> Result<()
             });
         }
     }
+    Ok(())
+}
+
+pub fn data_table_to_form_state(t: &DdDataTable) -> EditFormState {
+    let mut s = EditFormState::new(&editform::DATA_TABLE_FORM);
+    s.set("caption", t.caption.clone());
+    s.set(
+        "dense",
+        if t.dense { "dense" } else { "comfortable" }.to_string(),
+    );
+    s.set("scroll_label", t.scroll_label.clone().unwrap_or_default());
+    s.set(
+        "empty_message",
+        t.empty_message
+            .clone()
+            .unwrap_or_else(|| "No data to display.".to_string()),
+    );
+    let mut columns = Vec::new();
+    for col in &t.columns {
+        let mut item = EditFormState::new(&editform::DATA_TABLE_COLUMN_FORM);
+        item.set("label", col.label.clone());
+        item.set("align", enum_serde_str(col.align));
+        item.set("sortable", if col.sortable { "true" } else { "false" });
+        columns.push(item);
+    }
+    s.sub_state.insert("columns".to_string(), columns);
+    s.selected_sub_item.insert("columns".to_string(), 0);
+    let mut rows = Vec::new();
+    for row in &t.rows {
+        rows.push(data_table_row_to_form_state(row));
+    }
+    s.sub_state.insert("rows".to_string(), rows);
+    s.selected_sub_item.insert("rows".to_string(), 0);
+    s
+}
+
+fn data_table_row_to_form_state(row: &DataTableRow) -> EditFormState {
+    let mut item = EditFormState::new(&editform::DATA_TABLE_ROW_FORM);
+    let header = row
+        .cells
+        .first()
+        .map(|c| c.text.clone())
+        .unwrap_or_default();
+    item.set("label", header);
+    let mut cells = Vec::new();
+    for cell in &row.cells {
+        let mut cell_s = EditFormState::new(&editform::DATA_TABLE_CELL_FORM);
+        cell_s.set("type", enum_serde_str(cell.kind));
+        cell_s.set("text", cell.text.clone());
+        cell_s.set("badge", enum_serde_str(cell.badge));
+        cells.push(cell_s);
+    }
+    item.sub_state.insert("cells".to_string(), cells);
+    item.selected_sub_item.insert("cells".to_string(), 0);
+    item
+}
+
+fn apply_data_table_values(t: &mut DdDataTable, state: &EditFormState) -> Result<()> {
+    t.caption = state.get("caption").to_string();
+    t.dense = state.get("dense").trim() == "dense";
+    let scroll = state.get("scroll_label").trim().to_string();
+    t.scroll_label = if scroll.is_empty() {
+        None
+    } else {
+        Some(scroll)
+    };
+    let empty = state.get("empty_message").trim().to_string();
+    t.empty_message = if empty.is_empty() || empty == "No data to display." {
+        None
+    } else {
+        Some(empty)
+    };
+    t.columns.clear();
+    if let Some(cols) = state.sub_state.get("columns") {
+        for col_s in cols.iter().take(DATA_TABLE_MAX_COLUMNS) {
+            t.columns.push(DataTableColumn {
+                label: col_s.get("label").to_string(),
+                align: parse_enum::<DataTableAlign>(col_s.get("align")).unwrap_or_default(),
+                sortable: col_s.get("sortable").trim() == "true",
+            });
+        }
+    }
+    t.rows.clear();
+    if let Some(rows) = state.sub_state.get("rows") {
+        for row_s in rows {
+            let mut row = DataTableRow { cells: Vec::new() };
+            if let Some(cells) = row_s.sub_state.get("cells") {
+                for cell_s in cells.iter().take(DATA_TABLE_MAX_COLUMNS) {
+                    row.cells.push(DataTableCell {
+                        kind: parse_enum::<DataTableCellType>(cell_s.get("type"))
+                            .unwrap_or_default(),
+                        text: cell_s.get("text").to_string(),
+                        badge: parse_enum::<DataTableBadge>(cell_s.get("badge"))
+                            .unwrap_or_default(),
+                    });
+                }
+            }
+            t.rows.push(row);
+        }
+    }
+    t.pad_rows_to_columns();
     Ok(())
 }
 

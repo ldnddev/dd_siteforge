@@ -1,8 +1,11 @@
+mod asset_build;
 mod export;
+mod health;
 mod model;
 mod renderer;
 mod scaffold;
 mod serve;
+mod session;
 mod storage;
 mod templates;
 mod tui;
@@ -16,18 +19,22 @@ use std::fs;
 use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use storage::{load_site, save_site};
-use tui::run_tui;
+use tui::{run_tui_open_picker, run_tui_restored};
 use validate::validate_site_with_root;
 
 #[derive(Debug, Parser)]
 #[command(
     name = "dd_siteforge",
     version,
-    about = "Framework-native static site builder"
+    about = "Framework-native static site builder",
+    args_conflicts_with_subcommands = true
 )]
 struct Cli {
+    /// Site JSON to open when no subcommand is given.
+    #[arg(value_name = "SITE_JSON")]
+    path: Option<String>,
     #[command(subcommand)]
-    command: Command,
+    command: Option<Command>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -91,7 +98,9 @@ fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Command::InitSite { path, name } => {
+        None => launch_tui(cli.path)?,
+        Some(Command::Tui { path }) => launch_tui(path)?,
+        Some(Command::InitSite { path, name }) => {
             let site = Site::starter();
             save_site(&path, &site)
                 .with_context(|| format!("could not write starter site to '{}'", path))?;
@@ -126,7 +135,7 @@ fn main() -> anyhow::Result<()> {
                 );
             }
         }
-        Command::InitTemplates { path, force, name } => {
+        Some(Command::InitTemplates { path, force, name }) => {
             let root = path
                 .as_deref()
                 .map(site_root)
@@ -152,12 +161,12 @@ fn main() -> anyhow::Result<()> {
                 );
             }
         }
-        Command::InitScaffold {
+        Some(Command::InitScaffold {
             path,
             force,
             global,
             name,
-        } => {
+        }) => {
             if global {
                 let dest = scaffold::config_scaffold_dir();
                 let report = scaffold::seed_scaffold(
@@ -191,13 +200,13 @@ fn main() -> anyhow::Result<()> {
                 print_seed_report(&report);
             }
         }
-        Command::ShowSite { path } => {
+        Some(Command::ShowSite { path }) => {
             let site =
                 load_site(&path).with_context(|| format!("could not load site '{}'", path))?;
             let json = serde_json::to_string_pretty(&site)?;
             println!("{json}");
         }
-        Command::ValidateSite { path } => {
+        Some(Command::ValidateSite { path }) => {
             let site =
                 load_site(&path).with_context(|| format!("could not load site '{}'", path))?;
             let root = PathBuf::from(&path).parent().map(PathBuf::from);
@@ -212,7 +221,7 @@ fn main() -> anyhow::Result<()> {
                 std::process::exit(1);
             }
         }
-        Command::ExportHtml { input, output_dir } => {
+        Some(Command::ExportHtml { input, output_dir }) => {
             let site =
                 load_site(&input).with_context(|| format!("could not load site '{}'", input))?;
             let root = PathBuf::from(&input).parent().map(PathBuf::from);
@@ -246,11 +255,11 @@ fn main() -> anyhow::Result<()> {
                 }
             );
         }
-        Command::Serve {
+        Some(Command::Serve {
             path,
             port,
             output_dir,
-        } => {
+        }) => {
             let site =
                 load_site(&path).with_context(|| format!("could not load site '{}'", path))?;
             let root = PathBuf::from(&path)
@@ -291,18 +300,32 @@ fn main() -> anyhow::Result<()> {
             );
             serve::serve_dir_blocking(out_path, port)?;
         }
-        Command::Tui { path } => {
-            let loaded = if let Some(p) = path.as_ref() {
-                load_site(p).with_context(|| format!("could not load site '{}'", p))?
-            } else {
-                Site::starter()
-            };
-            let path_buf = path.map(PathBuf::from);
-            run_tui(loaded, path_buf)?;
-        }
     }
 
     Ok(())
+}
+
+fn launch_tui(path: Option<String>) -> anyhow::Result<()> {
+    let explicit = path.map(PathBuf::from);
+    if let Some(p) = explicit {
+        return open_tui_path(p);
+    }
+    let cwd_site = PathBuf::from("site.json");
+    if cwd_site.is_file() {
+        return open_tui_path(cwd_site);
+    }
+    run_tui_open_picker()
+}
+
+fn open_tui_path(path: PathBuf) -> anyhow::Result<()> {
+    let site =
+        load_site(&path).with_context(|| format!("could not load site '{}'", path.display()))?;
+    let session = session::load();
+    let (page, tree_row, region) = session.selection_for(&path);
+    let mut session = session;
+    session.record(&path, page, tree_row, &region);
+    let _ = session::save(&session);
+    run_tui_restored(site, path, page, tree_row, &region)
 }
 
 fn site_root(path: &str) -> PathBuf {
@@ -359,7 +382,7 @@ mod tests {
     fn init_templates_defaults_to_cwd() {
         let cli = Cli::try_parse_from(["dd_siteforge", "init-templates"]).unwrap();
         match cli.command {
-            Command::InitTemplates { path, force, name } => {
+            Some(Command::InitTemplates { path, force, name }) => {
                 assert!(path.is_none());
                 assert!(!force);
                 assert!(name.is_none());
@@ -380,12 +403,35 @@ mod tests {
         ])
         .unwrap();
         match cli.command {
-            Command::InitTemplates { path, force, name } => {
+            Some(Command::InitTemplates { path, force, name }) => {
                 assert_eq!(path.as_deref(), Some("site.json"));
                 assert!(force);
                 assert_eq!(name.as_deref(), Some("dd-hero"));
             }
             other => panic!("expected InitTemplates, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn bare_invocation_has_no_subcommand() {
+        let cli = Cli::try_parse_from(["dd_siteforge"]).unwrap();
+        assert!(cli.command.is_none());
+        assert!(cli.path.is_none());
+    }
+
+    #[test]
+    fn positional_site_json_opens_without_subcommand() {
+        let cli = Cli::try_parse_from(["dd_siteforge", "site.json"]).unwrap();
+        assert!(cli.command.is_none());
+        assert_eq!(cli.path.as_deref(), Some("site.json"));
+    }
+
+    #[test]
+    fn tui_subcommand_still_accepts_path() {
+        let cli = Cli::try_parse_from(["dd_siteforge", "tui", "site.json"]).unwrap();
+        match cli.command {
+            Some(Command::Tui { path }) => assert_eq!(path.as_deref(), Some("site.json")),
+            other => panic!("expected Tui, got {other:?}"),
         }
     }
 }

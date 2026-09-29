@@ -71,7 +71,8 @@ pub(super) fn textarea_visual_line_count(value: &str, wrap_width: Option<u16>) -
     textarea_visual_rows(value, wrap_width).len().max(1)
 }
 
-/// Wrap logical lines at `wrap_width` characters. `None` keeps hard newlines only.
+/// Wrap logical lines at `wrap_width` characters, breaking on whitespace when
+/// a word fits. Words longer than the width hard-break. `None` keeps hard newlines only.
 pub(super) fn textarea_visual_rows(value: &str, wrap_width: Option<u16>) -> Vec<VisualRow> {
     let logical = input_lines_preserve(value);
     let width = wrap_width.map(|w| w.max(1) as usize);
@@ -81,22 +82,7 @@ pub(super) fn textarea_visual_rows(value: &str, wrap_width: Option<u16>) -> Vec<
     for (i, line) in logical.iter().enumerate() {
         let line_len = line.chars().count();
         if let Some(w) = width {
-            if line_len == 0 {
-                rows.push(VisualRow {
-                    start: offset,
-                    len: 0,
-                });
-            } else {
-                let mut col = 0;
-                while col < line_len {
-                    let take = (line_len - col).min(w);
-                    rows.push(VisualRow {
-                        start: offset + col,
-                        len: take,
-                    });
-                    col += take;
-                }
-            }
+            wrap_logical_line(line, w, offset, &mut rows);
         } else {
             rows.push(VisualRow {
                 start: offset,
@@ -112,6 +98,44 @@ pub(super) fn textarea_visual_rows(value: &str, wrap_width: Option<u16>) -> Vec<
         rows.push(VisualRow { start: 0, len: 0 });
     }
     rows
+}
+
+/// Word-wrap one logical line into `rows`. Every scalar belongs to exactly one row.
+fn wrap_logical_line(line: &str, width: usize, offset: usize, rows: &mut Vec<VisualRow>) {
+    let chars: Vec<char> = line.chars().collect();
+    if chars.is_empty() {
+        rows.push(VisualRow {
+            start: offset,
+            len: 0,
+        });
+        return;
+    }
+    let mut start = 0usize;
+    while start < chars.len() {
+        let remaining = chars.len() - start;
+        if remaining <= width {
+            rows.push(VisualRow {
+                start: offset + start,
+                len: remaining,
+            });
+            break;
+        }
+        let window = &chars[start..start + width];
+        if let Some(rel) = window.iter().rposition(|c| c.is_whitespace()) {
+            let take = if rel == 0 { width } else { rel + 1 };
+            rows.push(VisualRow {
+                start: offset + start,
+                len: take,
+            });
+            start += take;
+        } else {
+            rows.push(VisualRow {
+                start: offset + start,
+                len: width,
+            });
+            start += width;
+        }
+    }
 }
 
 fn visual_row_text(value: &str, row: VisualRow) -> String {
@@ -402,12 +426,72 @@ pub(super) fn delete_char_before(s: &str, char_pos: usize) -> (String, usize) {
     if pos == 0 {
         return (s.to_string(), 0);
     }
-    let start = char_byte_index(s, pos - 1);
-    let end = char_byte_index(s, pos);
+    delete_char_range(s, pos - 1, pos)
+}
+
+/// Delete the scalar at `char_pos` (forward delete). Caret stays put.
+pub(super) fn delete_char_after(s: &str, char_pos: usize) -> (String, usize) {
+    let pos = char_pos.min(text_end(s));
+    if pos >= text_end(s) {
+        return (s.to_string(), pos);
+    }
+    delete_char_range(s, pos, pos + 1)
+}
+
+/// Delete scalars in `[from, to)`. Caret lands at `from`.
+pub(super) fn delete_char_range(s: &str, from: usize, to: usize) -> (String, usize) {
+    let len = text_end(s);
+    let from = from.min(to).min(len);
+    let to = to.max(from).min(len);
+    if from == to {
+        return (s.to_string(), from);
+    }
+    let start = char_byte_index(s, from);
+    let end = char_byte_index(s, to);
     let mut out = String::with_capacity(s.len() - (end - start));
     out.push_str(&s[..start]);
     out.push_str(&s[end..]);
-    (out, pos - 1)
+    (out, from)
+}
+
+fn is_word_char(c: char) -> bool {
+    c.is_alphanumeric() || matches!(c, '_' | '-' | '\'')
+}
+
+/// Caret at the start of the word before `char_pos`.
+pub(super) fn word_left(s: &str, char_pos: usize) -> usize {
+    let chars: Vec<char> = s.chars().collect();
+    let mut i = char_pos.min(chars.len());
+    while i > 0 && !is_word_char(chars[i - 1]) {
+        i -= 1;
+    }
+    while i > 0 && is_word_char(chars[i - 1]) {
+        i -= 1;
+    }
+    i
+}
+
+/// Caret at the start of the next word after `char_pos`.
+pub(super) fn word_right(s: &str, char_pos: usize) -> usize {
+    let chars: Vec<char> = s.chars().collect();
+    let mut i = char_pos.min(chars.len());
+    while i < chars.len() && is_word_char(chars[i]) {
+        i += 1;
+    }
+    while i < chars.len() && !is_word_char(chars[i]) {
+        i += 1;
+    }
+    i
+}
+
+/// Normalize a clipboard dump: CRLF/CR become `\n`. Single-line fields flatten newlines to spaces.
+pub(super) fn sanitize_paste(text: &str, multiline: bool) -> String {
+    let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
+    if multiline {
+        normalized
+    } else {
+        normalized.replace('\n', " ")
+    }
 }
 
 impl App {

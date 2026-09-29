@@ -6,7 +6,8 @@ use pulldown_cmark::{Options, Parser, html};
 use serde_json::{Value, json};
 
 use crate::model::{
-    ButtonStyle, DdAccordion, DdAlert, DdAlternating, DdBanner, DdBlockquote, DdCard, DdCta,
+    ButtonStyle, DATA_TABLE_MAX_COLUMNS, DataTableAlign, DataTableBadge, DataTableCellType,
+    DdAccordion, DdAlert, DdAlternating, DdBanner, DdBlockquote, DdCard, DdCta, DdDataTable,
     DdFilmstrip, DdFooter, DdHead, DdHeader, DdHero, DdLink, DdMilestones, DdModal, DdSection,
     DdSlider, DdSpacer, DdTabs, DdTimeline, Media, OembedProvider, Page, PageNode,
     SectionComponent, Site, parse_oembed_url,
@@ -360,6 +361,7 @@ fn render_section(r: &Renderer, section: &DdSection) -> anyhow::Result<String> {
                 SectionComponent::Spacer(v) => render_spacer(r, v)?,
                 SectionComponent::Tabs(v) => render_tabs(r, v)?,
                 SectionComponent::Timeline(v) => render_timeline(r, v)?,
+                SectionComponent::DataTable(v) => render_data_table(r, v)?,
             };
             inner.push_str(&html);
             inner.push('\n');
@@ -850,6 +852,118 @@ fn render_timeline(r: &Renderer, timeline: &DdTimeline) -> anyhow::Result<String
             "items": items,
         }),
     )
+}
+
+fn render_data_table(r: &Renderer, table: &DdDataTable) -> anyhow::Result<String> {
+    let caption = table.caption.trim();
+    let scroll_label = table
+        .scroll_label
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| format!("{caption}, scrollable"));
+    let empty_message = table
+        .empty_message
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("No data to display.");
+    let col_n = table.columns.len().min(DATA_TABLE_MAX_COLUMNS);
+    let mut used_keys = std::collections::HashSet::new();
+    let columns: Vec<Value> = table
+        .columns
+        .iter()
+        .take(col_n)
+        .enumerate()
+        .map(|(i, col)| {
+            json!({
+                "label": col.label,
+                "align": data_table_align_str(col.align),
+                "sortable": col.sortable,
+                "sort_key": data_table_sort_key(&col.label, i, &mut used_keys),
+            })
+        })
+        .collect();
+    let rows: Vec<Value> = table
+        .rows
+        .iter()
+        .map(|row| {
+            let mut cells = Vec::new();
+            for i in 0..col_n {
+                let cell = row.cells.get(i);
+                let kind = cell.map(|c| c.kind).unwrap_or_default();
+                let text = cell.map(|c| c.text.as_str()).unwrap_or("");
+                let badge = cell.map(|c| c.badge).unwrap_or_default();
+                let align = table
+                    .columns
+                    .get(i)
+                    .map(|c| data_table_align_str(c.align))
+                    .unwrap_or("start");
+                let is_badge = kind == DataTableCellType::Badge;
+                cells.push(json!({
+                    "is_header": i == 0,
+                    "is_badge": is_badge,
+                    "text": text,
+                    "badge": if is_badge {
+                        data_table_badge_str(badge)
+                    } else {
+                        ""
+                    },
+                    "align": align,
+                }));
+            }
+            json!({ "cells": cells })
+        })
+        .collect();
+    r.render(
+        "dd-data-table",
+        &json!({
+            "dense": table.dense,
+            "scroll_label": scroll_label,
+            "caption": caption,
+            "columns": columns,
+            "rows": rows,
+            "is_empty": table.rows.is_empty(),
+            "colspan": col_n.max(1),
+            "empty_message": empty_message,
+        }),
+    )
+}
+
+fn data_table_align_str(align: DataTableAlign) -> &'static str {
+    match align {
+        DataTableAlign::Start => "start",
+        DataTableAlign::Center => "center",
+        DataTableAlign::End => "end",
+    }
+}
+
+fn data_table_badge_str(badge: DataTableBadge) -> &'static str {
+    match badge {
+        DataTableBadge::Critical => "-critical",
+        DataTableBadge::Warning => "-warning",
+        DataTableBadge::Info => "-info",
+        DataTableBadge::Pass => "-pass",
+    }
+}
+
+fn data_table_sort_key(
+    label: &str,
+    index: usize,
+    used: &mut std::collections::HashSet<String>,
+) -> String {
+    let mut key = crate::model::slug_from_title(label);
+    if used.contains(&key) || key == "untitled" {
+        key = format!("col-{index}");
+        let mut n = 2u32;
+        while used.contains(&key) {
+            key = format!("col-{index}-{n}");
+            n += 1;
+        }
+    }
+    used.insert(key.clone());
+    key
 }
 
 fn render_alert(r: &Renderer, alert: &DdAlert) -> anyhow::Result<String> {
@@ -1417,6 +1531,105 @@ mod tests {
         assert!(html.contains("src=\"assets/images/v1.jpg\""), "{html}");
         assert!(html.contains("data-sal=\"fade\""), "{html}");
         assert!(html.contains("data-sal-delay=\"100\""), "{html}");
+    }
+
+    #[test]
+    fn data_table_renders_caption_badge_sort_and_empty_state() {
+        use crate::model::*;
+        let html = render_page_html(&page_with_component(SectionComponent::DataTable(
+            DdDataTable {
+                caption: "Prioritized remediation tasks".to_string(),
+                dense: true,
+                scroll_label: None,
+                empty_message: None,
+                columns: vec![
+                    DataTableColumn {
+                        label: "ID".to_string(),
+                        align: DataTableAlign::Start,
+                        sortable: false,
+                    },
+                    DataTableColumn {
+                        label: "Priority".to_string(),
+                        align: DataTableAlign::Start,
+                        sortable: true,
+                    },
+                    DataTableColumn {
+                        label: "Effort".to_string(),
+                        align: DataTableAlign::End,
+                        sortable: true,
+                    },
+                ],
+                rows: vec![DataTableRow {
+                    cells: vec![
+                        DataTableCell {
+                            kind: DataTableCellType::Text,
+                            text: "SEO-001".to_string(),
+                            badge: DataTableBadge::Info,
+                        },
+                        DataTableCell {
+                            kind: DataTableCellType::Badge,
+                            text: "Critical".to_string(),
+                            badge: DataTableBadge::Critical,
+                        },
+                        DataTableCell {
+                            kind: DataTableCellType::Text,
+                            text: "2h".to_string(),
+                            badge: DataTableBadge::Info,
+                        },
+                    ],
+                }],
+            },
+        )))
+        .expect("data table");
+        assert!(html.contains("class=\"dd-data-table -dense\""), "{html}");
+        assert!(
+            html.contains("data-label=\"Prioritized remediation tasks, scrollable\""),
+            "{html}"
+        );
+        assert!(
+            html.contains(
+                "<caption class=\"dd-data-table__caption\">Prioritized remediation tasks</caption>"
+            ),
+            "{html}"
+        );
+        assert!(html.contains("scope=\"col\""), "{html}");
+        assert!(html.contains("scope=\"row\""), "{html}");
+        assert!(html.contains(">SEO-001</th>"), "{html}");
+        assert!(
+            html.contains("<span class=\"dd-badge -critical\"><span class=\"dd-badge__label\">Critical</span></span>"),
+            "{html}"
+        );
+        assert!(html.contains("data-align=\"end\""), "{html}");
+        assert!(html.contains("aria-sort=\"none\""), "{html}");
+        assert!(html.contains("data-sort-key=\"priority\""), "{html}");
+        assert!(html.contains("data-sort-key=\"effort\""), "{html}");
+        assert!(html.contains("class=\"dd-data-table__sort\""), "{html}");
+        assert!(!html.contains("tabindex="), "{html}");
+        assert!(!html.contains("role=\"region\""), "{html}");
+        assert!(!html.contains("id=\"task-table\""), "{html}");
+
+        let empty = render_page_html(&page_with_component(SectionComponent::DataTable(
+            DdDataTable {
+                caption: "Empty table".to_string(),
+                dense: false,
+                scroll_label: Some("Empty table, scrollable".to_string()),
+                empty_message: None,
+                columns: vec![DataTableColumn {
+                    label: "Name".to_string(),
+                    align: DataTableAlign::Start,
+                    sortable: false,
+                }],
+                rows: Vec::new(),
+            },
+        )))
+        .expect("empty data table");
+        assert!(
+            empty.contains("class=\"dd-data-table__row -empty\""),
+            "{empty}"
+        );
+        assert!(empty.contains("colspan=\"1\""), "{empty}");
+        assert!(empty.contains("No data to display."), "{empty}");
+        assert!(!empty.contains("class=\"dd-data-table -dense\""), "{empty}");
     }
 
     #[test]

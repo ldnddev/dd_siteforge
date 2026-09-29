@@ -104,7 +104,16 @@ impl App {
         }
     }
 
-    pub(super) fn handle_event(&mut self, evt: Event) -> anyhow::Result<()> {
+    pub(super) fn handle_event(&mut self, evt: Event) -> anyhow::Result<bool> {
+        if App::is_idle_event(&evt) {
+            if let Event::Mouse(m) = &evt {
+                if matches!(m.kind, MouseEventKind::Up(_)) {
+                    self.scrollbar_drag = None;
+                }
+            }
+            return Ok(false);
+        }
+
         // Overlay sits above modal + paused FormEdit. Esc/F1/F2 close only
         // the overlay; they must not drop ImagePicker or the paused form.
         if self.overlay.is_some() {
@@ -119,7 +128,7 @@ impl App {
                     }
                 }
                 self.overlay = None;
-                return Ok(());
+                return Ok(false);
             }
 
             if matches!(self.overlay, Some(Overlay::Theme { .. })) {
@@ -127,7 +136,7 @@ impl App {
                     if let Some(ek) = map_siteforge_editor_key(k) {
                         self.dispatch_theme_editor(ek, k.modifiers.contains(KeyModifiers::SHIFT));
                     }
-                    return Ok(());
+                    return Ok(false);
                 }
             }
 
@@ -186,52 +195,120 @@ impl App {
                     _ => {}
                 }
             }
-            return Ok(());
+            return Ok(false);
         }
 
         if let Some(modal_result) = self.handle_modal_event(evt.clone()) {
-            match modal_result {
-                ModalResult::Continue => return Ok(()),
-                ModalResult::CloseSuccess => return Ok(()),
-                ModalResult::CloseCancel => return Ok(()),
-            }
+            let mutated = matches!(modal_result, ModalResult::CloseSuccess);
+            return Ok(mutated);
         }
 
-        match evt {
+        if self.awaiting_site {
+            if let Event::Key(k) = &evt {
+                if k.code == KeyCode::Char('q') && k.modifiers.contains(KeyModifiers::CONTROL) {
+                    self.should_quit = true;
+                }
+            }
+            return Ok(false);
+        }
+
+        let mutated = match evt {
             Event::Key(k) => {
                 if self.selected_sidebar_section == SidebarSection::Pages
                     && self.try_handle_pages_panel_key(&k)
                 {
                     self.sync_tree_row_with_selection();
-                    return Ok(());
+                    return Ok(matches!(
+                        k.code,
+                        KeyCode::Char('u') | KeyCode::Char('J') | KeyCode::Char('K')
+                    ));
                 }
                 match k.code {
-                    KeyCode::F(1) => self.overlay = Some(Overlay::Help { scroll: 0 }),
+                    KeyCode::F(1) => {
+                        self.overlay = Some(Overlay::Help { scroll: 0 });
+                        false
+                    }
                     KeyCode::F(2) => {
                         self.theme_editor = Some(ldnddev_theme::ThemeEditor::new(
                             super::theme::palette_from_theme(&self.theme),
                             super::theme::extra_theme_fields(),
                         ));
                         self.overlay = Some(Overlay::Theme { scroll: 0 });
+                        false
                     }
-                    KeyCode::F(3) => self.open_validation_modal(),
+                    KeyCode::F(3) => {
+                        self.open_validation_modal();
+                        false
+                    }
+                    KeyCode::F(4) => {
+                        self.open_page_health();
+                        false
+                    }
+                    KeyCode::Char('?') => {
+                        self.open_find();
+                        false
+                    }
+                    KeyCode::Char('f') if k.modifiers.contains(KeyModifiers::CONTROL) => {
+                        self.open_find();
+                        false
+                    }
+                    KeyCode::Char('F') if k.modifiers.contains(KeyModifiers::CONTROL) => {
+                        self.open_find();
+                        false
+                    }
+                    KeyCode::Char(':') => {
+                        self.open_palette();
+                        false
+                    }
+                    KeyCode::Char('k') | KeyCode::Char('K')
+                        if k.modifiers.contains(KeyModifiers::CONTROL) =>
+                    {
+                        self.open_palette();
+                        false
+                    }
+                    KeyCode::Char('B') | KeyCode::Char('b')
+                        if k.modifiers.contains(KeyModifiers::SHIFT) =>
+                    {
+                        self.start_asset_build();
+                        false
+                    }
+                    KeyCode::Char('r') | KeyCode::Char('R')
+                        if k.modifiers.contains(KeyModifiers::CONTROL) =>
+                    {
+                        self.redo_last();
+                        true
+                    }
+                    KeyCode::Char('.') => {
+                        self.repeat_last_insert();
+                        true
+                    }
                     KeyCode::Char('E') if k.modifiers.contains(KeyModifiers::SHIFT) => {
                         self.begin_export_flow();
+                        true
                     }
                     KeyCode::Char('P') if k.modifiers.contains(KeyModifiers::SHIFT) => {
                         self.begin_preview_flow();
+                        true
                     }
                     KeyCode::Char('q') if k.modifiers.contains(KeyModifiers::CONTROL) => {
                         self.request_quit();
+                        false
                     }
-                    KeyCode::Up => self.handle_up(),
-                    KeyCode::Down => self.handle_down(),
+                    KeyCode::Up => {
+                        self.handle_up();
+                        false
+                    }
+                    KeyCode::Down => {
+                        self.handle_down();
+                        false
+                    }
                     KeyCode::Char('k') => {
                         if self.selected_sidebar_section == SidebarSection::Details {
                             self.scroll_details_by(-1);
                         } else {
                             self.handle_up();
                         }
+                        false
                     }
                     KeyCode::Char('j') => {
                         if self.selected_sidebar_section == SidebarSection::Details {
@@ -239,15 +316,23 @@ impl App {
                         } else {
                             self.handle_down();
                         }
+                        false
                     }
-                    KeyCode::Char('h') => self.vim_collapse_selected_row(),
-                    KeyCode::Char('l') => self.vim_expand_selected_row(),
+                    KeyCode::Char('h') => {
+                        self.vim_collapse_selected_row();
+                        false
+                    }
+                    KeyCode::Char('l') => {
+                        self.vim_expand_selected_row();
+                        false
+                    }
                     KeyCode::Char('g') => {
                         if self.selected_sidebar_section == SidebarSection::Details {
                             self.details_scroll_row = 0;
                         } else {
                             self.vim_jump_to_first_row();
                         }
+                        false
                     }
                     KeyCode::Char('G') => {
                         if self.selected_sidebar_section == SidebarSection::Details {
@@ -255,92 +340,164 @@ impl App {
                         } else {
                             self.vim_jump_to_last_row();
                         }
+                        false
                     }
-                    KeyCode::PageUp => self.page_focused_pane(-5),
-                    KeyCode::PageDown => self.page_focused_pane(5),
-                    KeyCode::Char(' ') => self.toggle_selected_tree_expanded(),
-                    KeyCode::Enter => self.handle_enter_on_selected_row(),
-                    KeyCode::Tab => self.select_next_page(),
-                    KeyCode::BackTab => self.select_prev_page(),
-                    KeyCode::Char('s') => self.begin_save_prompt(),
-                    KeyCode::Char('/') => self.open_component_picker(),
-                    KeyCode::Char('d') => self.delete_selected_row(),
-                    KeyCode::Char('y') => self.copy_selected_row(),
+                    KeyCode::PageUp => {
+                        self.page_focused_pane(-5);
+                        false
+                    }
+                    KeyCode::PageDown => {
+                        self.page_focused_pane(5);
+                        false
+                    }
+                    KeyCode::Char(' ') => {
+                        self.toggle_selected_tree_expanded();
+                        false
+                    }
+                    KeyCode::Enter => {
+                        self.handle_enter_on_selected_row();
+                        false
+                    }
+                    KeyCode::Tab => {
+                        self.select_next_page();
+                        false
+                    }
+                    KeyCode::BackTab => {
+                        self.select_prev_page();
+                        false
+                    }
+                    KeyCode::Char('s') => {
+                        self.begin_save_prompt();
+                        false
+                    }
+                    KeyCode::Char('/') => {
+                        self.open_component_picker();
+                        false
+                    }
+                    KeyCode::Char('d') => {
+                        self.delete_selected_row();
+                        true
+                    }
+                    KeyCode::Char('y') => {
+                        self.copy_selected_row();
+                        false
+                    }
                     KeyCode::Char('p') if !k.modifiers.contains(KeyModifiers::CONTROL) => {
                         self.paste_clipboard();
+                        true
                     }
-                    KeyCode::Char('u') => self.undo_last(),
-                    KeyCode::Char('J') => self.move_selected_row(1),
-                    KeyCode::Char('K') => self.move_selected_row(-1),
-                    KeyCode::Char('C') => self.add_column(),
-                    KeyCode::Char('V') => self.remove_selected_column(),
-                    KeyCode::Char('c') => self.select_prev_column(),
-                    KeyCode::Char('v') => self.select_next_column(),
-                    KeyCode::Char('r') => self.begin_edit_selected_column_id(),
-                    KeyCode::Char('f') => self.begin_edit_selected_column_width_class(),
-                    KeyCode::Char('A') => self.add_selected_collection_item(),
-                    KeyCode::Char('X') => self.remove_selected_collection_item(),
+                    KeyCode::Char('u') => {
+                        self.undo_last();
+                        true
+                    }
+                    KeyCode::Char('J') => {
+                        self.move_selected_row(1);
+                        true
+                    }
+                    KeyCode::Char('K') => {
+                        self.move_selected_row(-1);
+                        true
+                    }
+                    KeyCode::Char('C') => {
+                        self.add_column();
+                        true
+                    }
+                    KeyCode::Char('V') => {
+                        self.remove_selected_column();
+                        true
+                    }
+                    KeyCode::Char('c') => {
+                        self.select_prev_column();
+                        false
+                    }
+                    KeyCode::Char('v') => {
+                        self.select_next_column();
+                        false
+                    }
+                    KeyCode::Char('r') => {
+                        self.begin_edit_selected_column_id();
+                        false
+                    }
+                    KeyCode::Char('f') => {
+                        self.begin_edit_selected_column_width_class();
+                        false
+                    }
+                    KeyCode::Char('A') => {
+                        self.add_selected_collection_item();
+                        true
+                    }
+                    KeyCode::Char('X') => {
+                        self.remove_selected_collection_item();
+                        true
+                    }
                     KeyCode::Char('1') => {
                         self.selected_sidebar_section = SidebarSection::Regions;
+                        false
                     }
                     KeyCode::Char('2') => {
                         self.selected_sidebar_section = SidebarSection::Pages;
                         self.selected_region = SelectedRegion::Page;
                         self.selected_tree_row = 0;
                         self.sync_tree_row_with_selection();
+                        false
                     }
                     KeyCode::Char('3') => {
                         self.selected_sidebar_section = SidebarSection::Layouts;
+                        false
                     }
                     KeyCode::Char('4') => {
                         self.selected_sidebar_section = SidebarSection::Details;
+                        false
                     }
-                    _ => {}
+                    _ => false,
                 }
             }
-            Event::Mouse(m) => match m.kind {
-                MouseEventKind::ScrollUp | MouseEventKind::ScrollDown => {
-                    let up = matches!(m.kind, MouseEventKind::ScrollUp);
-                    match self.pane_at(m.column, m.row) {
-                        Some(Pane::Regions) => {
-                            self.cycle_selected_region(if up { -1 } else { 1 });
-                        }
-                        Some(Pane::Pages) => {
-                            if up {
-                                self.select_prev_page();
-                            } else {
-                                self.select_next_page();
+            Event::Paste(_) => false,
+            Event::Mouse(m) => {
+                match m.kind {
+                    MouseEventKind::ScrollUp | MouseEventKind::ScrollDown => {
+                        let up = matches!(m.kind, MouseEventKind::ScrollUp);
+                        match self.pane_at(m.column, m.row) {
+                            Some(Pane::Regions) => {
+                                self.cycle_selected_region(if up { -1 } else { 1 });
                             }
-                        }
-                        Some(Pane::Layout) => {
-                            if up {
-                                self.select_prev();
-                            } else {
-                                self.select_next();
+                            Some(Pane::Pages) => {
+                                if up {
+                                    self.select_prev_page();
+                                } else {
+                                    self.select_next_page();
+                                }
                             }
+                            Some(Pane::Layout) => {
+                                if up {
+                                    self.select_prev();
+                                } else {
+                                    self.select_next();
+                                }
+                            }
+                            Some(Pane::Details) => {
+                                self.scroll_details_by(if up { -3 } else { 3 });
+                            }
+                            None => {}
                         }
-                        Some(Pane::Details) => {
-                            self.scroll_details_by(if up { -3 } else { 3 });
-                        }
-                        None => {}
                     }
-                }
-                MouseEventKind::Down(MouseButton::Left) => {
-                    let col = m.column;
-                    let row = m.row;
-                    // Hit-test scrollbars before pane click-to-select so a click on
-                    // the bar jumps scroll instead of selecting a grain / tree row.
-                    if contains(self.details_scrollbar_track.rect, col, row) {
-                        self.details_scroll_row = self.details_scrollbar_track.offset_at(row);
-                        self.scrollbar_drag = Some(ScrollbarDrag::Details);
-                    } else if contains(self.layout_scrollbar_track.rect, col, row) {
-                        self.jump_layout_to_scrollbar_y(row);
-                        self.scrollbar_drag = Some(ScrollbarDrag::Layout);
-                    } else {
-                        self.scrollbar_drag = None;
-                        let now = std::time::Instant::now();
-                        let is_double =
-                            if let Some((last_col, last_row, last_time)) = self.last_mouse_click {
+                    MouseEventKind::Down(MouseButton::Left) => {
+                        let col = m.column;
+                        let row = m.row;
+                        // Hit-test scrollbars before pane click-to-select so a click on
+                        // the bar jumps scroll instead of selecting a grain / tree row.
+                        if contains(self.details_scrollbar_track.rect, col, row) {
+                            self.details_scroll_row = self.details_scrollbar_track.offset_at(row);
+                            self.scrollbar_drag = Some(ScrollbarDrag::Details);
+                        } else if contains(self.layout_scrollbar_track.rect, col, row) {
+                            self.jump_layout_to_scrollbar_y(row);
+                            self.scrollbar_drag = Some(ScrollbarDrag::Layout);
+                        } else {
+                            self.scrollbar_drag = None;
+                            let now = std::time::Instant::now();
+                            let is_double = if let Some((last_col, last_row, last_time)) =
+                                self.last_mouse_click
+                            {
                                 last_col == col
                                     && last_row == row
                                     && now.duration_since(last_time).as_millis()
@@ -348,30 +505,32 @@ impl App {
                             } else {
                                 false
                             };
-                        self.last_mouse_click = Some((col, row, now));
-                        if is_double {
-                            self.handle_double_click(col, row);
-                        } else {
-                            self.handle_click(col, row);
+                            self.last_mouse_click = Some((col, row, now));
+                            if is_double {
+                                self.handle_double_click(col, row);
+                            } else {
+                                self.handle_click(col, row);
+                            }
                         }
                     }
-                }
-                MouseEventKind::Drag(MouseButton::Left) => {
-                    if self.scrollbar_drag == Some(ScrollbarDrag::Details) {
-                        self.details_scroll_row = self.details_scrollbar_track.offset_at(m.row);
-                    } else if self.scrollbar_drag == Some(ScrollbarDrag::Layout) {
-                        self.jump_layout_to_scrollbar_y(m.row);
+                    MouseEventKind::Drag(MouseButton::Left) => {
+                        if self.scrollbar_drag == Some(ScrollbarDrag::Details) {
+                            self.details_scroll_row = self.details_scrollbar_track.offset_at(m.row);
+                        } else if self.scrollbar_drag == Some(ScrollbarDrag::Layout) {
+                            self.jump_layout_to_scrollbar_y(m.row);
+                        }
                     }
+                    MouseEventKind::Up(_) => {
+                        self.scrollbar_drag = None;
+                    }
+                    _ => {}
                 }
-                MouseEventKind::Up(_) => {
-                    self.scrollbar_drag = None;
-                }
-                _ => {}
-            },
-            _ => {}
-        }
+                false
+            }
+            _ => false,
+        };
         self.sync_tree_row_with_selection();
-        Ok(())
+        Ok(mutated)
     }
 
     pub(super) fn handle_click(&mut self, x: u16, y: u16) {

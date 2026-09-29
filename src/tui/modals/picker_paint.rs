@@ -2,6 +2,85 @@
 use super::super::*;
 
 impl App {
+    pub(in crate::tui) fn render_filter_list_modal(
+        &self,
+        frame: &mut ratatui::Frame,
+        title: &str,
+        query: &str,
+        items: &[String],
+        selected: usize,
+        footer: &str,
+    ) {
+        let area = centered_rect(70, 70, frame.area());
+        frame.render_widget(Clear, area);
+
+        let modal_block = Block::default()
+            .title(title)
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(self.theme.border))
+            .title_style(
+                Style::default()
+                    .fg(self.theme.modal_header)
+                    .add_modifier(Modifier::BOLD),
+            );
+
+        frame.render_widget(modal_block.clone(), area);
+        let inner = modal_block.inner(area);
+
+        let search_text = format!("Search: {}", query);
+        let search =
+            Paragraph::new(search_text).style(Style::default().fg(self.theme.text_primary));
+        frame.render_widget(
+            search,
+            Rect {
+                x: inner.x,
+                y: inner.y,
+                width: inner.width,
+                height: 1,
+            },
+        );
+
+        let list_items: Vec<ListItem> = items
+            .iter()
+            .enumerate()
+            .map(|(idx, label)| {
+                let style = if idx == selected {
+                    Style::default()
+                        .fg(self.theme.text_active_focus)
+                        .bg(self.theme.selected_background)
+                } else {
+                    Style::default().fg(self.theme.text_primary)
+                };
+                ListItem::new(label.as_str()).style(style)
+            })
+            .collect();
+
+        let list = List::new(list_items)
+            .block(Block::default())
+            .highlight_symbol("> ");
+
+        frame.render_widget(
+            list,
+            Rect {
+                x: inner.x,
+                y: inner.y + 2,
+                width: inner.width,
+                height: inner.height.saturating_sub(3),
+            },
+        );
+
+        let footer = Paragraph::new(footer).style(Style::default().fg(self.theme.text_secondary));
+        frame.render_widget(
+            footer,
+            Rect {
+                x: inner.x,
+                y: inner.y + inner.height.saturating_sub(1),
+                width: inner.width,
+                height: 1,
+            },
+        );
+    }
+
     pub(in crate::tui) fn render_component_picker_unified(
         &self,
         frame: &mut ratatui::Frame,
