@@ -275,7 +275,7 @@ pub static PAGE_HEAD_FORM: EditForm = EditForm {
         },
         FormField {
             id: "slug",
-            label: "Slug",
+            label: "Slug / path",
             kind: FieldKind::Text { default: "" },
             required: false,
             visible_when: None,
@@ -473,6 +473,16 @@ pub static SITE_FORM: EditForm = EditForm {
             label: "Export Dir",
             kind: FieldKind::Text { default: "" },
             required: false,
+            visible_when: None,
+        },
+        FormField {
+            id: "pretty_urls",
+            label: "Pretty URLs",
+            kind: FieldKind::Enum {
+                options: &["off", "on"],
+                default: "off",
+            },
+            required: true,
             visible_when: None,
         },
         FormField {

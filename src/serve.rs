@@ -66,8 +66,12 @@ impl StaticServer {
         self.generation.fetch_add(1, Ordering::Relaxed);
     }
 
-    pub fn url_for(&self, slug: &str) -> String {
-        format!("http://127.0.0.1:{}/{}", self.port, page_file_name(slug))
+    pub fn url_for(&self, slug: &str, pretty: bool) -> String {
+        format!(
+            "http://127.0.0.1:{}/{}",
+            self.port,
+            page_file_name(slug, pretty)
+        )
     }
 }
 

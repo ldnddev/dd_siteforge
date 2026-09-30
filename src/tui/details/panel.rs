@@ -160,6 +160,10 @@ impl App {
             "export_dir: {}",
             self.site.export_dir.as_deref().unwrap_or("")
         ));
+        view.push_plain(format!(
+            "pretty_urls: {}",
+            if self.site.pretty_urls { "on" } else { "off" }
+        ));
         paint_theme_color_line(&mut view, "primary_color", &self.site.theme.primary_color);
         paint_theme_color_line(
             &mut view,

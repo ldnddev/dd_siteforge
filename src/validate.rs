@@ -6,6 +6,7 @@ use crate::model::{
 pub fn validate_site(site: &Site) -> Vec<String> {
     let mut errors = Vec::new();
     let mut slugs = std::collections::HashSet::new();
+    let mut outputs = std::collections::HashSet::new();
 
     if site.pages.is_empty() {
         errors.push("Site must include at least one page.".to_string());
@@ -30,14 +31,20 @@ pub fn validate_site(site: &Site) -> Vec<String> {
         }
         if page.slug.trim().is_empty() {
             errors.push(format!("Page '{}' has an empty slug.", page.id));
-        } else if !crate::model::is_safe_slug(&page.slug) {
+        } else if !crate::model::is_safe_page_slug(&page.slug) {
             errors.push(format!(
-                "Page '{}' has an unsafe slug '{}'. Use lowercase letters, numbers, and hyphens only.",
+                "Page '{}' has an unsafe slug '{}'. Use lowercase letters, numbers, hyphens, and / between folders. Do not use 'index' as a folder name.",
                 page.id, page.slug
             ));
         }
         if !page.slug.trim().is_empty() && !slugs.insert(page.slug.clone()) {
             errors.push(format!("Duplicate page slug '{}'.", page.slug));
+        }
+        if crate::model::is_safe_page_slug(&page.slug) {
+            let out = crate::model::page_file_name(&page.slug, site.pretty_urls);
+            if !outputs.insert(out.clone()) {
+                errors.push(format!("Duplicate page output path '{}'.", out));
+            }
         }
         if page.nodes.is_empty() {
             errors.push(format!("Page '{}' has no page nodes.", page.id));
@@ -1313,6 +1320,23 @@ mod tests {
         assert!(
             errors.iter().any(|e| e.contains("unsafe slug")),
             "expected unsafe slug error, got {errors:?}"
+        );
+    }
+
+    #[test]
+    fn allows_nested_page_slug_and_rejects_index_folder() {
+        let mut site = Site::starter();
+        site.pages[0].slug = "blog/entry".to_string();
+        let errors = validate_site(&site);
+        assert!(
+            errors.iter().all(|e| !e.contains("unsafe slug")),
+            "nested slug should be valid, got {errors:?}"
+        );
+        site.pages[0].slug = "blog/index".to_string();
+        let errors = validate_site(&site);
+        assert!(
+            errors.iter().any(|e| e.contains("unsafe slug")),
+            "slug ending in index should fail, got {errors:?}"
         );
     }
 

@@ -235,14 +235,15 @@ fn check_internal_link(url: &str, slugs: &[String], items: &mut Vec<HealthItem>)
         .split('?')
         .next()
         .unwrap_or(url);
-    let slug = path
-        .trim_start_matches('/')
-        .trim_end_matches('/')
-        .trim_end_matches(".html");
-    if slug.is_empty() || slug == "index" {
-        return;
+    let mut slug = path.trim_start_matches('/').trim_end_matches('/');
+    slug = slug.strip_suffix(".html").unwrap_or(slug);
+    slug = slug.trim_end_matches('/');
+    if slug == "index" {
+        slug = "";
+    } else if let Some(stripped) = slug.strip_suffix("/index") {
+        slug = stripped;
     }
-    if slug.contains('/') {
+    if slug.is_empty() {
         return;
     }
     if !slugs.iter().any(|s| s == slug) {

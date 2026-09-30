@@ -454,6 +454,7 @@ mod tests {
             !site.pages[0].slug_locked,
             "legacy pages load with slug_locked = false"
         );
+        assert!(!site.pretty_urls, "legacy JSON loads with pretty_urls off");
     }
 
     #[test]

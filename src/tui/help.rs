@@ -235,7 +235,7 @@ pub(crate) fn build_help_text(theme: &AppTheme, width: usize) -> Text<'static> {
             ("PageUp/PageDown", "Jump ±5 pages (clamped, no wrap)"),
             (
                 "r",
-                "Rename page label (auto-slug until first disk save). [HEAD] edits Title, Slug, Meta Title, Meta Description, SEO",
+                "Rename page label (auto-slug until first disk save). [HEAD] edits Title, Slug/path (blog/entry), Meta Title, Meta Description, SEO",
             ),
         ],
         "•",

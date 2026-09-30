@@ -65,7 +65,7 @@ Each component spec lives in `components/dd-*.md` (single source of truth for fi
 
 ## Renderer
 
-- Iterates `site.pages` in order; each page emits one `<slug>.html` to `<export_dir>/`.
+- Iterates `site.pages` in order. Home (`index`) is always `index.html`. Nested slugs (`blog/entry`) create folders. With site `pretty_urls`, non-home pages write `{slug}/index.html` (so `blog` → `blog/index.html`, `blog/entry` → `blog/entry/index.html`); otherwise `{slug}.html`. Nested pages prefix `href`/`src` with `../` so `assets/` and page links still resolve.
 - `dd-hero` / `dd-section` / each section component has a dedicated `render_*` fn in `src/renderer.rs`.
 - Special cases:
   - `dd-accordion` emits FAQ JSON-LD only when `parent_type == -faq`.
@@ -83,12 +83,12 @@ Each component spec lives in `components/dd-*.md` (single source of truth for fi
 - Timeline: optional ARIA label default `"Timeline"`, SAL stagger on items, events with year, optional datetime, title, heading 2–6 (default 3), markdown copy, optional image. `<ol>` of events. Datetime required when year is not YYYY / YYYY-MM / YYYY-MM-DD.
 - Data table: required caption, optional `-dense`, optional scroll label (default `"{caption}, scrollable"`), optional empty message, 1–5 columns (label / align / sortable), rows of text or `dd-badge` cells. First cell is `<th scope="row">`. No SAL. `sort_key` is derived from the column label slug. JS owns overflow `tabindex`/`role`/`aria-label`.
 - Site options: header CTA + banner on `DdHeader`; footer blurb / copyright / socials on `DdFooter`; GTM snippets on `Site`. GTM export extracts `GTM-XXXX` and emits canonical googletagmanager.com markup.
-- Static export: `crate::export::export_site(&site, &out, site_root)`. Writes `{slug}.html`, copies Grunt `web/assets/{css,js,webfonts,favicon,vendors}` when the dest is not already `web/` (does not clobber a local `grunt build`), fills missing webfonts/favicon from `source/`, copies `<site_dir>/source/images/` → `<out>/assets/images/`, plus `sitemap.xml`, `robots.txt`, and `404.html` when no author 404 page exists.
-- Asset and page hrefs are same-directory relative (`assets/css/style.min.css`, `contact.html`). `Shift+P` / `serve` start a local HTTP server so those paths resolve.
+- Static export: `crate::export::export_site(&site, &out, site_root)`. Writes page HTML (see slug rules above), copies Grunt `web/assets/{css,js,webfonts,favicon,vendors}` when the dest is not already `web/` (does not clobber a local `grunt build`), fills missing webfonts/favicon from `source/`, copies `<site_dir>/source/images/` → `<out>/assets/images/`, plus `sitemap.xml`, `robots.txt`, and `404.html` when no author 404 page exists.
+- Asset and page hrefs are relative to the export root (`assets/css/style.min.css`, `contact.html` or `contact/index.html`). Nested pages prepend `../`. `Shift+P` / `serve` start a local HTTP server so those paths resolve; a directory URL serves `index.html`.
 
 ## Validation
 
-`validate_site(&Site) → Vec<String>`: structural checks (unique slugs, paired link fields, required fields per component, etc.).
+`validate_site(&Site) → Vec<String>`: structural checks (unique slugs and output paths, nested slug segments, paired link fields, required fields per component, etc.).
 
 `validate_site_with_root(&Site, Option<&Path>)`: superset that also resolves every `assets/images/*` URL against `<root>/source/images/` (pages, header, footer, `og_image`) and reports missing files as `Missing local image: …`. CLI `validate-site` / `export-html` / `serve` and the TUI F3/export/preview gates all use this when a site path is known.
 

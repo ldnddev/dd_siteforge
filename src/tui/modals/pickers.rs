@@ -195,7 +195,7 @@ impl App {
                     state, cursor_pos, ..
                 }) = self.modal.as_mut()
                 {
-                    let value = crate::model::page_href(&slug);
+                    let value = crate::model::page_href(&slug, self.site.pretty_urls);
                     state.set(&field_id, value.clone());
                     *cursor_pos = text_end(state.get(&field_id));
                     self.push_toast(ToastLevel::Success, format!("Picked page: {}", value));

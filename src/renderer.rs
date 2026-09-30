@@ -25,8 +25,13 @@ pub fn render_site_to_dir(
     let footer_html = render_footer(&r, &site.footer, &site.name)?;
     for page in &site.pages {
         let html = render_page_html_with_chrome(&r, page, &header_html, &footer_html, site)?;
-        let file_name = crate::model::page_file_name(&page.slug);
-        let out_path = output_dir.join(file_name);
+        let file_name = crate::model::page_file_name(&page.slug, site.pretty_urls);
+        let out_path = output_dir.join(&file_name);
+        if let Some(parent) = out_path.parent() {
+            fs::create_dir_all(parent).with_context(|| {
+                format!("failed to create page directory '{}'", parent.display())
+            })?;
+        }
         fs::write(&out_path, html)
             .with_context(|| format!("failed to write page output '{}'", out_path.display()))?;
     }
@@ -62,8 +67,8 @@ pub fn render_page_html_with_chrome(
     } else {
         site.lang.trim()
     };
-
-    r.render(
+    let body_slug = page.slug.replace('/', "-");
+    let html = r.render(
         "_page",
         &json!({
             "lang": lang,
@@ -71,10 +76,12 @@ pub fn render_page_html_with_chrome(
             "header_html": header_html,
             "footer_html": footer_html,
             "content": content,
-            "body_class": format!("page page-{}", page.slug),
+            "body_class": format!("page page-{body_slug}"),
             "body_gtm": gtm_body_html(site.body_gtm_tag.as_deref()),
         }),
-    )
+    )?;
+    let prefix = crate::model::relative_prefix(&page.slug, site.pretty_urls);
+    Ok(prefix_relative_urls(&html, &prefix))
 }
 
 fn render_head(r: &Renderer, head: &DdHead, site: &Site, page: &Page) -> anyhow::Result<String> {
@@ -96,7 +103,7 @@ fn render_head(r: &Renderer, head: &DdHead, site: &Site, page: &Page) -> anyhow:
     {
         schema.insert("description".to_string(), Value::String(d.to_string()));
     }
-    let file = crate::model::page_href(&page.slug);
+    let file = crate::model::page_href(&page.slug, site.pretty_urls);
     let stored_canonical = head
         .canonical_url
         .as_deref()
@@ -1342,6 +1349,105 @@ fn media_to_json(media: &Media) -> Value {
     }
 }
 
+/// Prefix site-relative `href`/`src`/`poster`/`content`/`srcset` values and
+/// JSON-LD `url`/`image` strings so nested pages still reach the export root.
+fn prefix_relative_urls(html: &str, prefix: &str) -> String {
+    if prefix.is_empty() {
+        return html.to_string();
+    }
+    let mut html = prefix_quoted_attrs(html, prefix, "href");
+    html = prefix_quoted_attrs(&html, prefix, "src");
+    html = prefix_quoted_attrs(&html, prefix, "poster");
+    html = prefix_quoted_attrs(&html, prefix, "content");
+    html = prefix_srcset_attrs(&html, prefix);
+    html = prefix_json_string_key(&html, prefix, "url");
+    html = prefix_json_string_key(&html, prefix, "image");
+    html
+}
+
+fn prefix_quoted_attrs(html: &str, prefix: &str, attr: &str) -> String {
+    let dquote = format!("{attr}=\"");
+    let squote = format!("{attr}='");
+    prefix_after_needles(html, prefix, &[&dquote, &squote], false)
+}
+
+fn prefix_srcset_attrs(html: &str, prefix: &str) -> String {
+    let dquote = "srcset=\"";
+    let squote = "srcset='";
+    prefix_after_needles(html, prefix, &[dquote, squote], true)
+}
+
+fn prefix_json_string_key(html: &str, prefix: &str, key: &str) -> String {
+    let tight = format!("\"{key}\":\"");
+    let spaced = format!("\"{key}\": \"");
+    prefix_after_needles(html, prefix, &[&tight, &spaced], false)
+}
+
+fn prefix_after_needles(html: &str, prefix: &str, needles: &[&str], srcset: bool) -> String {
+    let mut out = String::with_capacity(html.len());
+    let mut i = 0;
+    while i < html.len() {
+        let slice = &html[i..];
+        let mut best: Option<(usize, usize, char)> = None;
+        for needle in needles {
+            if let Some(p) = slice.find(*needle) {
+                let quote = needle.as_bytes()[needle.len() - 1] as char;
+                if best.is_none_or(|(bp, _, _)| p < bp) {
+                    best = Some((p, needle.len(), quote));
+                }
+            }
+        }
+        let Some((rel, needle_len, quote)) = best else {
+            out.push_str(slice);
+            break;
+        };
+        out.push_str(&slice[..rel + needle_len]);
+        let val_start = i + rel + needle_len;
+        let remainder = &html[val_start..];
+        let Some(end) = remainder.find(quote) else {
+            out.push_str(remainder);
+            break;
+        };
+        let value = &remainder[..end];
+        if srcset {
+            out.push_str(&prefix_srcset_value(value, prefix));
+        } else if crate::model::is_site_relative_url(value) {
+            out.push_str(prefix);
+            out.push_str(value);
+        } else {
+            out.push_str(value);
+        }
+        out.push(quote);
+        i = val_start + end + 1;
+    }
+    out
+}
+
+fn prefix_srcset_value(value: &str, prefix: &str) -> String {
+    value
+        .split(',')
+        .map(|part| {
+            let part = part.trim();
+            if part.is_empty() {
+                return String::new();
+            }
+            let mut bits = part.splitn(2, char::is_whitespace);
+            let url = bits.next().unwrap_or("");
+            let rest = bits.next();
+            let rewritten = if crate::model::is_site_relative_url(url) {
+                format!("{prefix}{url}")
+            } else {
+                url.to_string()
+            };
+            match rest {
+                Some(r) => format!("{rewritten} {r}"),
+                None => rewritten,
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 fn public_url(stored: &str) -> String {
     let t = stored.trim();
     if t.starts_with("http://")
@@ -2084,6 +2190,30 @@ mod tests {
         assert!(html.contains("My Site"));
         assert!(!html.contains("dd-header__cta"));
         assert!(!html.contains("googletagmanager.com"));
+    }
+
+    #[test]
+    fn pretty_nested_page_prefixes_assets_and_canonical() {
+        let mut site = Site::starter();
+        site.pretty_urls = true;
+        site.base_url = Some("https://ex.com".to_string());
+        site.pages[0].slug = "blog/entry".to_string();
+        let r = crate::templates::Renderer::bundled_only().unwrap();
+        let html = super::render_page_html_with_chrome(&r, &site.pages[0], "", "", &site).unwrap();
+        assert!(html.contains("../../assets/css/style.min.css"), "{html}");
+        assert!(html.contains("../../assets/js/main.min.js"), "{html}");
+        assert!(html.contains("class=\"page page-blog-entry\""));
+        assert!(html.contains("https://ex.com/blog/entry/index.html"));
+    }
+
+    #[test]
+    fn prefix_relative_urls_skips_absolute_and_hash() {
+        let html = r##"<a href="contact.html">c</a><a href="https://x.com">x</a><a href="#top">t</a><img src="assets/a.jpg">"##;
+        let out = super::prefix_relative_urls(html, "../");
+        assert!(out.contains("href=\"../contact.html\""));
+        assert!(out.contains("href=\"https://x.com\""));
+        assert!(out.contains("href=\"#top\""));
+        assert!(out.contains("src=\"../assets/a.jpg\""));
     }
 
     #[test]

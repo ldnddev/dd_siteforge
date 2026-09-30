@@ -169,7 +169,7 @@ impl App {
         }
         if let Some(server) = self.preview_server.as_ref() {
             server.set_root(out);
-            let url = server.url_for(&self.current_page_slug_for_preview());
+            let url = server.url_for(&self.current_page_slug_for_preview(), self.site.pretty_urls);
             self.push_toast(ToastLevel::Info, format!("Preview updated — refresh {url}"));
         }
     }
@@ -178,10 +178,10 @@ impl App {
         let slug = self.current_page_slug_for_preview();
         if let Some(server) = self.preview_server.as_ref() {
             server.set_root(out);
-            return Ok(server.url_for(&slug));
+            return Ok(server.url_for(&slug, self.site.pretty_urls));
         }
         let server = crate::serve::StaticServer::start(out)?;
-        let url = server.url_for(&slug);
+        let url = server.url_for(&slug, self.site.pretty_urls);
         self.preview_server = Some(server);
         Ok(url)
     }

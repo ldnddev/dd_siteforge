@@ -1315,6 +1315,7 @@ fn apply_site_values(site: &mut Site, state: &EditFormState) -> Result<()> {
     site.theme.support_color = support;
     site.header_gtm_tag = opt_trimmed(state.get("header_gtm_tag"));
     site.body_gtm_tag = opt_trimmed(state.get("body_gtm_tag"));
+    site.pretty_urls = state.get("pretty_urls").trim() == "on";
     Ok(())
 }
 
@@ -1415,6 +1416,7 @@ pub fn site_to_form_state(site: &Site) -> EditFormState {
         "body_gtm_tag",
         site.body_gtm_tag.clone().unwrap_or_default(),
     );
+    s.set("pretty_urls", if site.pretty_urls { "on" } else { "off" });
     s
 }
 

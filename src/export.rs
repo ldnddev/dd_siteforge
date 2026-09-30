@@ -128,7 +128,7 @@ fn write_sitemap(site: &Site, output_dir: &Path) -> anyhow::Result<()> {
         ) {
             continue;
         }
-        let file = page_href(&page.slug);
+        let file = page_href(&page.slug, site.pretty_urls);
         let loc = absolute_url(site.base_url.as_deref(), &file).unwrap_or(file);
         body.push_str("  <url><loc>");
         body.push_str(&xml_escape(&loc));
@@ -166,7 +166,8 @@ fn write_404_if_missing(
         &crate::renderer::render_footer(&r, &site.footer, &site.name)?,
         site,
     )?;
-    fs::write(output_dir.join(page_file_name("404")), html).context("failed to write 404.html")?;
+    fs::write(output_dir.join(page_file_name("404", false)), html)
+        .context("failed to write 404.html")?;
     Ok(true)
 }
 
@@ -333,6 +334,33 @@ mod tests {
         assert!(!map.contains("hidden.html"));
         let robots = fs::read_to_string(out.join("robots.txt")).unwrap();
         assert!(robots.contains("Sitemap: https://ex.com/sitemap.xml"));
+        std::fs::remove_dir_all(&out).ok();
+    }
+
+    #[test]
+    fn pretty_urls_write_nested_index_html() {
+        let out = tmp_dir("dd_export_pretty");
+        let mut site = Site::starter();
+        site.pretty_urls = true;
+        site.pages[0].slug = "blog".to_string();
+        site.pages.push(Page::from_template(
+            "Entry",
+            crate::model::PageTemplate::Blank,
+        ));
+        site.pages[1].slug = "blog/entry".to_string();
+        export_site(&site, &out, None).expect("export");
+        assert!(out.join("blog/index.html").exists());
+        assert!(out.join("blog/entry/index.html").exists());
+        let listing = fs::read_to_string(out.join("blog/index.html")).unwrap();
+        assert!(
+            listing.contains("../assets/css/style.min.css"),
+            "blog index needs one ../ for assets: {listing}"
+        );
+        let entry = fs::read_to_string(out.join("blog/entry/index.html")).unwrap();
+        assert!(
+            entry.contains("../../assets/css/style.min.css"),
+            "blog entry needs two ../ for assets: {entry}"
+        );
         std::fs::remove_dir_all(&out).ok();
     }
 

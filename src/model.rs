@@ -26,6 +26,14 @@ pub struct Site {
     /// Pasted GTM `<noscript>` iframe snippet. Export emits a canonical noscript when a `GTM-XXXX` id is present.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub body_gtm_tag: Option<String>,
+    /// When true, non-home pages export to `{slug}/index.html` (pretty URLs).
+    /// Nested slugs like `blog/entry` always create folders.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub pretty_urls: bool,
+}
+
+fn is_false(v: &bool) -> bool {
+    !*v
 }
 
 fn default_lang() -> String {
@@ -1607,6 +1615,7 @@ impl Site {
             lang: default_lang(),
             header_gtm_tag: None,
             body_gtm_tag: None,
+            pretty_urls: false,
             pages: vec![Page {
                 id: "page-home".to_string(),
                 slug: "index".to_string(),
@@ -1802,8 +1811,22 @@ impl Page {
 /// Convert a human title to a filesystem/URL-safe kebab-case slug.
 /// ASCII-only, lowercase, alphanumerics and hyphens preserved,
 /// whitespace collapsed to single `-`, everything else stripped.
+/// `/` is kept as a folder separator and each segment is slugified.
 /// Falls back to `"untitled"` for empty/whitespace-only inputs.
 pub fn slug_from_title(title: &str) -> String {
+    let segs: Vec<String> = title
+        .split('/')
+        .map(slugify_segment)
+        .filter(|s| !s.is_empty())
+        .collect();
+    if segs.is_empty() {
+        "untitled".to_string()
+    } else {
+        segs.join("/")
+    }
+}
+
+fn slugify_segment(title: &str) -> String {
     let mut out = String::with_capacity(title.len());
     let mut prev_hyphen = false;
     for ch in title.chars() {
@@ -1821,28 +1844,43 @@ pub fn slug_from_title(title: &str) -> String {
     while out.ends_with('-') {
         out.pop();
     }
-    if out.is_empty() {
-        "untitled".to_string()
-    } else {
-        out
-    }
+    out
 }
 
-/// HTML file name for a page slug. `index` → `index.html`.
-pub fn page_file_name(slug: &str) -> String {
+/// Export-relative HTML path for a page slug.
+/// Home (`index`) is always `index.html`.
+/// Pretty: `blog` → `blog/index.html`, `blog/entry` → `blog/entry/index.html`.
+/// Files: `blog` → `blog.html`, `blog/entry` → `blog/entry.html`.
+pub fn page_file_name(slug: &str, pretty: bool) -> String {
     if slug == "index" {
         "index.html".to_string()
+    } else if pretty {
+        format!("{slug}/index.html")
     } else {
-        format!("{}.html", slug)
+        format!("{slug}.html")
     }
 }
 
-/// Same-directory href used in page picker output and in-page links.
-pub fn page_href(slug: &str) -> String {
-    page_file_name(slug)
+/// Export-root-relative href stored in the page picker and used in sitemap/canonical.
+pub fn page_href(slug: &str, pretty: bool) -> String {
+    page_file_name(slug, pretty)
 }
 
-/// True when `slug` is safe to join onto an export directory as `{slug}.html`.
+/// Directory depth of the exported file (number of `../` needed to reach the export root).
+pub fn page_dir_depth(slug: &str, pretty: bool) -> usize {
+    if slug == "index" {
+        return 0;
+    }
+    let segs = slug.split('/').filter(|s| !s.is_empty()).count();
+    if pretty { segs } else { segs.saturating_sub(1) }
+}
+
+/// `../` repeated for `page_dir_depth`. Empty at the export root.
+pub fn relative_prefix(slug: &str, pretty: bool) -> String {
+    "../".repeat(page_dir_depth(slug, pretty))
+}
+
+/// True when `slug` is a single kebab-case segment (HTML ids, component ids).
 pub fn is_safe_slug(slug: &str) -> bool {
     let s = slug.trim();
     !s.is_empty()
@@ -1851,6 +1889,40 @@ pub fn is_safe_slug(slug: &str) -> bool {
         && !s.contains('/')
         && !s.contains('\\')
         && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+}
+
+/// True when a page slug is safe to export: `index`, or kebab-case segments joined by `/`.
+/// `index` is only valid as the whole slug (home), not as a folder name.
+pub fn is_safe_page_slug(slug: &str) -> bool {
+    let s = slug.trim();
+    if s == "index" {
+        return true;
+    }
+    if s.is_empty() || s.starts_with('/') || s.ends_with('/') || s.contains("//") {
+        return false;
+    }
+    s.split('/').all(|seg| is_safe_slug(seg) && seg != "index")
+}
+
+/// Site-relative URL that should get a `../` prefix on nested pages.
+pub fn is_site_relative_url(url: &str) -> bool {
+    let u = url.trim();
+    if u.is_empty() {
+        return false;
+    }
+    if u.starts_with('#')
+        || u.starts_with("data:")
+        || u.starts_with("mailto:")
+        || u.starts_with("tel:")
+        || u.starts_with("javascript:")
+        || u.starts_with('/')
+        || u.starts_with("../")
+        || u.contains("://")
+        || u.starts_with("//")
+    {
+        return false;
+    }
+    true
 }
 
 /// True when `year` is a machine-readable date label: YYYY, YYYY-MM, or YYYY-MM-DD.
@@ -2010,9 +2082,32 @@ mod tests {
     }
 
     #[test]
+    fn slug_from_title_keeps_slash_as_folder_separator() {
+        assert_eq!(slug_from_title("Blog/My Entry"), "blog/my-entry");
+        assert_eq!(slug_from_title("blog/entry"), "blog/entry");
+        assert_eq!(slug_from_title("/blog/"), "blog");
+    }
+
+    #[test]
     fn page_file_name_special_cases_index() {
-        assert_eq!(page_file_name("index"), "index.html");
-        assert_eq!(page_file_name("contact"), "contact.html");
+        assert_eq!(page_file_name("index", false), "index.html");
+        assert_eq!(page_file_name("index", true), "index.html");
+        assert_eq!(page_file_name("contact", false), "contact.html");
+        assert_eq!(page_file_name("contact", true), "contact/index.html");
+        assert_eq!(page_file_name("blog/entry", false), "blog/entry.html");
+        assert_eq!(page_file_name("blog/entry", true), "blog/entry/index.html");
+        assert_eq!(page_file_name("blog", true), "blog/index.html");
+    }
+
+    #[test]
+    fn page_dir_depth_counts_folders_to_export_root() {
+        assert_eq!(page_dir_depth("index", true), 0);
+        assert_eq!(page_dir_depth("contact", false), 0);
+        assert_eq!(page_dir_depth("contact", true), 1);
+        assert_eq!(page_dir_depth("blog/entry", false), 1);
+        assert_eq!(page_dir_depth("blog/entry", true), 2);
+        assert_eq!(relative_prefix("blog/entry", true), "../../");
+        assert_eq!(relative_prefix("index", false), "");
     }
 
     #[test]
@@ -2025,6 +2120,22 @@ mod tests {
         assert!(!is_safe_slug("a/b"));
         assert!(!is_safe_slug("a\\b"));
         assert!(!is_safe_slug("hello world"));
+    }
+
+    #[test]
+    fn is_safe_page_slug_allows_nested_folders() {
+        assert!(is_safe_page_slug("index"));
+        assert!(is_safe_page_slug("about-us"));
+        assert!(is_safe_page_slug("blog/entry"));
+        assert!(is_safe_page_slug("a/b/c"));
+        assert!(!is_safe_page_slug(""));
+        assert!(!is_safe_page_slug("blog/index"));
+        assert!(!is_safe_page_slug("index/blog"));
+        assert!(!is_safe_page_slug("../x"));
+        assert!(!is_safe_page_slug("/blog"));
+        assert!(!is_safe_page_slug("blog/"));
+        assert!(!is_safe_page_slug("a//b"));
+        assert!(!is_safe_page_slug("hello world"));
     }
 
     #[test]

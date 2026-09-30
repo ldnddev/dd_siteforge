@@ -2104,6 +2104,27 @@ fn page_head_modal_save_writes_slug_and_locks_when_edited() {
 }
 
 #[test]
+fn page_head_modal_save_keeps_nested_slug_path() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    open_page_head_form(&mut app);
+    if let Some(Modal::FormEdit {
+        state, cursor_pos, ..
+    }) = &mut app.modal
+    {
+        state.set("slug", "blog/entry");
+        *cursor_pos = 10;
+    }
+    send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
+    assert_eq!(app.site.pages[0].slug, "blog/entry");
+}
+
+#[test]
 fn page_head_modal_save_leaves_slug_unchanged_when_user_did_not_edit_it() {
     let mut app = App::new(
         Site::starter(),
@@ -4757,6 +4778,27 @@ fn site_form_save_writes_lang() {
     }
     send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
     assert_eq!(app.site.lang, "de");
+}
+
+#[test]
+fn site_form_save_writes_pretty_urls() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    app.selected_region = SelectedRegion::Site;
+    app.sync_tree_row_with_selection();
+    send_key(&mut app, KeyCode::Enter, KeyModifiers::NONE);
+    if let Some(Modal::FormEdit { state, .. }) = &mut app.modal {
+        state.set("pretty_urls", "on");
+    } else {
+        panic!("expected Site settings FormEdit");
+    }
+    send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
+    assert!(app.site.pretty_urls);
     assert!(app.modal.is_none());
 }
 

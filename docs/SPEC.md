@@ -40,9 +40,9 @@ Bare `dd_siteforge` (or `dd_siteforge site.json`) opens the TUI. `init-site` (`-
 
 ### Content model
 
-`Site` → always-present `header` / `footer` → `pages[]` → per-page `head` + `nodes[]` (`dd-hero` or `dd-section` with columns of components). Optional `export_dir`, `base_url`, `lang`.
+`Site` → always-present `header` / `footer` → `pages[]` → per-page `head` + `nodes[]` (`dd-hero` or `dd-section` with columns of components). Optional `export_dir`, `base_url`, `lang`, `pretty_urls`.
 
-Page head: `title` is the TUI page label. `meta_title` is the HTML `<title>`; empty falls back to `title`. Slug is edited on the same form.
+Page head: `title` is the TUI page label. `meta_title` is the HTML `<title>`; empty falls back to `title`. Slug is edited on the same form and may contain `/` for folders (`blog`, `blog/entry`). Home is always `index.html`. With **Pretty URLs** on (Site settings), other pages write `{slug}/index.html`; off, `{slug}.html`. Do not use `index` as a folder name — slug `blog` is the blog index.
 
 New fields on `Site` / `Page` take `#[serde(default)]` so legacy JSON still loads.
 
