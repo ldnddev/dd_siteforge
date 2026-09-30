@@ -14,7 +14,7 @@ insert:
     aria_label: ""
     sal: "no-animation"
     items:
-      - item_id: "column-1"
+      - item_id: "section-1-column-1"
         width_class: "dd-u-1-1"
         components: []
 fields:
@@ -139,7 +139,7 @@ blueprint:
     <!-- if [section_title] --><div class="dd-section__title l-box">[section_title]</div><!-- endif -->
     <div class="dd-section__items dd-g">
       <!-- repeat: items -->
-      <div class="dd-section__item [width_class] [item_box_class]">
+      <div class="dd-section__item [width_class] [item_box_class]" id="[item_id]">
         <!-- nested components render here -->
       </div>
     </div>

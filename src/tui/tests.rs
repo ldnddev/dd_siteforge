@@ -1380,9 +1380,129 @@ fn tier_c_section_form_edit_preserves_components() {
             1,
             "CTA must survive section round-trip"
         );
+        assert_eq!(s.columns[0].id, "section-1-column-1");
     } else {
         panic!("expected Section");
     }
+}
+
+#[test]
+fn renaming_column_id_keeps_column_components() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    app.selected_page = 0;
+    app.selected_node = 1;
+    app.set_section_expanded(1, true);
+    if let PageNode::Section(s) = &mut app.site.pages[0].nodes[1] {
+        s.columns[0]
+            .components
+            .push(ComponentKind::Cta.default_component());
+    } else {
+        panic!("expected Section at node 1");
+    }
+    app.sync_tree_row_with_selection();
+    let rows = app.build_page_tree_rows();
+    let row_idx = rows
+        .iter()
+        .position(|row| {
+            matches!(
+                row.kind,
+                TreeRowKind::Column {
+                    node_idx: 1,
+                    column_idx: 0
+                }
+            )
+        })
+        .expect("column row");
+    app.selected_tree_row = row_idx;
+    app.apply_tree_row_selection(rows[row_idx]);
+    send_key(&mut app, KeyCode::Char('r'), KeyModifiers::NONE);
+    assert!(matches!(
+        app.modal,
+        Some(Modal::FormEdit { ref state, .. }) if state.form.title == "column"
+    ));
+    if let Some(Modal::FormEdit {
+        state, cursor_pos, ..
+    }) = &mut app.modal
+    {
+        state.set("id", "main");
+        *cursor_pos = text_end("main");
+    }
+    send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
+    send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
+    assert!(app.modal.is_none());
+    if let PageNode::Section(s) = &app.site.pages[0].nodes[1] {
+        assert_eq!(s.columns[0].id, "section-1-main");
+        assert_eq!(
+            s.columns[0].components.len(),
+            1,
+            "CTA must survive a column id rename"
+        );
+    } else {
+        panic!("expected Section");
+    }
+}
+
+#[test]
+fn add_column_prefixes_id_with_section_id() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    app.selected_page = 0;
+    app.selected_node = 1;
+    app.selected_region = SelectedRegion::Page;
+    app.sync_tree_row_with_selection();
+    send_key(&mut app, KeyCode::Char('C'), KeyModifiers::SHIFT);
+    if let PageNode::Section(s) = &app.site.pages[0].nodes[1] {
+        assert_eq!(s.columns.len(), 2);
+        assert_eq!(s.columns[0].id, "section-1-column-1");
+        assert_eq!(s.columns[1].id, "section-1-column-2");
+    } else {
+        panic!("expected Section");
+    }
+}
+
+#[test]
+fn added_section_gets_prefixed_column_id() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    app.selected_page = 0;
+    app.selected_node = 1;
+    app.component_kind = ComponentKind::Section;
+    app.add_section();
+    let section_ids: Vec<String> = app.site.pages[0]
+        .nodes
+        .iter()
+        .filter_map(|n| match n {
+            PageNode::Section(s) => Some(s.id.clone()),
+            _ => None,
+        })
+        .collect();
+    assert!(section_ids.contains(&"section-1".to_string()));
+    assert!(section_ids.contains(&"section-2".to_string()));
+    let section_2 = app.site.pages[0]
+        .nodes
+        .iter()
+        .find_map(|n| match n {
+            PageNode::Section(s) if s.id == "section-2" => Some(s),
+            _ => None,
+        })
+        .expect("section-2");
+    assert_eq!(section_2.columns[0].id, "section-2-column-1");
 }
 
 #[test]
@@ -1617,6 +1737,43 @@ fn textarea_click_sets_cursor_on_visual_cell() {
     let end =
         textarea_cursor_from_click(short, box_rect, 0, true, 5, 2).expect("click past end of line");
     assert_eq!(end, 5);
+}
+
+#[test]
+fn text_click_sets_cursor_on_cell() {
+    let box_rect = Rect {
+        x: 0,
+        y: 0,
+        width: 20,
+        height: 3,
+    };
+    let value = "Front Page";
+    // Inner starts at (1, 1). Click column 6 → 'P' of Page.
+    let pos = text_cursor_from_click(value, box_rect, 7, 1).expect("click inside title");
+    assert_eq!(pos, 6);
+    // Empty space past the last character clamps to the end.
+    let end = text_cursor_from_click(value, box_rect, 18, 1).expect("click past end");
+    assert_eq!(end, value.chars().count());
+    // Top/bottom border of the 3-row box still maps x.
+    assert_eq!(
+        text_cursor_from_click(value, box_rect, 4, 0).expect("top border"),
+        3
+    );
+    assert_eq!(
+        text_cursor_from_click(value, box_rect, 4, 2).expect("bottom border"),
+        3
+    );
+    // Left border → start.
+    assert_eq!(
+        text_cursor_from_click(value, box_rect, 0, 1).expect("left border"),
+        0
+    );
+    // One scalar per cell, including a 3-byte em-dash.
+    assert_eq!(
+        text_cursor_from_click("A—B", box_rect, 2, 1).expect("unicode"),
+        1
+    );
+    assert!(text_cursor_from_click(value, box_rect, 21, 1).is_none());
 }
 
 fn form_cursor_pos(app: &App) -> usize {
@@ -2056,6 +2213,50 @@ fn open_page_head_form(app: &mut App) {
         }),
         "page-head FormEdit should open"
     );
+}
+
+#[test]
+fn form_edit_text_click_places_caret_in_page_title() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    open_page_head_form(&mut app);
+    let title_idx = match &app.modal {
+        Some(Modal::FormEdit { state, .. }) => state
+            .form
+            .fields
+            .iter()
+            .position(|f| f.id == "title")
+            .expect("title field"),
+        _ => panic!("expected FormEdit"),
+    };
+    if let Some(Modal::FormEdit {
+        state, cursor_pos, ..
+    }) = &mut app.modal
+    {
+        state.set("title", "Front Page");
+        *cursor_pos = text_end("Front Page");
+        state.focused_field = title_idx;
+    }
+    app.modal_field_areas.borrow_mut().clear();
+    app.modal_field_areas.borrow_mut().push((
+        title_idx,
+        Rect {
+            x: 0,
+            y: 0,
+            width: 20,
+            height: 3,
+        },
+    ));
+    send_mouse(&mut app, MouseEventKind::Down(MouseButton::Left), 7, 1);
+    assert_eq!(form_cursor_pos(&app), 6);
+    assert_eq!(form_focused_field_id(&app), Some("title"));
+    send_mouse(&mut app, MouseEventKind::Down(MouseButton::Left), 18, 1);
+    assert_eq!(form_cursor_pos(&app), "Front Page".chars().count());
 }
 
 #[test]
@@ -3512,6 +3713,60 @@ fn form_edit_image_picker_f1_esc_esc_restores_same_field() {
     assert!(app.paused_form_edit_modal.is_none());
     assert!(matches!(app.modal, Some(Modal::FormEdit { .. })));
     assert_eq!(form_focused_field_id(&app), Some("parent_image_url"));
+}
+
+#[test]
+fn url_field_opens_file_picker_on_image_poster_mp4() {
+    assert!(App::url_field_opens_file_picker("parent_image_url"));
+    assert!(App::url_field_opens_file_picker("og_image"));
+    assert!(App::url_field_opens_file_picker("poster"));
+    assert!(App::url_field_opens_file_picker("child_lg_mp4"));
+    assert!(!App::url_field_opens_file_picker("cta_url"));
+    assert!(!App::url_field_opens_file_picker("child_link_url"));
+}
+
+#[test]
+fn form_edit_browse_click_opens_image_picker() {
+    let tmp = std::env::temp_dir().join(format!(
+        "dd_browse_picker_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(tmp.join("source").join("images")).unwrap();
+    let mut app = app_with_cta();
+    app.path = Some(tmp.join("site.json"));
+    open_form_edit_on_selected_cta(&mut app);
+    let image_idx = match &app.modal {
+        Some(Modal::FormEdit { state, .. }) => state
+            .form
+            .fields
+            .iter()
+            .position(|f| f.id == "parent_image_url")
+            .expect("parent_image_url field"),
+        _ => panic!("expected FormEdit"),
+    };
+    app.form_browse_hits.borrow_mut().push((
+        image_idx,
+        Rect {
+            x: 50,
+            y: 12,
+            width: 10,
+            height: 3,
+        },
+    ));
+    send_mouse(&mut app, MouseEventKind::Down(MouseButton::Left), 55, 13);
+    assert!(matches!(app.modal, Some(Modal::ImagePicker { .. })));
+    match &app.paused_form_edit_modal {
+        Some(Modal::FormEdit { state, .. }) => {
+            assert_eq!(state.focused().map(|f| f.id), Some("parent_image_url"));
+        }
+        other => panic!(
+            "paused form should hold FormEdit, got {}",
+            other.as_ref().map(Modal::variant_name).unwrap_or("None")
+        ),
+    }
     std::fs::remove_dir_all(&tmp).ok();
 }
 

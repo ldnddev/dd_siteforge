@@ -376,6 +376,7 @@ fn render_section(r: &Renderer, section: &DdSection) -> anyhow::Result<String> {
         columns_html.push_str(&r.render(
             "dd-section-column",
             &json!({
+                "id": column.id,
                 "width_class": column.width_class,
                 "item_box_class": item_box_class,
                 "inner": inner,
@@ -1771,6 +1772,7 @@ mod tests {
         };
         let html = render_page_html(&page).expect("section should render");
         assert!(html.contains("id=\"work\""), "{html}");
+        assert!(html.contains("id=\"column-1\""), "{html}");
         assert!(html.contains("aria-label=\"Our work\""), "{html}");
         assert!(html.contains("-full-full"), "{html}");
         assert!(html.contains("-bg-muted"), "{html}");

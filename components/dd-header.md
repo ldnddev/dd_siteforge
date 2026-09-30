@@ -16,14 +16,14 @@ insert:
         item_box_class: "l-box"
         custom_css: ""
         columns:
-          - id: "column-1"
+          - id: "header-section-1-column-1"
             width_class: "dd-u-18-24 dd-u-md-18-24"
             components: []
-          - id: "column-2"
+          - id: "header-section-1-column-2"
             width_class: "dd-u-3-24 dd-u-sm-3-24 dd-u-md-3-24 dd-u-lg-4-24"
             components:
               - component_type: "dd-header-search"
-          - id: "column-3"
+          - id: "header-section-1-column-3"
             width_class: "dd-u-3-24 dd-u-sm-3-24 dd-u-md-3-24"
             components:
               - component_type: "dd-header-menu"

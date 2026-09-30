@@ -581,8 +581,10 @@ impl App {
     }
 
     pub(in crate::tui) fn add_header_section(&mut self) {
+        let section_id = format!("header-section-{}", self.site.header.sections.len() + 1);
+        let column_id = crate::model::next_column_id(&section_id, std::iter::empty::<&str>());
         let section = crate::model::DdSection {
-            id: format!("header-section-{}", self.site.header.sections.len() + 1),
+            id: section_id,
             section_title: None,
             section_class: Some(crate::model::SectionClass::FullContained),
             item_box_class: Some(crate::model::SectionItemBoxClass::LBox),
@@ -594,7 +596,7 @@ impl App {
             sal_duration: None,
             sal_delay: None,
             columns: vec![SectionColumn {
-                id: "column-1".to_string(),
+                id: column_id,
                 width_class: "dd-u-1-1".to_string(),
                 components: Vec::new(),
             }],
@@ -614,8 +616,10 @@ impl App {
     }
 
     pub(in crate::tui) fn add_footer_section(&mut self) {
+        let section_id = format!("footer-section-{}", self.site.footer.sections.len() + 1);
+        let column_id = crate::model::next_column_id(&section_id, std::iter::empty::<&str>());
         let section = crate::model::DdSection {
-            id: format!("footer-section-{}", self.site.footer.sections.len() + 1),
+            id: section_id,
             section_title: None,
             section_class: Some(crate::model::SectionClass::FullContained),
             item_box_class: Some(crate::model::SectionItemBoxClass::LBox),
@@ -627,7 +631,7 @@ impl App {
             sal_duration: None,
             sal_delay: None,
             columns: vec![SectionColumn {
-                id: "column-1".to_string(),
+                id: column_id,
                 width_class: "dd-u-1-1".to_string(),
                 components: Vec::new(),
             }],
@@ -837,6 +841,7 @@ impl App {
             return;
         };
         let next_id = next_section_id_for_page(page);
+        let column_id = crate::model::next_column_id(&next_id, std::iter::empty::<&str>());
         let section = crate::model::DdSection {
             id: next_id,
             section_title: None,
@@ -850,7 +855,7 @@ impl App {
             sal_duration: None,
             sal_delay: None,
             columns: vec![SectionColumn {
-                id: "column-1".to_string(),
+                id: column_id,
                 width_class: "dd-u-1-1".to_string(),
                 components: Vec::new(),
             }],

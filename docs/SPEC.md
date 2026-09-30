@@ -70,9 +70,9 @@ Toasts for success / info / warning. Modals for errors and forms.
 
 F1 Help (wrap + scroll). F2 Theme (source, status, color samples; same chrome as F1). F3 Validate. F4 page health. `Shift+E` Export. `Shift+P` Preview (live-reload on the local server). `Shift+B` Lando/npx grunt. `?` / `Ctrl+F` find. `:` / `Ctrl+K` command palette. `s` Save. `/` insert. `.` repeat last insert. `Ctrl+R` redo. `Ctrl+Q` quit (confirm if dirty). Selecting `[HEAD]` prepends a page-health checklist in Details.
 
-Pages panel: add / delete / undo / reorder / rename. Layout: nav, expand, edit, copy (`y`) / paste (`p`), columns.
+Pages panel: add / delete / undo / reorder / rename. Layout: nav, expand, edit, copy (`y`) / paste (`p`), columns. Column ids are `{section-id}-column-N` (the section id is prefixed on save) so they stay unique on the page; renaming a column keeps its components.
 
-Edit forms: Tab between fields, click-to-focus, mouse wheel, `Ctrl+P` image or page picker on URL fields. Terminal paste inserts a clipboard dump in one shot. `Ctrl+Z` undoes the last text edit. `Ctrl+←` / `Ctrl+→` / `Ctrl+Backspace` / `Delete` edit by word or forward-delete. Textareas wrap on spaces. `Ctrl+S` also re-exports when a preview server is already running; `Shift+P` again re-exports without opening a new browser tab.
+Edit forms: Tab between fields, click-to-focus, click in a text field or textarea to place the caret, mouse wheel, `Ctrl+P` image or page picker on URL fields. Image, poster, and mp4 URL fields also show a Browse button that opens the same file picker. Terminal paste inserts a clipboard dump in one shot. `Ctrl+Z` undoes the last text edit. `Ctrl+←` / `Ctrl+→` / `Ctrl+Backspace` / `Delete` edit by word or forward-delete. Textareas wrap on spaces. `Ctrl+S` also re-exports when a preview server is already running; `Shift+P` again re-exports without opening a new browser tab.
 
 ### Export + assets
 

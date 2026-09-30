@@ -1,5 +1,7 @@
 //! Dispatch and FormEdit painting.
 use super::super::*;
+use ratatui::layout::Alignment;
+use ratatui::text::{Line, Span};
 
 impl App {
     /// Check if any modal is currently open
@@ -105,6 +107,7 @@ impl App {
         scroll_offset: u16,
     ) {
         self.form_expand_hits.borrow_mut().clear();
+        self.form_browse_hits.borrow_mut().clear();
         if self.form_textarea_expanded {
             self.render_textarea_expand_modal(frame, state, cursor_pos);
             return;
@@ -320,6 +323,18 @@ impl App {
                     content_rect.width,
                     visible_box_height,
                 );
+                let show_browse = matches!(field.kind, editform::FieldKind::Url { .. })
+                    && App::url_field_opens_file_picker(field.id)
+                    && box_rect.width >= 20;
+                let (input_rect, browse_rect) = if show_browse {
+                    let chunks = Layout::default()
+                        .direction(Direction::Horizontal)
+                        .constraints([Constraint::Min(8), Constraint::Length(10)])
+                        .split(box_rect);
+                    (chunks[0], Some(chunks[1]))
+                } else {
+                    (box_rect, None)
+                };
                 let field_block = Block::default()
                     .borders(Borders::ALL)
                     .border_style(
@@ -328,12 +343,36 @@ impl App {
                             .bg(self.theme.modal_background),
                     )
                     .style(Style::default().bg(self.theme.modal_background));
-                let inner_rect = field_block.inner(box_rect);
-                frame.render_widget(field_block, box_rect);
+                let inner_rect = field_block.inner(input_rect);
+                frame.render_widget(field_block, input_rect);
                 self.modal_field_areas
                     .borrow_mut()
-                    .push((slot.idx, box_rect));
+                    .push((slot.idx, input_rect));
                 self.render_form_field_value(frame, field, state, cursor_pos, focused, inner_rect);
+                if let Some(browse) = browse_rect {
+                    let browse_widget = Paragraph::new(Line::from(Span::styled(
+                        "…",
+                        Style::default().fg(self.theme.input_text_default),
+                    )))
+                    .alignment(Alignment::Center)
+                    .style(Style::default().bg(self.theme.modal_background))
+                    .block(
+                        Block::default()
+                            .title(Line::from(vec![Span::styled(
+                                " Browse ",
+                                Style::default().fg(self.theme.modal_labels),
+                            )]))
+                            .borders(Borders::ALL)
+                            .border_style(
+                                Style::default()
+                                    .fg(self.theme.input_border_default)
+                                    .bg(self.theme.modal_background),
+                            )
+                            .style(Style::default().bg(self.theme.modal_background)),
+                    );
+                    frame.render_widget(browse_widget, browse);
+                    self.form_browse_hits.borrow_mut().push((slot.idx, browse));
+                }
             }
         }
 

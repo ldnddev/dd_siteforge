@@ -256,7 +256,10 @@ pub(crate) fn build_help_text(theme: &AppTheme, width: usize) -> Text<'static> {
                 "J / K",
                 "Move selected grain down/up (column when a column row is selected)",
             ),
-            ("r / f", "Edit selected column id / width class"),
+            (
+                "r / f",
+                "Edit selected column id / width class (column ids are prefixed with the section id)",
+            ),
         ],
         "•",
         h_style,
@@ -289,7 +292,10 @@ pub(crate) fn build_help_text(theme: &AppTheme, width: usize) -> Text<'static> {
         "Edit modal (unified FormEdit)",
         &[
             ("Tab / Shift+Tab", "Next/previous editable field"),
-            ("Ctrl+P (image)", "Open image picker (./source/images/)"),
+            (
+                "Ctrl+P (image)",
+                "Open image picker (./source/images/). File URL fields also have a Browse button",
+            ),
             ("Ctrl+P (link)", "Open page picker (lists site pages)"),
             ("Ctrl+E", "Expand focused textarea to a full-size editor"),
             ("←/→ (options)", "Cycle choices for type/option fields"),
@@ -341,8 +347,8 @@ pub(crate) fn build_help_text(theme: &AppTheme, width: usize) -> Text<'static> {
                 "Focus that input (click-to-focus in all FormEdit + legacy)",
             ),
             (
-                "Click textarea",
-                "Place the caret at the click (compact or expanded)",
+                "Click text field",
+                "Place the caret at the click (single-line, compact textarea, or expanded)",
             ),
             (
                 "Wheel over pane",

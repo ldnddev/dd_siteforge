@@ -34,76 +34,7 @@ impl App {
         // link_url fields. Heuristic on field id since both kinds are
         // FieldKind::Url today.
         if matches!(key.code, KeyCode::Char('p')) && key.modifiers.contains(KeyModifiers::CONTROL) {
-            let Some(Modal::FormEdit { state, .. }) = self.modal.as_ref() else {
-                return Some(ModalResult::Continue);
-            };
-            let field_opt = state.form.fields.get(state.focused_field);
-            let field_id = match field_opt {
-                Some(f) if matches!(f.kind, editform::FieldKind::Url { .. }) => f.id.to_string(),
-                _ => return Some(ModalResult::Continue),
-            };
-
-            let pick_images = field_id.contains("image") || field_id.contains("poster");
-            let pick_video = field_id.contains("mp4");
-            if pick_images || pick_video {
-                let base = self
-                    .path
-                    .as_ref()
-                    .and_then(|p| p.parent().map(std::path::PathBuf::from))
-                    .unwrap_or_else(|| std::path::PathBuf::from("."));
-                let root = base.join("source").join("images");
-                if !root.exists() {
-                    self.push_toast(
-                        ToastLevel::Warning,
-                        format!("Source folder not found: {}", root.display()),
-                    );
-                    return Some(ModalResult::Continue);
-                }
-                let paused = self.modal.take();
-                self.paused_form_edit_modal = paused;
-                self.modal = Some(Modal::ImagePicker {
-                    state: ImagePickerState {
-                        root: root.clone(),
-                        cwd: root,
-                        filter: String::new(),
-                        selected: 0,
-                        binding: ImagePickBinding::FormEditField { field_id },
-                        file_kind: if pick_video {
-                            PickerFileKind::Video
-                        } else {
-                            PickerFileKind::Image
-                        },
-                    },
-                });
-                return Some(ModalResult::Continue);
-            }
-
-            if field_id.contains("link") {
-                let pages: Vec<(String, String)> = self
-                    .site
-                    .pages
-                    .iter()
-                    .map(|p| (p.slug.clone(), p.head.title.clone()))
-                    .collect();
-                if pages.is_empty() {
-                    self.push_toast(ToastLevel::Warning, "No pages to pick from.".to_string());
-                    return Some(ModalResult::Continue);
-                }
-                let paused = self.modal.take();
-                self.paused_form_edit_modal = paused;
-                self.modal = Some(Modal::PagePicker {
-                    state: PagePickerState {
-                        pages,
-                        filter: String::new(),
-                        selected: 0,
-                        binding: PagePickBinding::FormEditField { field_id },
-                    },
-                });
-                return Some(ModalResult::Continue);
-            }
-
-            // URL field with neither "image" nor "link" in its id — no
-            // picker fits. Fall through silently so Ctrl+P is a no-op.
+            self.try_open_form_url_picker();
             return Some(ModalResult::Continue);
         }
 
@@ -622,5 +553,83 @@ impl App {
         }
         state.set(&undo.field_id, undo.value);
         *cursor_pos = undo.cursor_pos;
+    }
+
+    /// Image / poster / mp4 URL fields open the file picker.
+    pub(in crate::tui) fn url_field_opens_file_picker(field_id: &str) -> bool {
+        field_id.contains("image") || field_id.contains("poster") || field_id.contains("mp4")
+    }
+
+    /// Open the image or page picker for the focused FormEdit URL field.
+    /// Used by Ctrl+P and the Browse button.
+    pub(in crate::tui) fn try_open_form_url_picker(&mut self) -> bool {
+        let Some(Modal::FormEdit { state, .. }) = self.modal.as_ref() else {
+            return false;
+        };
+        let field_opt = state.form.fields.get(state.focused_field);
+        let field_id = match field_opt {
+            Some(f) if matches!(f.kind, editform::FieldKind::Url { .. }) => f.id.to_string(),
+            _ => return false,
+        };
+
+        let pick_video = field_id.contains("mp4");
+        if Self::url_field_opens_file_picker(&field_id) {
+            let base = self
+                .path
+                .as_ref()
+                .and_then(|p| p.parent().map(std::path::PathBuf::from))
+                .unwrap_or_else(|| std::path::PathBuf::from("."));
+            let root = base.join("source").join("images");
+            if !root.exists() {
+                self.push_toast(
+                    ToastLevel::Warning,
+                    format!("Source folder not found: {}", root.display()),
+                );
+                return false;
+            }
+            let paused = self.modal.take();
+            self.paused_form_edit_modal = paused;
+            self.modal = Some(Modal::ImagePicker {
+                state: ImagePickerState {
+                    root: root.clone(),
+                    cwd: root,
+                    filter: String::new(),
+                    selected: 0,
+                    binding: ImagePickBinding::FormEditField { field_id },
+                    file_kind: if pick_video {
+                        PickerFileKind::Video
+                    } else {
+                        PickerFileKind::Image
+                    },
+                },
+            });
+            return true;
+        }
+
+        if field_id.contains("link") {
+            let pages: Vec<(String, String)> = self
+                .site
+                .pages
+                .iter()
+                .map(|p| (p.slug.clone(), p.head.title.clone()))
+                .collect();
+            if pages.is_empty() {
+                self.push_toast(ToastLevel::Warning, "No pages to pick from.".to_string());
+                return false;
+            }
+            let paused = self.modal.take();
+            self.paused_form_edit_modal = paused;
+            self.modal = Some(Modal::PagePicker {
+                state: PagePickerState {
+                    pages,
+                    filter: String::new(),
+                    selected: 0,
+                    binding: PagePickBinding::FormEditField { field_id },
+                },
+            });
+            return true;
+        }
+
+        false
     }
 }

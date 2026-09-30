@@ -157,7 +157,7 @@ pub static COLUMN_ITEM_FORM: EditForm = EditForm {
     fields: &[
         FormField {
             id: "id",
-            label: "Column ID",
+            label: "Column ID (section-prefixed)",
             kind: FieldKind::Text { default: "" },
             required: true,
             visible_when: None,

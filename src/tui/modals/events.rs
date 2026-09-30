@@ -211,7 +211,27 @@ impl App {
                     self.form_textarea_expanded = true;
                     return Some(ModalResult::Continue);
                 }
-                let textarea_click = {
+                let browse_hit = self
+                    .form_browse_hits
+                    .borrow()
+                    .iter()
+                    .find(|(_, r)| contains(*r, col, row))
+                    .map(|(idx, _)| *idx);
+                if let Some(idx) = browse_hit {
+                    if let Some(Modal::FormEdit {
+                        state, cursor_pos, ..
+                    }) = self.modal.as_mut()
+                    {
+                        state.focused_field = idx;
+                        let field_id = state.form.fields.get(idx).map(|f| f.id);
+                        if let Some(field_id) = field_id {
+                            *cursor_pos = text_end(state.get(field_id));
+                        }
+                    }
+                    self.try_open_form_url_picker();
+                    return Some(ModalResult::Continue);
+                }
+                let text_click = {
                     let areas = self.modal_field_areas.borrow();
                     if let Some(Modal::FormEdit {
                         state, cursor_pos, ..
@@ -222,25 +242,32 @@ impl App {
                                 return None;
                             }
                             let field = state.form.fields.get(*idx)?;
-                            if !matches!(field.kind, editform::FieldKind::Textarea { .. }) {
-                                return None;
-                            }
-                            let focused = *idx == state.focused_field;
-                            let pos = textarea_cursor_from_click(
-                                state.get(field.id),
-                                *rect,
-                                *cursor_pos,
-                                focused,
-                                col,
-                                row,
-                            )?;
+                            let value = state.get(field.id);
+                            let pos = match field.kind {
+                                editform::FieldKind::Textarea { .. } => {
+                                    let focused = *idx == state.focused_field;
+                                    textarea_cursor_from_click(
+                                        value,
+                                        *rect,
+                                        *cursor_pos,
+                                        focused,
+                                        col,
+                                        row,
+                                    )?
+                                }
+                                editform::FieldKind::Text { .. }
+                                | editform::FieldKind::Url { .. } => {
+                                    text_cursor_from_click(value, *rect, col, row)?
+                                }
+                                _ => return None,
+                            };
                             Some((*idx, pos))
                         })
                     } else {
                         None
                     }
                 };
-                if let Some((idx, pos)) = textarea_click {
+                if let Some((idx, pos)) = text_click {
                     if let Some(Modal::FormEdit {
                         state, cursor_pos, ..
                     }) = self.modal.as_mut()

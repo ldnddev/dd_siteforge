@@ -24,7 +24,8 @@ use crate::model::{
     HeroCopyPosition, HeroImageClass, HeroOverlay, Media, MilestonesItem, NavigationClass,
     NavigationItem, NavigationKind, NavigationType, PageNode, SalAnimation, SectionBg,
     SectionClass, SectionColumn, SectionComponent, SectionItemBoxClass, SectionPadding, Site,
-    SliderItem, SpacerSize, TabsItem, TabsOrientation, TimelineItem,
+    SliderItem, SpacerSize, TabsItem, TabsOrientation, TimelineItem, column_id_local_part,
+    rehome_column_id, uniquify_id,
 };
 use crate::tui::editform::{self, EditFormState, FieldKind};
 
@@ -1186,10 +1187,11 @@ pub fn section_to_form_state(section: &DdSection) -> EditFormState {
             .unwrap_or_else(|| "l-box".to_string()),
     );
     let mut columns = Vec::new();
-    for col in &section.columns {
+    for (i, col) in section.columns.iter().enumerate() {
         let mut item = EditFormState::new(&editform::COLUMN_ITEM_FORM);
-        item.set("id", col.id.clone());
+        item.set("id", column_id_local_part(&section.id, &col.id));
         item.set("width_class", col.width_class.clone());
+        item.set("_source_idx", i.to_string());
         columns.push(item);
     }
     s.sub_state.insert("columns".to_string(), columns);
@@ -1197,6 +1199,7 @@ pub fn section_to_form_state(section: &DdSection) -> EditFormState {
     s
 }
 fn apply_section_values(section: &mut DdSection, state: &EditFormState) -> Result<()> {
+    let old_section_id = section.id.clone();
     section.id = state.get("id").trim().to_string();
     let title = state.get("section_title").trim().to_string();
     section.section_title = if title.is_empty() { None } else { Some(title) };
@@ -1221,19 +1224,29 @@ fn apply_section_values(section: &mut DdSection, state: &EditFormState) -> Resul
         state.get("item_box_class"),
     )?);
 
-    // Reconcile columns: match existing columns by ID so components aren't
-    // dropped when columns are merely renamed or reordered.
+    // Keep each column's components by the index captured when the form
+    // opened (`_source_idx`). Matching on the new id would drop contents
+    // whenever the author renamed the column.
     let form_items = state.sub_state.get("columns").cloned().unwrap_or_default();
+    let mut remaining: Vec<Option<Vec<SectionComponent>>> = std::mem::take(&mut section.columns)
+        .into_iter()
+        .map(|c| Some(c.components))
+        .collect();
+    let mut used_ids = std::collections::HashSet::new();
     let mut new_columns: Vec<SectionColumn> = Vec::with_capacity(form_items.len());
     for form_col in form_items {
-        let new_id = form_col.get("id").trim().to_string();
+        let new_id = uniquify_id(
+            &rehome_column_id(&old_section_id, &section.id, form_col.get("id")),
+            &used_ids,
+        );
+        used_ids.insert(new_id.clone());
         let new_width = form_col.get("width_class").trim().to_string();
-        // Try to find an existing column with the same ID and steal its components.
-        let existing = section.columns.iter().position(|c| c.id == new_id);
-        let components = match existing {
-            Some(pos) => section.columns.remove(pos).components,
-            None => Vec::new(),
-        };
+        let components = form_col
+            .get("_source_idx")
+            .parse::<usize>()
+            .ok()
+            .and_then(|i| remaining.get_mut(i).and_then(Option::take))
+            .unwrap_or_default();
         new_columns.push(SectionColumn {
             id: new_id,
             width_class: new_width,

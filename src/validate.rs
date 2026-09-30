@@ -49,7 +49,7 @@ pub fn validate_site(site: &Site) -> Vec<String> {
         if page.nodes.is_empty() {
             errors.push(format!("Page '{}' has no page nodes.", page.id));
         }
-        let mut html_ids = std::collections::HashSet::new();
+        let mut html_ids = chrome_html_ids(site);
 
         for node in &page.nodes {
             match node {
@@ -105,17 +105,16 @@ pub fn validate_site(site: &Site) -> Vec<String> {
                         &format!("Page '{}' section '{}'", page.id, section.id),
                         &mut errors,
                     );
-                    let mut column_ids = std::collections::HashSet::new();
                     for column in &section.columns {
                         if column.id.trim().is_empty() {
                             errors.push(format!(
                                 "Page '{}' section '{}' has a column with empty id.",
                                 page.id, section.id
                             ));
-                        } else if !column_ids.insert(column.id.clone()) {
+                        } else if !html_ids.insert(column.id.clone()) {
                             errors.push(format!(
-                                "Page '{}' section '{}' has duplicate column id '{}'.",
-                                page.id, section.id, column.id
+                                "Page '{}' has duplicate id '{}' (section '{}' column).",
+                                page.id, column.id, section.id
                             ));
                         }
                         if column.width_class.trim().is_empty() {
@@ -849,6 +848,26 @@ fn validate_gtm_snippet(snippet: Option<&str>, label: &str, errors: &mut Vec<Str
     }
 }
 
+fn chrome_html_ids(site: &Site) -> std::collections::HashSet<String> {
+    let mut ids = std::collections::HashSet::new();
+    for section in site
+        .header
+        .sections
+        .iter()
+        .chain(site.footer.sections.iter())
+    {
+        if !section.id.trim().is_empty() {
+            ids.insert(section.id.clone());
+        }
+        for column in &section.columns {
+            if !column.id.trim().is_empty() {
+                ids.insert(column.id.clone());
+            }
+        }
+    }
+    ids
+}
+
 fn validate_header(header: &crate::model::DdHeader, errors: &mut Vec<String>) {
     if header.id.trim().is_empty() {
         errors.push("site.header has empty id.".to_string());
@@ -875,7 +894,27 @@ fn validate_header(header: &crate::model::DdHeader, errors: &mut Vec<String>) {
             errors,
         );
     }
+    let mut chrome_ids = std::collections::HashSet::new();
     for section in &header.sections {
+        if !section.id.trim().is_empty() && !chrome_ids.insert(section.id.clone()) {
+            errors.push(format!(
+                "site.header has duplicate section id '{}'.",
+                section.id
+            ));
+        }
+        for column in &section.columns {
+            if column.id.trim().is_empty() {
+                errors.push(format!(
+                    "site.header section '{}' has a column with empty id.",
+                    section.id
+                ));
+            } else if !chrome_ids.insert(column.id.clone()) {
+                errors.push(format!(
+                    "site.header has duplicate id '{}' (section '{}' column).",
+                    column.id, section.id
+                ));
+            }
+        }
         validate_section_context(
             section,
             "header",
@@ -911,7 +950,27 @@ fn validate_footer(footer: &crate::model::DdFooter, errors: &mut Vec<String>) {
             }
         }
     }
+    let mut chrome_ids = std::collections::HashSet::new();
     for section in &footer.sections {
+        if !section.id.trim().is_empty() && !chrome_ids.insert(section.id.clone()) {
+            errors.push(format!(
+                "site.footer has duplicate section id '{}'.",
+                section.id
+            ));
+        }
+        for column in &section.columns {
+            if column.id.trim().is_empty() {
+                errors.push(format!(
+                    "site.footer section '{}' has a column with empty id.",
+                    section.id
+                ));
+            } else if !chrome_ids.insert(column.id.clone()) {
+                errors.push(format!(
+                    "site.footer has duplicate id '{}' (section '{}' column).",
+                    column.id, section.id
+                ));
+            }
+        }
         validate_section_context(
             section,
             "footer",

@@ -18,8 +18,9 @@ pub(super) fn section_columns_ref(section: &crate::model::DdSection) -> Vec<Sect
 
 pub(super) fn normalize_section_columns(section: &mut crate::model::DdSection) {
     if section.columns.is_empty() {
+        let id = crate::model::next_column_id(&section.id, std::iter::empty::<&str>());
         section.columns.push(SectionColumn {
-            id: "column-1".to_string(),
+            id,
             width_class: "dd-u-1-1".to_string(),
             components: Vec::new(),
         });

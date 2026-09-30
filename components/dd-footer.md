@@ -15,7 +15,7 @@ insert:
         item_box_class: "l-box"
         custom_css: ""
         columns:
-          - id: "column-1"
+          - id: "footer-section-1-column-1"
             width_class: "dd-u-1-1"
             components: []
 

@@ -138,7 +138,7 @@ Bracketed paste is enabled for the session. `Event::Paste` inserts the clipboard
 
 ### Layout panel (`[3]`)
 
-`Up/Down` or `j/k` move row · `g`/`G` first/last · `h`/`l` collapse/expand · `Space` toggle expand · `Enter` edit row · `d` delete selected grain · `y` copy · `p` paste after · `u` undo · `Ctrl+R` redo · `.` repeat last insert · `J/K` move selected grain down/up · `C/V` add/remove column · `c/v` prev/next column · `r/f` edit column id/width-class. Selecting `[HEAD]` prepends a page-health checklist in Details.
+`Up/Down` or `j/k` move row · `g`/`G` first/last · `h`/`l` collapse/expand · `Space` toggle expand · `Enter` edit row · `d` delete selected grain · `y` copy · `p` paste after · `u` undo · `Ctrl+R` redo · `.` repeat last insert · `J/K` move selected grain down/up · `C/V` add/remove column · `c/v` prev/next column · `r/f` edit column id/width-class (ids are `{section-id}-…`). Selecting `[HEAD]` prepends a page-health checklist in Details.
 
 ### Edit modal
 

@@ -244,6 +244,8 @@ pub(super) struct App {
     form_text_undo: Option<FormTextUndo>,
     /// Draw-time hit targets for `[Expand]` on textarea field labels.
     form_expand_hits: std::cell::RefCell<Vec<(usize, Rect)>>,
+    /// Draw-time hit targets for Browse on file-picker URL fields.
+    form_browse_hits: std::cell::RefCell<Vec<(usize, Rect)>>,
     expanded_sections: HashSet<(usize, usize)>,
     expanded_accordion_items: HashSet<(usize, usize, usize, usize)>,
     expanded_alternating_items: HashSet<(usize, usize, usize, usize)>,
@@ -328,6 +330,7 @@ impl App {
             form_textarea_expanded: false,
             form_text_undo: None,
             form_expand_hits: std::cell::RefCell::new(Vec::new()),
+            form_browse_hits: std::cell::RefCell::new(Vec::new()),
             expanded_sections: HashSet::new(),
             expanded_accordion_items: HashSet::new(),
             expanded_alternating_items: HashSet::new(),

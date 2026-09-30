@@ -47,9 +47,12 @@ impl App {
         self.mutate_selected_section(
             |section| {
                 normalize_section_columns(section);
-                let next = section.columns.len() + 1;
+                let id = crate::model::next_column_id(
+                    &section.id,
+                    section.columns.iter().map(|c| c.id.as_str()),
+                );
                 section.columns.push(SectionColumn {
-                    id: format!("column-{}", next),
+                    id,
                     width_class: "dd-u-1-1".to_string(),
                     components: Vec::new(),
                 });
@@ -78,9 +81,12 @@ impl App {
             .min(self.site.header.sections.len().saturating_sub(1));
         let section = &mut self.site.header.sections[section_idx];
         normalize_section_columns(section);
-        let next = section.columns.len() + 1;
+        let id = crate::model::next_column_id(
+            &section.id,
+            section.columns.iter().map(|c| c.id.as_str()),
+        );
         section.columns.push(SectionColumn {
-            id: format!("column-{}", next),
+            id,
             width_class: "dd-u-1-1".to_string(),
             components: Vec::new(),
         });

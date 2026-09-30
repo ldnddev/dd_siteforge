@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1557,12 +1559,12 @@ impl Site {
                     sal_delay: None,
                     columns: vec![
                         SectionColumn {
-                            id: "column-1".to_string(),
+                            id: "header-section-1-column-1".to_string(),
                             width_class: "dd-u-18-24 dd-u-md-18-24".to_string(),
                             components: Vec::new(),
                         },
                         SectionColumn {
-                            id: "column-2".to_string(),
+                            id: "header-section-1-column-2".to_string(),
                             width_class: "dd-u-3-24 dd-u-sm-3-24 dd-u-md-3-24 dd-u-lg-4-24"
                                 .to_string(),
                             components: vec![SectionComponent::HeaderSearch(DdHeaderSearch {
@@ -1572,7 +1574,7 @@ impl Site {
                             })],
                         },
                         SectionColumn {
-                            id: "column-3".to_string(),
+                            id: "header-section-1-column-3".to_string(),
                             width_class: "dd-u-3-24 dd-u-sm-3-24 dd-u-md-3-24".to_string(),
                             components: vec![SectionComponent::HeaderMenu(DdHeaderMenu {
                                 sal: SalAnimation::Fade,
@@ -1604,7 +1606,7 @@ impl Site {
                     sal_duration: None,
                     sal_delay: None,
                     columns: vec![SectionColumn {
-                        id: "column-1".to_string(),
+                        id: "footer-section-1-column-1".to_string(),
                         width_class: "dd-u-1-1".to_string(),
                         components: Vec::new(),
                     }],
@@ -1688,7 +1690,7 @@ impl Site {
                         sal_duration: None,
                         sal_delay: None,
                         columns: vec![SectionColumn {
-                            id: "column-1".to_string(),
+                            id: "section-1-column-1".to_string(),
                             width_class: "dd-u-1-1".to_string(),
                             components: Vec::new(),
                         }],
@@ -1800,7 +1802,7 @@ impl Page {
             sal_duration: None,
             sal_delay: None,
             columns: vec![SectionColumn {
-                id: "column-1".to_string(),
+                id: "section-1-column-1".to_string(),
                 width_class: "dd-u-1-1".to_string(),
                 components: Vec::new(),
             }],
@@ -1878,6 +1880,80 @@ pub fn page_dir_depth(slug: &str, pretty: bool) -> usize {
 /// `../` repeated for `page_dir_depth`. Empty at the export root.
 pub fn relative_prefix(slug: &str, pretty: bool) -> String {
     "../".repeat(page_dir_depth(slug, pretty))
+}
+
+/// Prefix `column_id` with `{section_id}-` when it does not already have that prefix.
+pub fn qualify_column_id(section_id: &str, column_id: &str) -> String {
+    let section_id = section_id.trim();
+    let id = column_id.trim();
+    if section_id.is_empty() {
+        return if id.is_empty() {
+            "column-1".to_string()
+        } else {
+            id.to_string()
+        };
+    }
+    if id.is_empty() {
+        return format!("{section_id}-column-1");
+    }
+    let prefix = format!("{section_id}-");
+    if id == section_id || id.starts_with(&prefix) {
+        id.to_string()
+    } else {
+        format!("{prefix}{id}")
+    }
+}
+
+/// Column id without the `{section_id}-` prefix, for the column edit form.
+pub fn column_id_local_part(section_id: &str, column_id: &str) -> String {
+    let id = column_id.trim();
+    let section_id = section_id.trim();
+    if section_id.is_empty() {
+        return id.to_string();
+    }
+    id.strip_prefix(&format!("{section_id}-"))
+        .unwrap_or(id)
+        .to_string()
+}
+
+/// Drop a stale `{old_section_id}-` prefix, then qualify with `new_section_id`.
+pub fn rehome_column_id(old_section_id: &str, new_section_id: &str, column_id: &str) -> String {
+    let id = column_id.trim();
+    let old = old_section_id.trim();
+    let local = if !old.is_empty() {
+        id.strip_prefix(&format!("{old}-")).unwrap_or(id)
+    } else {
+        id
+    };
+    qualify_column_id(new_section_id, local)
+}
+
+/// `{base}` or `{base}-2`, `{base}-3`, … until `used` does not contain it.
+pub fn uniquify_id(base: &str, used: &HashSet<String>) -> String {
+    if !used.contains(base) {
+        return base.to_string();
+    }
+    let mut n = 2usize;
+    loop {
+        let candidate = format!("{base}-{n}");
+        if !used.contains(&candidate) {
+            return candidate;
+        }
+        n += 1;
+    }
+}
+
+/// Next `{section_id}-column-N` that is not already used in the section.
+pub fn next_column_id<'a>(section_id: &str, existing: impl IntoIterator<Item = &'a str>) -> String {
+    let used: HashSet<String> = existing.into_iter().map(str::to_string).collect();
+    let mut n = 1usize;
+    loop {
+        let candidate = qualify_column_id(section_id, &format!("column-{n}"));
+        if !used.contains(&candidate) {
+            return candidate;
+        }
+        n += 1;
+    }
 }
 
 /// True when `slug` is a single kebab-case segment (HTML ids, component ids).
@@ -2108,6 +2184,35 @@ mod tests {
         assert_eq!(page_dir_depth("blog/entry", true), 2);
         assert_eq!(relative_prefix("blog/entry", true), "../../");
         assert_eq!(relative_prefix("index", false), "");
+    }
+
+    #[test]
+    fn qualify_column_id_prefixes_with_section() {
+        assert_eq!(
+            qualify_column_id("section-1", "column-1"),
+            "section-1-column-1"
+        );
+        assert_eq!(qualify_column_id("section-1", "main"), "section-1-main");
+        assert_eq!(
+            qualify_column_id("section-1", "section-1-main"),
+            "section-1-main"
+        );
+        assert_eq!(qualify_column_id("section-1", ""), "section-1-column-1");
+        assert_eq!(
+            column_id_local_part("section-1", "section-1-column-1"),
+            "column-1"
+        );
+        assert_eq!(column_id_local_part("section-1", "intro"), "intro");
+        assert_eq!(
+            rehome_column_id("section-1", "about", "section-1-column-1"),
+            "about-column-1"
+        );
+        assert_eq!(rehome_column_id("section-1", "about", "main"), "about-main");
+        let existing = ["section-1-column-1"];
+        assert_eq!(next_column_id("section-1", existing), "section-1-column-2");
+        let mut used = HashSet::new();
+        used.insert("section-1-main".to_string());
+        assert_eq!(uniquify_id("section-1-main", &used), "section-1-main-2");
     }
 
     #[test]

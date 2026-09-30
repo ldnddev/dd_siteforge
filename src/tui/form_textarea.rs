@@ -218,6 +218,31 @@ pub(super) fn textarea_layout(
     }
 }
 
+/// Map a click inside a bordered single-line input `box_rect` to a caret
+/// offset. Any click in the box (including the top/bottom border of the
+/// 3-row field) maps `x` from the inner origin. Past the last character
+/// clamps to the end. Returns `None` when the box is too small to edit.
+pub(super) fn text_cursor_from_click(
+    value: &str,
+    box_rect: Rect,
+    click_x: u16,
+    click_y: u16,
+) -> Option<usize> {
+    if box_rect.width < 3 || box_rect.height < 3 {
+        return None;
+    }
+    if !contains(box_rect, click_x, click_y) {
+        return None;
+    }
+    let inner_x = box_rect.x.saturating_add(1);
+    let end = value.chars().count();
+    if click_x <= inner_x {
+        return Some(0);
+    }
+    let rel_x = (click_x - inner_x) as usize;
+    Some(rel_x.min(end))
+}
+
 /// Map a click inside the bordered textarea `box_rect` to a caret offset.
 /// Returns `None` when the click is on the border or scrollbar.
 pub(super) fn textarea_cursor_from_click(
