@@ -301,6 +301,11 @@ pub(crate) fn build_help_text(theme: &AppTheme, width: usize) -> Text<'static> {
             ("←/→ (options)", "Cycle choices for type/option fields"),
             ("Ctrl+← / Ctrl+→", "Jump by word in a text field"),
             (
+                "Shift+←/→/↑/↓",
+                "Select by character or visual row (Home/End/Ctrl+arrows too)",
+            ),
+            ("Ctrl+A", "Select the entire field"),
+            (
                 "Enter",
                 "Newline in textarea / next field / drill into SubForm item",
             ),
@@ -311,11 +316,17 @@ pub(crate) fn build_help_text(theme: &AppTheme, width: usize) -> Text<'static> {
             ("Ctrl+S", "Save (also refreshes a running preview)"),
             ("Ctrl+Z", "Undo last text edit or paste in this form"),
             ("Esc", "Close expanded textarea, or cancel edit"),
-            ("Backspace / Delete", "Delete previous / next character"),
-            ("Ctrl+Backspace", "Delete the previous word"),
+            (
+                "Backspace / Delete",
+                "Delete previous / next character, or the selection",
+            ),
+            (
+                "Ctrl+Backspace",
+                "Delete the previous word, or the selection",
+            ),
             (
                 "Paste",
-                "Terminal paste inserts the clipboard in one shot (bracketed paste)",
+                "Terminal paste inserts the clipboard in one shot (replaces a selection)",
             ),
             (
                 "multiline ↑/↓/Enter",
@@ -349,6 +360,14 @@ pub(crate) fn build_help_text(theme: &AppTheme, width: usize) -> Text<'static> {
             (
                 "Click text field",
                 "Place the caret at the click (single-line, compact textarea, or expanded)",
+            ),
+            (
+                "Drag in text field",
+                "Select a range; Shift+click extends from the caret",
+            ),
+            (
+                "Double-click in text",
+                "Select the word (or whitespace run) under the pointer",
             ),
             (
                 "Wheel over pane",
@@ -439,6 +458,7 @@ pub(crate) fn build_theme_text(
             "focused inputs",
         ),
         ("cursor", theme.cursor, "caret overlay"),
+        ("selection", theme.selection, "text field highlight"),
         ("success", theme.success, "success toasts"),
         ("warning", theme.warning, "warning toasts"),
         ("error", theme.error, "error toasts"),

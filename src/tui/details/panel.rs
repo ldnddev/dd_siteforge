@@ -27,6 +27,8 @@ impl App {
                 parts.extend_from_slice(&[
                     "Ctrl+S:Save",
                     "Tab:Field",
+                    "Shift:Select",
+                    "Ctrl+A:All",
                     "Ctrl+E:Expand",
                     "Ctrl+Z:Undo",
                     "Esc:Cancel",

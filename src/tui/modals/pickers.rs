@@ -115,11 +115,15 @@ impl App {
             ImagePickBinding::FormEditField { field_id } => {
                 self.modal = self.paused_form_edit_modal.take();
                 if let Some(Modal::FormEdit {
-                    state, cursor_pos, ..
+                    state,
+                    cursor_pos,
+                    selection_anchor,
+                    ..
                 }) = self.modal.as_mut()
                 {
                     state.set(&field_id, value.clone());
                     *cursor_pos = text_end(state.get(&field_id));
+                    *selection_anchor = None;
                     self.push_toast(ToastLevel::Success, format!("Picked: {}", value));
                 } else {
                     self.push_toast(
@@ -192,12 +196,16 @@ impl App {
             PagePickBinding::FormEditField { field_id } => {
                 self.modal = self.paused_form_edit_modal.take();
                 if let Some(Modal::FormEdit {
-                    state, cursor_pos, ..
+                    state,
+                    cursor_pos,
+                    selection_anchor,
+                    ..
                 }) = self.modal.as_mut()
                 {
                     let value = crate::model::page_href(&slug, self.site.pretty_urls);
                     state.set(&field_id, value.clone());
                     *cursor_pos = text_end(state.get(&field_id));
+                    *selection_anchor = None;
                     self.push_toast(ToastLevel::Success, format!("Picked page: {}", value));
                 } else {
                     self.push_toast(

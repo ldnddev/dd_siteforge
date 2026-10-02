@@ -46,6 +46,7 @@ impl App {
                 state,
                 cursor,
                 cursor_pos,
+                selection_anchor: _,
                 mut drill_stack,
                 scroll_offset: _,
             }) = taken
@@ -68,6 +69,7 @@ impl App {
                         state: parent,
                         cursor,
                         cursor_pos: frame.parent_cursor_pos,
+                        selection_anchor: None,
                         drill_stack,
                         scroll_offset: frame.parent_scroll_offset,
                     });
@@ -89,6 +91,7 @@ impl App {
                             state,
                             cursor,
                             cursor_pos,
+                            selection_anchor: None,
                             drill_stack,
                             scroll_offset: 0,
                         });
@@ -110,6 +113,7 @@ impl App {
                 state: _,
                 cursor,
                 cursor_pos: _,
+                selection_anchor: _,
                 mut drill_stack,
                 scroll_offset: _,
             }) = taken
@@ -120,6 +124,7 @@ impl App {
                         state: frame.parent_state,
                         cursor,
                         cursor_pos: frame.parent_cursor_pos,
+                        selection_anchor: None,
                         drill_stack,
                         scroll_offset: frame.parent_scroll_offset,
                     });
@@ -137,6 +142,7 @@ impl App {
         let Some(Modal::FormEdit {
             state,
             cursor_pos,
+            selection_anchor,
             scroll_offset,
             ..
         }) = self.modal.as_mut()
@@ -261,6 +267,7 @@ impl App {
                         mut state,
                         cursor,
                         cursor_pos,
+                        selection_anchor,
                         mut drill_stack,
                         scroll_offset,
                     }) = taken
@@ -292,6 +299,7 @@ impl App {
                                 state: item_state,
                                 cursor,
                                 cursor_pos: item_cursor_pos,
+                                selection_anchor: None,
                                 drill_stack,
                                 scroll_offset: 0,
                             });
@@ -305,6 +313,7 @@ impl App {
                                 state,
                                 cursor,
                                 cursor_pos,
+                                selection_anchor,
                                 drill_stack,
                                 scroll_offset,
                             });
@@ -316,73 +325,122 @@ impl App {
             }
         }
 
+        let shift = key.modifiers.contains(KeyModifiers::SHIFT);
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+
         match key.code {
             KeyCode::Tab if !expanded => {
                 state.focus_next();
                 *scroll_offset = auto_scroll_for_focus(state, *scroll_offset);
                 *cursor_pos = text_end(state.get(state.form.fields[state.focused_field].id));
+                *selection_anchor = None;
             }
             KeyCode::BackTab if !expanded => {
                 state.focus_prev();
                 *scroll_offset = auto_scroll_for_focus(state, *scroll_offset);
                 *cursor_pos = text_end(state.get(state.form.fields[state.focused_field].id));
-            }
-            KeyCode::Left if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                if accepts_text {
-                    *cursor_pos = word_left(state.get(field_id), *cursor_pos);
-                }
-            }
-            KeyCode::Right if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                if accepts_text {
-                    *cursor_pos = word_right(state.get(field_id), *cursor_pos);
-                }
+                *selection_anchor = None;
             }
             KeyCode::Left => {
-                if is_enum {
+                if is_enum && !shift && !ctrl {
                     state.cycle_enum(false);
-                } else if *cursor_pos > 0 {
-                    *cursor_pos -= 1;
+                } else if accepts_text {
+                    if ctrl && shift {
+                        begin_shift_selection(selection_anchor, *cursor_pos);
+                        *cursor_pos = word_left(state.get(field_id), *cursor_pos);
+                    } else if ctrl {
+                        *selection_anchor = None;
+                        *cursor_pos = word_left(state.get(field_id), *cursor_pos);
+                    } else if shift {
+                        begin_shift_selection(selection_anchor, *cursor_pos);
+                        if *cursor_pos > 0 {
+                            *cursor_pos -= 1;
+                        }
+                    } else if let Some((from, _)) = selection_range(*selection_anchor, *cursor_pos)
+                    {
+                        *cursor_pos = from;
+                        *selection_anchor = None;
+                    } else if *cursor_pos > 0 {
+                        *cursor_pos -= 1;
+                    }
                 }
             }
             KeyCode::Right => {
-                if is_enum {
+                if is_enum && !shift && !ctrl {
                     state.cycle_enum(true);
-                } else {
+                } else if accepts_text {
                     let len = text_end(state.get(field_id));
-                    if *cursor_pos < len {
+                    if ctrl && shift {
+                        begin_shift_selection(selection_anchor, *cursor_pos);
+                        *cursor_pos = word_right(state.get(field_id), *cursor_pos);
+                    } else if ctrl {
+                        *selection_anchor = None;
+                        *cursor_pos = word_right(state.get(field_id), *cursor_pos);
+                    } else if shift {
+                        begin_shift_selection(selection_anchor, *cursor_pos);
+                        if *cursor_pos < len {
+                            *cursor_pos += 1;
+                        }
+                    } else if let Some((_, to)) = selection_range(*selection_anchor, *cursor_pos) {
+                        *cursor_pos = to;
+                        *selection_anchor = None;
+                    } else if *cursor_pos < len {
                         *cursor_pos += 1;
                     }
                 }
             }
             KeyCode::Up => {
                 if is_textarea {
+                    if shift {
+                        begin_shift_selection(selection_anchor, *cursor_pos);
+                    } else {
+                        *selection_anchor = None;
+                    }
                     *cursor_pos = textarea_move_cursor_vertical(
                         state.get(field_id),
                         *cursor_pos,
                         -1,
                         wrap_width,
                     );
+                } else if shift && accepts_text {
+                    begin_shift_selection(selection_anchor, *cursor_pos);
+                    *cursor_pos = 0;
                 } else {
                     state.focus_prev();
                     *scroll_offset = auto_scroll_for_focus(state, *scroll_offset);
                     *cursor_pos = text_end(state.get(state.form.fields[state.focused_field].id));
+                    *selection_anchor = None;
                 }
             }
             KeyCode::Down => {
                 if is_textarea {
+                    if shift {
+                        begin_shift_selection(selection_anchor, *cursor_pos);
+                    } else {
+                        *selection_anchor = None;
+                    }
                     *cursor_pos = textarea_move_cursor_vertical(
                         state.get(field_id),
                         *cursor_pos,
                         1,
                         wrap_width,
                     );
+                } else if shift && accepts_text {
+                    begin_shift_selection(selection_anchor, *cursor_pos);
+                    *cursor_pos = text_end(state.get(field_id));
                 } else {
                     state.focus_next();
                     *scroll_offset = auto_scroll_for_focus(state, *scroll_offset);
                     *cursor_pos = text_end(state.get(state.form.fields[state.focused_field].id));
+                    *selection_anchor = None;
                 }
             }
             KeyCode::PageUp if is_textarea => {
+                if shift {
+                    begin_shift_selection(selection_anchor, *cursor_pos);
+                } else {
+                    *selection_anchor = None;
+                }
                 *cursor_pos = textarea_move_cursor_vertical(
                     state.get(field_id),
                     *cursor_pos,
@@ -391,102 +449,155 @@ impl App {
                 );
             }
             KeyCode::PageDown if is_textarea => {
+                if shift {
+                    begin_shift_selection(selection_anchor, *cursor_pos);
+                } else {
+                    *selection_anchor = None;
+                }
                 *cursor_pos =
                     textarea_move_cursor_vertical(state.get(field_id), *cursor_pos, 10, wrap_width);
             }
             KeyCode::Home if accepts_text => {
-                if is_textarea {
-                    *cursor_pos = textarea_line_home(state.get(field_id), *cursor_pos, wrap_width);
+                if shift {
+                    begin_shift_selection(selection_anchor, *cursor_pos);
                 } else {
+                    *selection_anchor = None;
+                }
+                if ctrl || !is_textarea {
                     *cursor_pos = 0;
+                } else {
+                    *cursor_pos = textarea_line_home(state.get(field_id), *cursor_pos, wrap_width);
                 }
             }
             KeyCode::End if accepts_text => {
-                if is_textarea {
-                    *cursor_pos = textarea_line_end(state.get(field_id), *cursor_pos, wrap_width);
+                if shift {
+                    begin_shift_selection(selection_anchor, *cursor_pos);
                 } else {
+                    *selection_anchor = None;
+                }
+                if ctrl || !is_textarea {
                     *cursor_pos = text_end(state.get(field_id));
+                } else {
+                    *cursor_pos = textarea_line_end(state.get(field_id), *cursor_pos, wrap_width);
                 }
             }
-            KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+            KeyCode::Char('a' | 'A') if ctrl && accepts_text => {
+                *selection_anchor = Some(0);
+                *cursor_pos = text_end(state.get(field_id));
+            }
+            KeyCode::Char(c) if !ctrl => {
                 if accepts_text {
-                    let current = state.get(field_id);
-                    let undo = FormTextUndo {
-                        field_id: field_id.to_string(),
-                        value: current.to_string(),
-                        cursor_pos: *cursor_pos,
-                    };
-                    let (new, pos) = insert_at_char(current, *cursor_pos, &c.to_string());
-                    state.set(field_id, new);
-                    *cursor_pos = pos;
-                    self.form_text_undo = Some(undo);
+                    edit_form_text(
+                        state,
+                        field_id,
+                        cursor_pos,
+                        selection_anchor,
+                        &mut self.form_text_undo,
+                        &c.to_string(),
+                    );
                 }
             }
-            KeyCode::Backspace if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            KeyCode::Backspace if ctrl => {
                 if accepts_text {
-                    let current = state.get(field_id);
-                    let from = word_left(current, *cursor_pos);
-                    if from < *cursor_pos {
-                        let undo = FormTextUndo {
-                            field_id: field_id.to_string(),
-                            value: current.to_string(),
-                            cursor_pos: *cursor_pos,
-                        };
-                        let (new, pos) = delete_char_range(current, from, *cursor_pos);
-                        state.set(field_id, new);
-                        *cursor_pos = pos;
-                        self.form_text_undo = Some(undo);
+                    if selection_range(*selection_anchor, *cursor_pos).is_some() {
+                        edit_form_text(
+                            state,
+                            field_id,
+                            cursor_pos,
+                            selection_anchor,
+                            &mut self.form_text_undo,
+                            "",
+                        );
+                    } else {
+                        let current = state.get(field_id);
+                        let from = word_left(current, *cursor_pos);
+                        if from < *cursor_pos {
+                            let undo = FormTextUndo {
+                                field_id: field_id.to_string(),
+                                value: current.to_string(),
+                                cursor_pos: *cursor_pos,
+                                selection_anchor: *selection_anchor,
+                            };
+                            let (new, pos) = delete_char_range(current, from, *cursor_pos);
+                            state.set(field_id, new);
+                            *cursor_pos = pos;
+                            *selection_anchor = None;
+                            self.form_text_undo = Some(undo);
+                        }
                     }
                 }
             }
             KeyCode::Backspace => {
                 if accepts_text {
-                    let current = state.get(field_id);
-                    if *cursor_pos > 0 {
-                        let undo = FormTextUndo {
-                            field_id: field_id.to_string(),
-                            value: current.to_string(),
-                            cursor_pos: *cursor_pos,
-                        };
-                        let (new, pos) = delete_char_before(current, *cursor_pos);
-                        state.set(field_id, new);
-                        *cursor_pos = pos;
-                        self.form_text_undo = Some(undo);
+                    if selection_range(*selection_anchor, *cursor_pos).is_some() {
+                        edit_form_text(
+                            state,
+                            field_id,
+                            cursor_pos,
+                            selection_anchor,
+                            &mut self.form_text_undo,
+                            "",
+                        );
+                    } else {
+                        let current = state.get(field_id);
+                        if *cursor_pos > 0 {
+                            let undo = FormTextUndo {
+                                field_id: field_id.to_string(),
+                                value: current.to_string(),
+                                cursor_pos: *cursor_pos,
+                                selection_anchor: *selection_anchor,
+                            };
+                            let (new, pos) = delete_char_before(current, *cursor_pos);
+                            state.set(field_id, new);
+                            *cursor_pos = pos;
+                            self.form_text_undo = Some(undo);
+                        }
                     }
                 }
             }
             KeyCode::Delete => {
                 if accepts_text {
-                    let current = state.get(field_id);
-                    if *cursor_pos < text_end(current) {
-                        let undo = FormTextUndo {
-                            field_id: field_id.to_string(),
-                            value: current.to_string(),
-                            cursor_pos: *cursor_pos,
-                        };
-                        let (new, pos) = delete_char_after(current, *cursor_pos);
-                        state.set(field_id, new);
-                        *cursor_pos = pos;
-                        self.form_text_undo = Some(undo);
+                    if selection_range(*selection_anchor, *cursor_pos).is_some() {
+                        edit_form_text(
+                            state,
+                            field_id,
+                            cursor_pos,
+                            selection_anchor,
+                            &mut self.form_text_undo,
+                            "",
+                        );
+                    } else {
+                        let current = state.get(field_id);
+                        if *cursor_pos < text_end(current) {
+                            let undo = FormTextUndo {
+                                field_id: field_id.to_string(),
+                                value: current.to_string(),
+                                cursor_pos: *cursor_pos,
+                                selection_anchor: *selection_anchor,
+                            };
+                            let (new, pos) = delete_char_after(current, *cursor_pos);
+                            state.set(field_id, new);
+                            *cursor_pos = pos;
+                            self.form_text_undo = Some(undo);
+                        }
                     }
                 }
             }
             KeyCode::Enter => {
                 if is_textarea {
-                    let current = state.get(field_id);
-                    let undo = FormTextUndo {
-                        field_id: field_id.to_string(),
-                        value: current.to_string(),
-                        cursor_pos: *cursor_pos,
-                    };
-                    let (new, pos) = insert_at_char(current, *cursor_pos, "\n");
-                    state.set(field_id, new);
-                    *cursor_pos = pos;
-                    self.form_text_undo = Some(undo);
+                    edit_form_text(
+                        state,
+                        field_id,
+                        cursor_pos,
+                        selection_anchor,
+                        &mut self.form_text_undo,
+                        "\n",
+                    );
                 } else {
                     state.focus_next();
                     *scroll_offset = auto_scroll_for_focus(state, *scroll_offset);
                     *cursor_pos = text_end(state.get(state.form.fields[state.focused_field].id));
+                    *selection_anchor = None;
                 }
             }
             _ => {}
@@ -497,7 +608,10 @@ impl App {
 
     pub(in crate::tui) fn paste_into_form(&mut self, raw: &str) {
         let Some(Modal::FormEdit {
-            state, cursor_pos, ..
+            state,
+            cursor_pos,
+            selection_anchor,
+            ..
         }) = self.modal.as_mut()
         else {
             return;
@@ -520,17 +634,14 @@ impl App {
         if text.is_empty() {
             return;
         }
-        let field_id = field.id;
-        let current = state.get(field_id);
-        let undo = FormTextUndo {
-            field_id: field_id.to_string(),
-            value: current.to_string(),
-            cursor_pos: *cursor_pos,
-        };
-        let (new, pos) = insert_at_char(current, *cursor_pos, &text);
-        state.set(field_id, new);
-        *cursor_pos = pos;
-        self.form_text_undo = Some(undo);
+        edit_form_text(
+            state,
+            field.id,
+            cursor_pos,
+            selection_anchor,
+            &mut self.form_text_undo,
+            &text,
+        );
     }
 
     fn restore_form_text_undo(&mut self) {
@@ -540,6 +651,7 @@ impl App {
         let Some(Modal::FormEdit {
             state,
             cursor_pos,
+            selection_anchor,
             scroll_offset,
             ..
         }) = self.modal.as_mut()
@@ -553,6 +665,7 @@ impl App {
         }
         state.set(&undo.field_id, undo.value);
         *cursor_pos = undo.cursor_pos;
+        *selection_anchor = undo.selection_anchor;
     }
 
     /// Image / poster / mp4 URL fields open the file picker.
@@ -632,4 +745,39 @@ impl App {
 
         false
     }
+}
+
+/// Replace any selection with `insert`, or insert at the caret. Snapshots
+/// undo (value, caret, and selection) in one step.
+fn edit_form_text(
+    state: &mut editform::EditFormState,
+    field_id: &str,
+    cursor_pos: &mut usize,
+    selection_anchor: &mut Option<usize>,
+    form_text_undo: &mut Option<FormTextUndo>,
+    insert: &str,
+) {
+    let current = state.get(field_id);
+    if insert.is_empty() && selection_range(*selection_anchor, *cursor_pos).is_none() {
+        return;
+    }
+    *form_text_undo = Some(FormTextUndo {
+        field_id: field_id.to_string(),
+        value: current.to_string(),
+        cursor_pos: *cursor_pos,
+        selection_anchor: *selection_anchor,
+    });
+    let (new, pos) = if let Some((from, to)) = selection_range(*selection_anchor, *cursor_pos) {
+        let (cleared, pos) = delete_char_range(current, from, to);
+        if insert.is_empty() {
+            (cleared, pos)
+        } else {
+            insert_at_char(&cleared, pos, insert)
+        }
+    } else {
+        insert_at_char(current, *cursor_pos, insert)
+    };
+    state.set(field_id, new);
+    *cursor_pos = pos;
+    *selection_anchor = None;
 }

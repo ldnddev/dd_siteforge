@@ -28,10 +28,17 @@ impl App {
             Modal::FormEdit {
                 state,
                 cursor_pos,
+                selection_anchor,
                 scroll_offset,
                 ..
             } => {
-                self.render_form_edit_modal(frame, state, *cursor_pos, *scroll_offset);
+                self.render_form_edit_modal(
+                    frame,
+                    state,
+                    *cursor_pos,
+                    *selection_anchor,
+                    *scroll_offset,
+                );
             }
             Modal::TemplatePicker { selected } => {
                 self.render_template_picker_modal(frame, *selected);
@@ -104,12 +111,13 @@ impl App {
         frame: &mut ratatui::Frame,
         state: &editform::EditFormState,
         cursor_pos: usize,
+        selection_anchor: Option<usize>,
         scroll_offset: u16,
     ) {
         self.form_expand_hits.borrow_mut().clear();
         self.form_browse_hits.borrow_mut().clear();
         if self.form_textarea_expanded {
-            self.render_textarea_expand_modal(frame, state, cursor_pos);
+            self.render_textarea_expand_modal(frame, state, cursor_pos, selection_anchor);
             return;
         }
 
@@ -348,7 +356,15 @@ impl App {
                 self.modal_field_areas
                     .borrow_mut()
                     .push((slot.idx, input_rect));
-                self.render_form_field_value(frame, field, state, cursor_pos, focused, inner_rect);
+                self.render_form_field_value(
+                    frame,
+                    field,
+                    state,
+                    cursor_pos,
+                    selection_anchor,
+                    focused,
+                    inner_rect,
+                );
                 if let Some(browse) = browse_rect {
                     let browse_widget = Paragraph::new(Line::from(Span::styled(
                         "…",
@@ -402,6 +418,7 @@ impl App {
         frame: &mut ratatui::Frame,
         state: &editform::EditFormState,
         cursor_pos: usize,
+        selection_anchor: Option<usize>,
     ) {
         let Some(field) = state.form.fields.get(state.focused_field) else {
             return;
@@ -427,7 +444,7 @@ impl App {
         let help_rect = Rect::new(inner.x, inner.y, inner.width, 1);
         frame.render_widget(
             Paragraph::new(
-                "Esc: back to form | Ctrl+S: save | Ctrl+Z: undo | Enter: newline | Home/End: line | click: caret",
+                "Esc: back to form | Ctrl+S: save | Ctrl+Z: undo | Shift+arrows/drag: select | Ctrl+A: all | Enter: newline",
             )
             .style(
                 Style::default()
@@ -461,7 +478,15 @@ impl App {
         self.modal_field_areas
             .borrow_mut()
             .push((state.focused_field, box_rect));
-        self.render_form_field_value(frame, field, state, cursor_pos, true, inner_rect);
+        self.render_form_field_value(
+            frame,
+            field,
+            state,
+            cursor_pos,
+            selection_anchor,
+            true,
+            inner_rect,
+        );
     }
 
     pub(in crate::tui) fn render_form_field_value(
@@ -470,6 +495,7 @@ impl App {
         field: &editform::FormField,
         state: &editform::EditFormState,
         cursor_pos: usize,
+        selection_anchor: Option<usize>,
         focused: bool,
         rect: Rect,
     ) {
@@ -481,11 +507,26 @@ impl App {
         let value_style = Style::default()
             .fg(text_color)
             .bg(self.theme.modal_background);
+        let selected_style = Style::default()
+            .fg(self.theme.text_inverse)
+            .bg(self.theme.selection);
+        let sel = if focused {
+            selection_range(selection_anchor, cursor_pos)
+        } else {
+            None
+        };
 
         match &field.kind {
             editform::FieldKind::Text { .. } | editform::FieldKind::Url { .. } => {
                 let value = state.get(field.id);
-                frame.render_widget(Paragraph::new(value).style(value_style), rect);
+                let line = Line::from(spans_with_selection(
+                    value,
+                    0,
+                    sel,
+                    value_style,
+                    selected_style,
+                ));
+                frame.render_widget(Paragraph::new(line), rect);
             }
             editform::FieldKind::Textarea { .. } => {
                 let value = state.get(field.id);
@@ -498,7 +539,30 @@ impl App {
                 } else {
                     rect
                 };
-                frame.render_widget(Paragraph::new(layout.display).style(value_style), text_rect);
+                let rows = textarea_visual_rows(value, Some(layout.wrap_width));
+                let mut lines: Vec<Line> = rows
+                    .iter()
+                    .skip(layout.first_visible_row)
+                    .take(layout.visible_rows)
+                    .map(|row| {
+                        let row_text = value
+                            .chars()
+                            .skip(row.start)
+                            .take(row.len)
+                            .collect::<String>();
+                        Line::from(spans_with_selection(
+                            &row_text,
+                            row.start,
+                            sel,
+                            value_style,
+                            selected_style,
+                        ))
+                    })
+                    .collect();
+                while lines.len() < layout.visible_rows {
+                    lines.push(Line::from(""));
+                }
+                frame.render_widget(Paragraph::new(lines), text_rect);
                 if layout.has_scrollbar {
                     render_textarea_scrollbar(
                         frame,

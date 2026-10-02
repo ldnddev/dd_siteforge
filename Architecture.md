@@ -142,7 +142,7 @@ Bracketed paste is enabled for the session. `Event::Paste` inserts the clipboard
 
 ### Edit modal
 
-`Tab` / `Up/Down` navigate fields · `Left/Right` cycle enum values · `Ctrl+←` / `Ctrl+→` word jump · `Ctrl+Backspace` delete word · `Delete` forward-delete · `Ctrl+Z` undo last text edit · terminal paste inserts in one shot · `Ctrl+S` save (refreshes a running preview) · `Esc` cancel · `Ctrl+P` (in URL field) opens image picker (image fields) or page picker (link fields). Click any input box to focus it. Mouse wheel scrolls the field list. Textareas wrap on word boundaries.
+`Tab` / `Up/Down` navigate fields · `Left/Right` cycle enum values · `Ctrl+←` / `Ctrl+→` word jump · `Ctrl+Backspace` delete word · `Delete` forward-delete · `Shift+←/→/↑/↓` (and Shift+Home/End/Ctrl+arrows) select a range · `Ctrl+A` select all · unshifted `Left`/`Right` jump to the start/end of a range · typing, paste, Backspace, and Delete replace the range · `Ctrl+Z` undo last text edit · terminal paste inserts in one shot · `Ctrl+S` save (refreshes a running preview) · `Esc` cancel · `Ctrl+P` (in URL field) opens image picker (image fields) or page picker (link fields). Click any input box to focus it; drag or Shift+click selects; double-click selects a word. Mouse wheel scrolls the field list. Textareas wrap on word boundaries.
 
 ### Image / Page pickers
 

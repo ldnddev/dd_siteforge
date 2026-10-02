@@ -480,12 +480,16 @@ impl App {
             return;
         }
         if let Some(Modal::FormEdit {
-            state, cursor_pos, ..
+            state,
+            cursor_pos,
+            selection_anchor,
+            ..
         }) = self.modal.as_mut()
         {
             if let Some(idx) = state.form.fields.iter().position(|f| f.id == focus_id) {
                 state.focused_field = idx;
                 *cursor_pos = text_end(state.get(focus_id));
+                *selection_anchor = None;
             }
         }
     }

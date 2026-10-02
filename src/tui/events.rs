@@ -109,6 +109,7 @@ impl App {
             if let Event::Mouse(m) = &evt {
                 if matches!(m.kind, MouseEventKind::Up(_)) {
                     self.scrollbar_drag = None;
+                    self.form_text_drag = false;
                 }
             }
             return Ok(false);

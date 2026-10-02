@@ -13,7 +13,6 @@ pub(super) struct VisualRow {
 /// Layout used to paint, overlay the caret, and map clicks inside a textarea.
 #[derive(Debug, Clone)]
 pub(super) struct TextareaLayout {
-    pub display: String,
     pub first_visible_row: usize,
     pub total_rows: usize,
     pub wrap_width: u16,
@@ -206,16 +205,24 @@ pub(super) fn textarea_layout(
     let visible_rows = inner_h.max(1) as usize;
     let wrap_width = textarea_wrap_width(value, inner_w, inner_h);
     let has_scrollbar = wrap_width < inner_w.max(1);
-    let (display, first_visible_row, total_rows) =
+    let (_, first_visible_row, total_rows) =
         render_textarea_display_window(value, cursor_pos, focused, visible_rows, Some(wrap_width));
     TextareaLayout {
-        display,
         first_visible_row,
         total_rows,
         wrap_width,
         has_scrollbar,
         visible_rows,
     }
+}
+
+pub(super) fn clamp_to_rect(rect: Rect, x: u16, y: u16) -> (u16, u16) {
+    if rect.width == 0 || rect.height == 0 {
+        return (rect.x, rect.y);
+    }
+    let max_x = rect.x.saturating_add(rect.width.saturating_sub(1));
+    let max_y = rect.y.saturating_add(rect.height.saturating_sub(1));
+    (x.clamp(rect.x, max_x), y.clamp(rect.y, max_y))
 }
 
 /// Map a click inside a bordered single-line input `box_rect` to a caret
@@ -509,6 +516,87 @@ pub(super) fn word_right(s: &str, char_pos: usize) -> usize {
     i
 }
 
+/// Highlight span between `anchor` and `caret`, or `None` when empty.
+pub(super) fn selection_range(anchor: Option<usize>, caret: usize) -> Option<(usize, usize)> {
+    let a = anchor?;
+    let from = a.min(caret);
+    let to = a.max(caret);
+    if from == to { None } else { Some((from, to)) }
+}
+
+/// Word or whitespace run under `char_pos` (double-click). Past the last
+/// character uses the last scalar.
+pub(super) fn word_bounds_at(s: &str, char_pos: usize) -> (usize, usize) {
+    let chars: Vec<char> = s.chars().collect();
+    if chars.is_empty() {
+        return (0, 0);
+    }
+    let idx = char_pos.min(chars.len() - 1);
+    let word = is_word_char(chars[idx]);
+    let mut start = idx;
+    let mut end = idx + 1;
+    while start > 0 && is_word_char(chars[start - 1]) == word {
+        start -= 1;
+    }
+    while end < chars.len() && is_word_char(chars[end]) == word {
+        end += 1;
+    }
+    (start, end)
+}
+
+/// Split `text` (a slice of the field starting at `text_start` chars) into
+/// normal / selected / normal spans.
+pub(super) fn spans_with_selection(
+    text: &str,
+    text_start: usize,
+    sel: Option<(usize, usize)>,
+    normal: Style,
+    selected: Style,
+) -> Vec<ratatui::text::Span<'static>> {
+    use ratatui::text::Span;
+    let len = text.chars().count();
+    let Some((from, to)) = sel else {
+        return vec![Span::styled(text.to_string(), normal)];
+    };
+    if to <= text_start || from >= text_start + len {
+        return vec![Span::styled(text.to_string(), normal)];
+    }
+    let rel_from = from.saturating_sub(text_start).min(len);
+    let rel_to = to.saturating_sub(text_start).min(len);
+    let mut spans = Vec::new();
+    if rel_from > 0 {
+        spans.push(Span::styled(
+            text.chars().take(rel_from).collect::<String>(),
+            normal,
+        ));
+    }
+    if rel_to > rel_from {
+        spans.push(Span::styled(
+            text.chars()
+                .skip(rel_from)
+                .take(rel_to - rel_from)
+                .collect::<String>(),
+            selected,
+        ));
+    }
+    if rel_to < len {
+        spans.push(Span::styled(
+            text.chars().skip(rel_to).collect::<String>(),
+            normal,
+        ));
+    }
+    if spans.is_empty() {
+        spans.push(Span::styled(String::new(), normal));
+    }
+    spans
+}
+
+pub(super) fn begin_shift_selection(anchor: &mut Option<usize>, caret: usize) {
+    if anchor.is_none() {
+        *anchor = Some(caret);
+    }
+}
+
 /// Normalize a clipboard dump: CRLF/CR become `\n`. Single-line fields flatten newlines to spaces.
 pub(super) fn sanitize_paste(text: &str, multiline: bool) -> String {
     let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
@@ -520,6 +608,45 @@ pub(super) fn sanitize_paste(text: &str, multiline: bool) -> String {
 }
 
 impl App {
+    /// Map a pointer position to `(field_idx, caret)` inside a text/url/textarea box.
+    /// When `clamp` is true, a point outside the box is mapped to the nearest cell
+    /// (mouse-drag selection).
+    pub(super) fn form_text_hit(&self, col: u16, row: u16, clamp: bool) -> Option<(usize, usize)> {
+        let areas = self.modal_field_areas.borrow();
+        let Some(Modal::FormEdit {
+            state, cursor_pos, ..
+        }) = &self.modal
+        else {
+            return None;
+        };
+        let map = |idx: usize, rect: Rect, x: u16, y: u16| -> Option<(usize, usize)> {
+            let field = state.form.fields.get(idx)?;
+            let value = state.get(field.id);
+            let pos = match field.kind {
+                editform::FieldKind::Textarea { .. } => {
+                    let focused = idx == state.focused_field;
+                    textarea_cursor_from_click(value, rect, *cursor_pos, focused, x, y)?
+                }
+                editform::FieldKind::Text { .. } | editform::FieldKind::Url { .. } => {
+                    text_cursor_from_click(value, rect, x, y)?
+                }
+                _ => return None,
+            };
+            Some((idx, pos))
+        };
+        if clamp {
+            let (idx, rect) = areas.iter().find(|(i, _)| *i == state.focused_field)?;
+            let (x, y) = clamp_to_rect(*rect, col, row);
+            return map(*idx, *rect, x, y);
+        }
+        areas.iter().find_map(|(idx, rect)| {
+            if !contains(*rect, col, row) {
+                return None;
+            }
+            map(*idx, *rect, col, row)
+        })
+    }
+
     /// Wrap width of the focused textarea from the last-painted box, if any.
     pub(super) fn focused_textarea_wrap_width(&self) -> Option<u16> {
         let Some(Modal::FormEdit { state, .. }) = &self.modal else {

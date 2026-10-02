@@ -68,6 +68,9 @@ pub(in crate::tui) enum Modal {
         state: editform::EditFormState,
         cursor: cursor::Cursor,
         cursor_pos: usize, // text cursor within focused field's string
+        /// Fixed end of a text selection. `None` or equal to `cursor_pos` means
+        /// no highlight. Caret (`cursor_pos`) is the active end.
+        selection_anchor: Option<usize>,
         drill_stack: Vec<DrillFrame>,
         scroll_offset: u16, // vertical row scroll within the form content
     },

@@ -29,6 +29,7 @@ pub(super) struct FormTextUndo {
     pub(super) field_id: String,
     pub(super) value: String,
     pub(super) cursor_pos: usize,
+    pub(super) selection_anchor: Option<usize>,
 }
 
 mod component_kind;
@@ -242,6 +243,8 @@ pub(super) struct App {
     form_textarea_expanded: bool,
     /// Last text-field mutation in the open FormEdit, for Ctrl+Z.
     form_text_undo: Option<FormTextUndo>,
+    /// True while the pointer is dragging a text selection inside FormEdit.
+    form_text_drag: bool,
     /// Draw-time hit targets for `[Expand]` on textarea field labels.
     form_expand_hits: std::cell::RefCell<Vec<(usize, Rect)>>,
     /// Draw-time hit targets for Browse on file-picker URL fields.
@@ -329,6 +332,7 @@ impl App {
             paused_form_edit_modal: None,
             form_textarea_expanded: false,
             form_text_undo: None,
+            form_text_drag: false,
             form_expand_hits: std::cell::RefCell::new(Vec::new()),
             form_browse_hits: std::cell::RefCell::new(Vec::new()),
             expanded_sections: HashSet::new(),

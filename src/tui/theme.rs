@@ -14,7 +14,6 @@ pub(crate) struct AppTheme {
     pub(crate) text_secondary: Color,
     #[allow(dead_code)] // reserved: no disabled/inverted text painted yet
     pub(crate) text_disabled: Color,
-    #[allow(dead_code)] // reserved: no inverted text painted yet
     pub(crate) text_inverse: Color,
     pub(crate) text_labels: Color,
     pub(crate) text_active_focus: Color,
@@ -35,6 +34,8 @@ pub(crate) struct AppTheme {
     pub(crate) scrollbar_hover: Color,
     // Selection colors
     pub(crate) selected_background: Color,
+    /// Text-range highlight inside form fields (`selection` extra token).
+    pub(crate) selection: Color,
     // Semantic colors
     pub(crate) success: Color,
     pub(crate) warning: Color,
@@ -79,6 +80,7 @@ struct PaletteFile {
     modal_header: Option<String>,
     // Selection
     selected_background: String,
+    selection: Option<String>,
     // Borders
     border_default: String,
     border_active: Option<String>,
@@ -212,6 +214,7 @@ impl AppTheme {
 
         // Selection
         let selected_background = parse_hex_color(p.selected_background.as_str())?;
+        let selection = parse_hex_color(p.selection.as_deref().unwrap_or("#2060A0"))?;
 
         // Borders
         let border = parse_hex_color(p.border_default.as_str())?;
@@ -285,6 +288,7 @@ impl AppTheme {
             scrollbar,
             scrollbar_hover,
             selected_background,
+            selection,
             success,
             warning,
             error,
@@ -326,6 +330,7 @@ impl Default for AppTheme {
             scrollbar: Color::Rgb(255, 160, 135),
             scrollbar_hover: border_focus,
             selected_background: Color::Rgb(15, 17, 20),
+            selection: Color::Rgb(32, 96, 160),
             success: Color::Rgb(130, 224, 170),
             warning: Color::Rgb(245, 196, 105),
             error: Color::Rgb(229, 115, 115),
@@ -391,6 +396,7 @@ pub(crate) fn extra_theme_fields() -> &'static [ldnddev_theme::ColorField] {
         ldnddev_theme::EXTRA_MODAL_HEADER,
         ldnddev_theme::EXTRA_TEXT_DISABLED,
         ldnddev_theme::EXTRA_TEXT_INVERSE,
+        ldnddev_theme::EXTRA_SELECTION,
     ]
 }
 
@@ -422,6 +428,7 @@ pub(crate) fn palette_from_theme(theme: &AppTheme) -> ldnddev_theme::Palette {
         ("modal_text", theme.modal_text),
         ("modal_header", theme.modal_header),
         ("selected_background", theme.selected_background),
+        ("selection", theme.selection),
         ("border_default", theme.border),
         ("border_active", theme.border_active),
         ("scrollbar", theme.scrollbar),
@@ -484,6 +491,9 @@ pub(crate) fn apply_palette(theme: &mut AppTheme, palette: &ldnddev_theme::Palet
     }
     if let Some(c) = get("selected_background") {
         theme.selected_background = c;
+    }
+    if let Some(c) = get("selection") {
+        theme.selection = c;
     }
     if let Some(c) = get("border_default") {
         theme.border = c;
@@ -558,6 +568,7 @@ mod tests {
             modal_text: None,
             modal_header: None,
             selected_background: "#0F1114".into(),
+            selection: None,
             border_default: "#F5F6F7".into(),
             border_active: None,
             scrollbar: None,
@@ -589,6 +600,7 @@ mod tests {
         assert_eq!(color_to_hex(theme.border_active), "#64b4f5");
         assert_eq!(color_to_hex(theme.text_inverse), "#f9fafb");
         assert_eq!(color_to_hex(theme.text_disabled), "#a0a4a8");
+        assert_eq!(color_to_hex(theme.selection), "#2060a0");
         assert_eq!(color_to_hex(AppTheme::default().border_active), "#64b4f5");
     }
 }

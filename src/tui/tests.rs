@@ -40,11 +40,21 @@ fn send_paste(app: &mut App, text: &str) {
 }
 
 fn send_mouse(app: &mut App, kind: MouseEventKind, column: u16, row: u16) {
+    send_mouse_mods(app, kind, column, row, KeyModifiers::NONE);
+}
+
+fn send_mouse_mods(
+    app: &mut App,
+    kind: MouseEventKind,
+    column: u16,
+    row: u16,
+    modifiers: KeyModifiers,
+) {
     app.handle_event(Event::Mouse(MouseEvent {
         kind,
         column,
         row,
-        modifiers: KeyModifiers::NONE,
+        modifiers,
     }))
     .expect("mouse event should be handled");
 }
@@ -821,6 +831,280 @@ fn textarea_ctrl_arrows_and_ctrl_backspace_and_delete() {
     assert_eq!(form_value(&app, "parent_copy"), "orld");
     send_key(&mut app, KeyCode::Char('z'), KeyModifiers::CONTROL);
     assert_eq!(form_value(&app, "parent_copy"), "world");
+}
+
+#[test]
+fn form_shift_arrows_select_and_delete_range() {
+    let mut app = app_with_component(ComponentKind::RichText);
+    open_form_edit_on_page_component(&mut app);
+    focus_rich_text_copy(&mut app);
+    if let Some(Modal::FormEdit {
+        state, cursor_pos, ..
+    }) = &mut app.modal
+    {
+        state.set("parent_copy", "hello world");
+        *cursor_pos = 0;
+    }
+    for _ in 0..5 {
+        send_key(&mut app, KeyCode::Right, KeyModifiers::SHIFT);
+    }
+    assert_eq!(form_selection(&app), Some((0, 5)));
+    assert_eq!(form_cursor_pos(&app), 5);
+    send_key(&mut app, KeyCode::Delete, KeyModifiers::NONE);
+    assert_eq!(form_value(&app, "parent_copy"), " world");
+    assert_eq!(form_selection(&app), None);
+    assert_eq!(form_cursor_pos(&app), 0);
+    send_key(&mut app, KeyCode::Char('z'), KeyModifiers::CONTROL);
+    assert_eq!(form_value(&app, "parent_copy"), "hello world");
+    assert_eq!(form_selection(&app), Some((0, 5)));
+}
+
+#[test]
+fn form_unshifted_left_right_jump_to_range_edges() {
+    let mut app = app_with_component(ComponentKind::RichText);
+    open_form_edit_on_page_component(&mut app);
+    focus_rich_text_copy(&mut app);
+    if let Some(Modal::FormEdit {
+        state, cursor_pos, ..
+    }) = &mut app.modal
+    {
+        state.set("parent_copy", "hello world");
+        *cursor_pos = 6;
+    }
+    for _ in 0..5 {
+        send_key(&mut app, KeyCode::Right, KeyModifiers::SHIFT);
+    }
+    assert_eq!(form_selection(&app), Some((6, 11)));
+    send_key(&mut app, KeyCode::Left, KeyModifiers::NONE);
+    assert_eq!(form_cursor_pos(&app), 6);
+    assert_eq!(form_selection(&app), None);
+    send_key(&mut app, KeyCode::Right, KeyModifiers::SHIFT);
+    send_key(&mut app, KeyCode::Right, KeyModifiers::SHIFT);
+    send_key(&mut app, KeyCode::Right, KeyModifiers::NONE);
+    assert_eq!(form_cursor_pos(&app), 8);
+    assert_eq!(form_selection(&app), None);
+}
+
+#[test]
+fn form_ctrl_a_then_backspace_clears_field() {
+    let mut app = app_with_component(ComponentKind::RichText);
+    open_form_edit_on_page_component(&mut app);
+    focus_rich_text_copy(&mut app);
+    if let Some(Modal::FormEdit {
+        state, cursor_pos, ..
+    }) = &mut app.modal
+    {
+        state.set("parent_copy", "keep this? no");
+        *cursor_pos = 4;
+    }
+    send_key(&mut app, KeyCode::Char('a'), KeyModifiers::CONTROL);
+    assert_eq!(
+        form_selection(&app),
+        Some((0, "keep this? no".chars().count()))
+    );
+    send_key(&mut app, KeyCode::Backspace, KeyModifiers::NONE);
+    assert_eq!(form_value(&app, "parent_copy"), "");
+    assert_eq!(form_selection(&app), None);
+}
+
+#[test]
+fn form_typing_replaces_selection() {
+    let mut app = app_with_component(ComponentKind::RichText);
+    open_form_edit_on_page_component(&mut app);
+    focus_rich_text_copy(&mut app);
+    if let Some(Modal::FormEdit {
+        state, cursor_pos, ..
+    }) = &mut app.modal
+    {
+        state.set("parent_copy", "hello world");
+        *cursor_pos = 0;
+    }
+    for _ in 0..5 {
+        send_key(&mut app, KeyCode::Right, KeyModifiers::SHIFT);
+    }
+    send_key(&mut app, KeyCode::Char('x'), KeyModifiers::NONE);
+    assert_eq!(form_value(&app, "parent_copy"), "x world");
+    assert_eq!(form_cursor_pos(&app), 1);
+    assert_eq!(form_selection(&app), None);
+}
+
+#[test]
+fn form_shift_down_extends_across_wrapped_row() {
+    let mut app = app_with_component(ComponentKind::RichText);
+    open_form_edit_on_page_component(&mut app);
+    focus_rich_text_copy(&mut app);
+    send_key(&mut app, KeyCode::Char('e'), KeyModifiers::CONTROL);
+    seed_focused_textarea_box(
+        &app,
+        Rect {
+            x: 0,
+            y: 0,
+            width: 7,
+            height: 8,
+        },
+    );
+    if let Some(Modal::FormEdit {
+        state, cursor_pos, ..
+    }) = &mut app.modal
+    {
+        state.set("parent_copy", "abcdefghij");
+        *cursor_pos = 2;
+    }
+    send_key(&mut app, KeyCode::Down, KeyModifiers::SHIFT);
+    assert_eq!(form_cursor_pos(&app), 7);
+    assert_eq!(form_selection(&app), Some((2, 7)));
+}
+
+#[test]
+fn form_mouse_drag_selects_range() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    open_page_head_form(&mut app);
+    let title_idx = match &app.modal {
+        Some(Modal::FormEdit { state, .. }) => state
+            .form
+            .fields
+            .iter()
+            .position(|f| f.id == "title")
+            .expect("title field"),
+        _ => panic!("expected FormEdit"),
+    };
+    if let Some(Modal::FormEdit {
+        state, cursor_pos, ..
+    }) = &mut app.modal
+    {
+        state.set("title", "Front Page");
+        *cursor_pos = 0;
+        state.focused_field = title_idx;
+    }
+    app.modal_field_areas.borrow_mut().clear();
+    app.modal_field_areas.borrow_mut().push((
+        title_idx,
+        Rect {
+            x: 0,
+            y: 0,
+            width: 20,
+            height: 3,
+        },
+    ));
+    send_mouse(&mut app, MouseEventKind::Down(MouseButton::Left), 2, 1);
+    send_mouse(&mut app, MouseEventKind::Drag(MouseButton::Left), 7, 1);
+    assert_eq!(form_cursor_pos(&app), 6);
+    assert_eq!(form_selection(&app), Some((1, 6)));
+}
+
+#[test]
+fn form_double_click_selects_word() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    open_page_head_form(&mut app);
+    let title_idx = match &app.modal {
+        Some(Modal::FormEdit { state, .. }) => state
+            .form
+            .fields
+            .iter()
+            .position(|f| f.id == "title")
+            .expect("title field"),
+        _ => panic!("expected FormEdit"),
+    };
+    if let Some(Modal::FormEdit {
+        state, cursor_pos, ..
+    }) = &mut app.modal
+    {
+        state.set("title", "Front Page");
+        *cursor_pos = 0;
+        state.focused_field = title_idx;
+    }
+    app.modal_field_areas.borrow_mut().clear();
+    app.modal_field_areas.borrow_mut().push((
+        title_idx,
+        Rect {
+            x: 0,
+            y: 0,
+            width: 20,
+            height: 3,
+        },
+    ));
+    send_mouse(&mut app, MouseEventKind::Down(MouseButton::Left), 2, 1);
+    send_mouse(&mut app, MouseEventKind::Down(MouseButton::Left), 2, 1);
+    assert_eq!(form_selection(&app), Some((0, 5)));
+    assert_eq!(form_cursor_pos(&app), 5);
+}
+
+#[test]
+fn form_shift_click_extends_selection() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    open_page_head_form(&mut app);
+    let title_idx = match &app.modal {
+        Some(Modal::FormEdit { state, .. }) => state
+            .form
+            .fields
+            .iter()
+            .position(|f| f.id == "title")
+            .expect("title field"),
+        _ => panic!("expected FormEdit"),
+    };
+    if let Some(Modal::FormEdit {
+        state, cursor_pos, ..
+    }) = &mut app.modal
+    {
+        state.set("title", "Front Page");
+        *cursor_pos = 0;
+        state.focused_field = title_idx;
+    }
+    app.modal_field_areas.borrow_mut().clear();
+    app.modal_field_areas.borrow_mut().push((
+        title_idx,
+        Rect {
+            x: 0,
+            y: 0,
+            width: 20,
+            height: 3,
+        },
+    ));
+    send_mouse(&mut app, MouseEventKind::Down(MouseButton::Left), 1, 1);
+    send_mouse_mods(
+        &mut app,
+        MouseEventKind::Down(MouseButton::Left),
+        7,
+        1,
+        KeyModifiers::SHIFT,
+    );
+    assert_eq!(form_selection(&app), Some((0, 6)));
+}
+
+#[test]
+fn selection_helpers_split_spans_and_words() {
+    assert_eq!(selection_range(None, 3), None);
+    assert_eq!(selection_range(Some(3), 3), None);
+    assert_eq!(selection_range(Some(1), 4), Some((1, 4)));
+    assert_eq!(selection_range(Some(4), 1), Some((1, 4)));
+    assert_eq!(word_bounds_at("hello world", 1), (0, 5));
+    assert_eq!(word_bounds_at("hello world", 5), (5, 6));
+    assert_eq!(word_bounds_at("hello world", 8), (6, 11));
+    let style = Style::default();
+    let hi = Style::default().add_modifier(Modifier::REVERSED);
+    let spans = spans_with_selection("abcdef", 0, Some((2, 4)), style, hi);
+    assert_eq!(spans.len(), 3);
+    assert_eq!(spans[0].content, "ab");
+    assert_eq!(spans[1].content, "cd");
+    assert_eq!(spans[2].content, "ef");
 }
 
 #[test]
@@ -1779,6 +2063,17 @@ fn text_click_sets_cursor_on_cell() {
 fn form_cursor_pos(app: &App) -> usize {
     match &app.modal {
         Some(Modal::FormEdit { cursor_pos, .. }) => *cursor_pos,
+        _ => panic!("expected FormEdit"),
+    }
+}
+
+fn form_selection(app: &App) -> Option<(usize, usize)> {
+    match &app.modal {
+        Some(Modal::FormEdit {
+            cursor_pos,
+            selection_anchor,
+            ..
+        }) => selection_range(*selection_anchor, *cursor_pos),
         _ => panic!("expected FormEdit"),
     }
 }
@@ -3305,6 +3600,7 @@ fn image_picker_esc_restores_paused_form_edit_modal() {
         state: dummy_form_state,
         cursor: cursor::Cursor::PageHero { page: 0, node: 0 },
         cursor_pos: 0,
+        selection_anchor: None,
         drill_stack: Vec::new(),
         scroll_offset: 0,
     };
@@ -3642,6 +3938,7 @@ fn f1_opens_help_while_form_edit_is_open() {
         state: editform::EditFormState::new(&editform::CTA_FORM),
         cursor: cursor::Cursor::PageHero { page: 0, node: 0 },
         cursor_pos: 0,
+        selection_anchor: None,
         drill_stack: Vec::new(),
         scroll_offset: 0,
     });
@@ -3794,6 +4091,8 @@ const FOOTER_TOKEN_ALLOWLIST: &[&str] = &[
     "P:Preview",
     "Ctrl+S:Save",
     "Tab:Field",
+    "Shift:Select",
+    "Ctrl+A:All",
     "Ctrl+E:Expand",
     "Ctrl+Z:Undo",
     "Esc:Cancel",

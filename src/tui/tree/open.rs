@@ -42,6 +42,7 @@ impl App {
                 state,
                 cursor: new_cursor,
                 cursor_pos,
+                selection_anchor: None,
                 drill_stack: Vec::new(),
                 scroll_offset: 0,
             });
@@ -56,6 +57,7 @@ impl App {
                 state,
                 cursor: new_cursor,
                 cursor_pos,
+                selection_anchor: None,
                 drill_stack: Vec::new(),
                 scroll_offset: 0,
             });
@@ -153,6 +155,7 @@ impl App {
             state,
             cursor: new_cursor,
             cursor_pos,
+            selection_anchor: None,
             drill_stack: Vec::new(),
             scroll_offset: 0,
         });
@@ -298,6 +301,7 @@ impl App {
                 items: vec![],
             },
             cursor_pos: item_cursor_pos,
+            selection_anchor: None,
             drill_stack,
             scroll_offset: 0,
         });
@@ -406,6 +410,7 @@ impl App {
             state: col_state,
             cursor: base_cursor,
             cursor_pos: col_cursor_pos,
+            selection_anchor: None,
             drill_stack,
             scroll_offset: 0,
         });
