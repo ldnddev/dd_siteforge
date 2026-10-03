@@ -9,6 +9,7 @@ use crate::model::{
     page_href,
 };
 use crate::renderer::render_site_to_dir;
+use crate::search_index::write_search_index;
 
 const GRUNT_ASSET_DIRS: &[&str] = &["css", "js", "webfonts", "favicon", "vendors"];
 
@@ -27,6 +28,7 @@ pub fn export_site(
     copy_built_assets(site_root, output_dir)?;
     copy_source_images(site_root, output_dir)?;
     write_sitemap(site, output_dir)?;
+    write_search_index(site, output_dir)?;
     write_robots(site, output_dir)?;
     let wrote_404 = write_404_if_missing(site, output_dir, site_root)?;
     Ok(ExportReport {
@@ -244,11 +246,20 @@ mod tests {
         assert!(report.wrote_404);
         assert!(out.join("index.html").exists());
         assert!(out.join("sitemap.xml").exists());
+        assert!(out.join("search-index.json").exists());
         assert!(out.join("robots.txt").exists());
         assert!(out.join("404.html").exists());
         let html = fs::read_to_string(out.join("index.html")).unwrap();
         assert!(html.contains("assets/css/style.min.css"));
         assert!(html.contains("lang=\"en\""));
+        assert!(html.contains("data-search-index=\"search-index.json\""));
+        let index: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(out.join("search-index.json")).unwrap())
+                .unwrap();
+        assert_eq!(index["v"], 1);
+        assert_eq!(index["pages"][0]["url"], "index.html");
+        assert_eq!(index["pages"][0]["path"], "/");
+        assert_eq!(index["pages"][0]["title"], "Home");
         assert!(
             !out.join("assets/css/style.min.css").exists(),
             "css comes from grunt, not a bundled pack"
@@ -334,6 +345,11 @@ mod tests {
         assert!(!map.contains("hidden.html"));
         let robots = fs::read_to_string(out.join("robots.txt")).unwrap();
         assert!(robots.contains("Sitemap: https://ex.com/sitemap.xml"));
+        let index: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(out.join("search-index.json")).unwrap())
+                .unwrap();
+        assert_eq!(index["pages"].as_array().unwrap().len(), 1);
+        assert_eq!(index["pages"][0]["title"], "Home");
         std::fs::remove_dir_all(&out).ok();
     }
 
@@ -356,11 +372,26 @@ mod tests {
             listing.contains("../assets/css/style.min.css"),
             "blog index needs one ../ for assets: {listing}"
         );
+        assert!(
+            listing.contains("data-search-index=\"../search-index.json\""),
+            "blog index needs one ../ for search-index: {listing}"
+        );
         let entry = fs::read_to_string(out.join("blog/entry/index.html")).unwrap();
         assert!(
             entry.contains("../../assets/css/style.min.css"),
             "blog entry needs two ../ for assets: {entry}"
         );
+        assert!(
+            entry.contains("data-search-index=\"../../search-index.json\""),
+            "blog entry needs two ../ for search-index: {entry}"
+        );
+        let index: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(out.join("search-index.json")).unwrap())
+                .unwrap();
+        assert_eq!(index["pages"][0]["url"], "blog/index.html");
+        assert_eq!(index["pages"][0]["path"], "/blog/");
+        assert_eq!(index["pages"][1]["url"], "blog/entry/index.html");
+        assert_eq!(index["pages"][1]["path"], "/blog/entry/");
         std::fs::remove_dir_all(&out).ok();
     }
 

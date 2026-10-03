@@ -4,6 +4,7 @@ mod health;
 mod model;
 mod renderer;
 mod scaffold;
+mod search_index;
 mod serve;
 mod session;
 mod storage;

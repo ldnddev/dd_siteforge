@@ -25,7 +25,7 @@ Workflow:
 3. `dd_siteforge` in a folder with `site.json` opens the TUI (or a recents/path picker). Last page and tree row restore from `~/.config/ldnddev/dd_siteforge/session.json`
 4. TUI edits pages/components/head. Autosave every 2s; `s` writes a `.backup`
 5. `Shift+B` runs `lando grunt build` when `.lando.yml` exists, else `npx grunt build`
-6. Export: HTML + Grunt `web/assets` + images + sitemap/robots/404
+6. Export: HTML + Grunt `web/assets` + images + sitemap/search-index/robots/404
 7. `Shift+P` / `serve` starts a local HTTP server so relative `assets/` paths resolve; preview HTML live-reloads after save/export/build
 
 Current crate version: see `Cargo.toml`.
@@ -82,6 +82,7 @@ Edit forms: Tab between fields, click-to-focus, click in a text field or textare
 - `init-site` asks for a project name (or `--name` / folder default when stdin is not a TTY) and stamps that slug into Lando, DDEV, and `package.json`.
 - CSS/JS come from Grunt (`source/{js,scss}` → `web/assets`). `Shift+B` in the TUI runs `lando grunt build` when `.lando.yml` is present (Lando owns Node); otherwise `npx grunt build`. If Lando is configured but missing or not started, the TUI shows the error instead of falling back to host Node. Host `npm install && npx grunt build` remains valid from a shell. DDEV is still an optional wrapper.
 - Export copies Grunt `web/assets/{css,js,webfonts,favicon,vendors}` unless dest is already that tree (does not clobber a local grunt build). Fills missing webfonts/favicon from `source/`. Copies `source/images/` → `<out>/assets/images/`.
+- Export also writes `search-index.json` next to `sitemap.xml` for client-side JS search. Schema: `{ "v": 1, "pages": [ { "url", "path", "title", "description", "body", "headings", "image"? } ] }`. Pages with `noindex` robots are omitted (same as sitemap). Generated `404.html` is omitted because it is not in `site.pages`. Header and footer copy are omitted so chrome labels do not match every page. `url` is the export-root `page_href` (`index.html`, `{slug}.html`, or `{slug}/index.html`). `path` is the display path (`/`, `/{slug}.html`, or `/{slug}/`). `title` is `head.title`. Description is `meta_description`, then `og_description`, then the first ~160 characters of body. Body is identifying page copy (hero/section/component titles, subtitles, copy, link labels, alts, collection items, data-table cells) with markdown stripped, whitespace collapsed, capped at 12k characters. `headings` are unique section/hero/card/accordion/tab titles (case-insensitive). `image` is `og_image` when set. Every page stamps `data-search-index="search-index.json"` on `<html>`; nested pages prefix it with `../` like other site-relative URLs. Fetch that path from the current document and resolve result links as index-directory + `url`.
 
 ### Validation
 

@@ -1350,8 +1350,8 @@ fn media_to_json(media: &Media) -> Value {
     }
 }
 
-/// Prefix site-relative `href`/`src`/`poster`/`content`/`srcset` values and
-/// JSON-LD `url`/`image` strings so nested pages still reach the export root.
+/// Prefix site-relative `href`/`src`/`poster`/`content`/`srcset`/`data-search-index`
+/// values and JSON-LD `url`/`image` strings so nested pages still reach the export root.
 fn prefix_relative_urls(html: &str, prefix: &str) -> String {
     if prefix.is_empty() {
         return html.to_string();
@@ -1360,6 +1360,7 @@ fn prefix_relative_urls(html: &str, prefix: &str) -> String {
     html = prefix_quoted_attrs(&html, prefix, "src");
     html = prefix_quoted_attrs(&html, prefix, "poster");
     html = prefix_quoted_attrs(&html, prefix, "content");
+    html = prefix_quoted_attrs(&html, prefix, "data-search-index");
     html = prefix_srcset_attrs(&html, prefix);
     html = prefix_json_string_key(&html, prefix, "url");
     html = prefix_json_string_key(&html, prefix, "image");
@@ -2204,18 +2205,23 @@ mod tests {
         let html = super::render_page_html_with_chrome(&r, &site.pages[0], "", "", &site).unwrap();
         assert!(html.contains("../../assets/css/style.min.css"), "{html}");
         assert!(html.contains("../../assets/js/main.min.js"), "{html}");
+        assert!(
+            html.contains("data-search-index=\"../../search-index.json\""),
+            "{html}"
+        );
         assert!(html.contains("class=\"page page-blog-entry\""));
         assert!(html.contains("https://ex.com/blog/entry/index.html"));
     }
 
     #[test]
     fn prefix_relative_urls_skips_absolute_and_hash() {
-        let html = r##"<a href="contact.html">c</a><a href="https://x.com">x</a><a href="#top">t</a><img src="assets/a.jpg">"##;
+        let html = r##"<a href="contact.html">c</a><a href="https://x.com">x</a><a href="#top">t</a><img src="assets/a.jpg"><html data-search-index="search-index.json">"##;
         let out = super::prefix_relative_urls(html, "../");
         assert!(out.contains("href=\"../contact.html\""));
         assert!(out.contains("href=\"https://x.com\""));
         assert!(out.contains("href=\"#top\""));
         assert!(out.contains("src=\"../assets/a.jpg\""));
+        assert!(out.contains("data-search-index=\"../search-index.json\""));
     }
 
     #[test]

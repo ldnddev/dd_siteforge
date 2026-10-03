@@ -13,6 +13,7 @@ src/
   storage.rs       JSON load/save
   validate.rs      validate_site() + validate_site_with_root() (missing-image)
   renderer.rs      typed-model → HTML via handlebars templates
+  search_index.rs  flattened search-index.json for client-side search
   templates.rs     load bundled, live crate templates/, site templates/, source/templates; seed from live crate tree when present
   scaffold.rs      embed Grunt/source/Lando/DDEV; seed on init; optional ~/.config overlay
   tui/mod.rs            App shell (struct, run loop, save/autosave)
@@ -65,7 +66,7 @@ Each component spec lives in `components/dd-*.md` (single source of truth for fi
 
 ## Renderer
 
-- Iterates `site.pages` in order. Home (`index`) is always `index.html`. Nested slugs (`blog/entry`) create folders. With site `pretty_urls`, non-home pages write `{slug}/index.html` (so `blog` → `blog/index.html`, `blog/entry` → `blog/entry/index.html`); otherwise `{slug}.html`. Nested pages prefix `href`/`src` with `../` so `assets/` and page links still resolve.
+- Iterates `site.pages` in order. Home (`index`) is always `index.html`. Nested slugs (`blog/entry`) create folders. With site `pretty_urls`, non-home pages write `{slug}/index.html` (so `blog` → `blog/index.html`, `blog/entry` → `blog/entry/index.html`); otherwise `{slug}.html`. Nested pages prefix `href`/`src`/`data-search-index` with `../` so `assets/`, page links, and `search-index.json` still resolve.
 - `dd-hero` / `dd-section` / each section component has a dedicated `render_*` fn in `src/renderer.rs`.
 - Special cases:
   - `dd-accordion` emits FAQ JSON-LD only when `parent_type == -faq`.
@@ -83,7 +84,8 @@ Each component spec lives in `components/dd-*.md` (single source of truth for fi
 - Timeline: optional ARIA label default `"Timeline"`, SAL stagger on items, events with year, optional datetime, title, heading 2–6 (default 3), markdown copy, optional image. `<ol>` of events. Datetime required when year is not YYYY / YYYY-MM / YYYY-MM-DD.
 - Data table: required caption, optional `-dense`, optional scroll label (default `"{caption}, scrollable"`), optional empty message, 1–5 columns (label / align / sortable), rows of text or `dd-badge` cells. First cell is `<th scope="row">`. No SAL. `sort_key` is derived from the column label slug. JS owns overflow `tabindex`/`role`/`aria-label`.
 - Site options: header CTA + banner on `DdHeader`; footer blurb / copyright / socials on `DdFooter`; GTM snippets on `Site`. GTM export extracts `GTM-XXXX` and emits canonical googletagmanager.com markup.
-- Static export: `crate::export::export_site(&site, &out, site_root)`. Writes page HTML (see slug rules above), copies Grunt `web/assets/{css,js,webfonts,favicon,vendors}` when the dest is not already `web/` (does not clobber a local `grunt build`), fills missing webfonts/favicon from `source/`, copies `<site_dir>/source/images/` → `<out>/assets/images/`, plus `sitemap.xml`, `robots.txt`, and `404.html` when no author 404 page exists.
+- Static export: `crate::export::export_site(&site, &out, site_root)`. Writes page HTML (see slug rules above), copies Grunt `web/assets/{css,js,webfonts,favicon,vendors}` when the dest is not already `web/` (does not clobber a local `grunt build`), fills missing webfonts/favicon from `source/`, copies `<site_dir>/source/images/` → `<out>/assets/images/`, plus `sitemap.xml`, `search-index.json`, `robots.txt`, and `404.html` when no author 404 page exists.
+- `search-index.json` is a flattened per-page index for client-side JS search (`v`, `pages[]` with `url`, `path`, `title`, `description`, `body`, `headings`, optional `image`). Same noindex skip as sitemap. Header/footer copy is omitted. `url` is `page_href`; `path` is the display path (`/` for home, `/{slug}/` pretty, `/{slug}.html` otherwise). Description is meta, then og, then a ~160-character body excerpt. Body is identifying copy with markdown stripped, whitespace collapsed, capped at 12k characters. Pages stamp `data-search-index="search-index.json"` on `<html>`; nested pages prefix that attribute with `../`.
 - Asset and page hrefs are relative to the export root (`assets/css/style.min.css`, `contact.html` or `contact/index.html`). Nested pages prepend `../`. `Shift+P` / `serve` start a local HTTP server so those paths resolve; a directory URL serves `index.html`.
 
 ## Validation
