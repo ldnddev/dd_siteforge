@@ -2,16 +2,332 @@
 @use "../partials/variables";
 @use "../elements/forms";
 
-/**
- * search field
- */
+@mixin dd_search_focus_ring {
+  outline: 2px solid variables.$c_text_primary;
+  outline-offset: 2px;
+  @include mixins.pref_dark {
+    outline-color: variables.$c_text_primary--dark;
+  }
+}
+
+body.-active-search {
+  overflow: hidden;
+}
+
 .dd-search {
-  display: none;
-  &.-active {
-    display: block;
-    position: fixed;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  max-height: 100dvh;
+  margin: 0;
+  padding: 24px 16px;
+  border: 0;
+  background: transparent;
+  overflow-y: auto;
+  color: variables.$c_text_primary;
+  &::backdrop {
+    background-color: variables.$c_support_overlay;
+  }
+  &:not([open]) {
+    display: none;
+  }
+  &__panel {
+    box-sizing: border-box;
     width: 100%;
-    height: 100vh;
-    z-index: 9000;
+    max-width: 42rem;
+    margin: 8vh auto 24px;
+    padding: 24px;
+    background-color: variables.$c_ui_neutral_100;
+    color: variables.$c_text_primary;
+    @include mixins.border_radius();
+    @include mixins.pref_dark {
+      background-color: variables.$c_ui_neutral_200--dark;
+      color: variables.$c_text_primary--dark;
+    }
+  }
+  &__header {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin: -24px -24px 16px;
+    padding: 24px 24px 12px;
+    background-color: variables.$c_ui_neutral_100;
+    @include mixins.pref_dark {
+      background-color: variables.$c_ui_neutral_200--dark;
+    }
+  }
+  &__title {
+    @include mixins.font_headline(bold);
+    @include mixins.font_size(22px);
+    margin: 0;
+  }
+  &__close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 8px;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    & svg {
+      width: 24px;
+      height: 24px;
+    }
+    &:focus-visible {
+      @include dd_search_focus_ring;
+    }
+  }
+  &__label {
+    display: block;
+    margin-bottom: 8px;
+    @include mixins.font_headline(semibold);
+  }
+  &__field {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  &__input {
+    flex: 1 1 16rem;
+    width: 100%;
+    min-height: 44px;
+    font-size: 16px;
+    border: 2px solid variables.$c_ui_neutral_600;
+    background-color: variables.$c_ui_neutral_100;
+    color: variables.$c_text_primary;
+    @include mixins.pref_dark {
+      border-color: variables.$c_ui_neutral_600--dark;
+      background-color: variables.$c_ui_neutral_100--dark;
+      color: variables.$c_text_primary--dark;
+    }
+    &::placeholder {
+      color: variables.$c_text_secondary;
+      opacity: 1;
+      @include mixins.pref_dark {
+        color: variables.$c_text_secondary--dark;
+      }
+    }
+    &:focus-visible {
+      @include dd_search_focus_ring;
+    }
+    &[aria-invalid="true"] {
+      border-color: variables.$c_error_text;
+      @include mixins.pref_dark {
+        border-color: variables.$c_error_text--dark;
+      }
+    }
+  }
+  &__submit {
+    flex: 0 0 auto;
+    min-height: 44px;
+    min-width: 44px;
+    &:focus-visible {
+      @include dd_search_focus_ring;
+    }
+  }
+  &__status {
+    min-height: 1.4em;
+    margin: 12px 0 0;
+    color: variables.$c_text_secondary;
+    @include mixins.pref_dark {
+      color: variables.$c_text_secondary--dark;
+    }
+  }
+  &__results {
+    list-style: none;
+    margin: 12px 0 0;
+    padding: 0;
+    max-height: min(50vh, 24rem);
+    overflow: auto;
+    &[hidden] {
+      display: none;
+    }
+  }
+  &__result {
+    border-top: 1px solid variables.$c_ui_neutral_600;
+    @include mixins.pref_dark {
+      border-top-color: variables.$c_ui_neutral_600--dark;
+    }
+  }
+  &__result-link {
+    display: block;
+    padding: 12px 8px 12px 12px;
+    border-left: 3px solid transparent;
+    text-decoration: none;
+    color: inherit;
+    &:hover {
+      background-color: variables.$c_ui_neutral_200;
+      @include mixins.pref_dark {
+        background-color: variables.$c_ui_neutral_300--dark;
+      }
+    }
+    &:focus-visible {
+      @include dd_search_focus_ring;
+      border-left-color: variables.$c_text_primary;
+      @include mixins.pref_dark {
+        border-left-color: variables.$c_text_primary--dark;
+      }
+    }
+  }
+  &__result-title {
+    display: block;
+    @include mixins.font_headline(bold);
+    color: variables.$c_text_primary;
+    @include mixins.pref_dark {
+      color: variables.$c_text_primary--dark;
+    }
+  }
+  &__result-description {
+    display: block;
+    margin-top: 4px;
+    color: variables.$c_text_secondary;
+    @include mixins.pref_dark {
+      color: variables.$c_text_secondary--dark;
+    }
+  }
+  &__more {
+    margin: 12px 0 0;
+    &[hidden] {
+      display: none;
+    }
+  }
+  &__more-link {
+    display: inline-block;
+    padding: 8px 0;
+    min-height: 44px;
+    @include mixins.font_headline(semibold);
+    &:focus-visible {
+      @include dd_search_focus_ring;
+    }
+  }
+}
+
+.dd-search-page {
+  &__title {
+    margin: 0 0 16px;
+  }
+  &__label {
+    display: block;
+    margin-bottom: 8px;
+    @include mixins.font_headline(semibold);
+  }
+  &__field {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  &__input {
+    flex: 1 1 16rem;
+    width: 100%;
+    min-height: 44px;
+    font-size: 16px;
+    border: 2px solid variables.$c_ui_neutral_600;
+    background-color: variables.$c_ui_neutral_100;
+    color: variables.$c_text_primary;
+    @include mixins.pref_dark {
+      border-color: variables.$c_ui_neutral_600--dark;
+      background-color: variables.$c_ui_neutral_100--dark;
+      color: variables.$c_text_primary--dark;
+    }
+    &::placeholder {
+      color: variables.$c_text_secondary;
+      opacity: 1;
+      @include mixins.pref_dark {
+        color: variables.$c_text_secondary--dark;
+      }
+    }
+    &:focus-visible {
+      @include dd_search_focus_ring;
+    }
+    &[aria-invalid="true"] {
+      border-color: variables.$c_error_text;
+      @include mixins.pref_dark {
+        border-color: variables.$c_error_text--dark;
+      }
+    }
+  }
+  &__submit {
+    min-height: 44px;
+    min-width: 44px;
+    &:focus-visible {
+      @include dd_search_focus_ring;
+    }
+  }
+  &__status {
+    min-height: 1.4em;
+    margin: 16px 0 0;
+    color: variables.$c_text_secondary;
+    @include mixins.pref_dark {
+      color: variables.$c_text_secondary--dark;
+    }
+  }
+  &__results {
+    list-style: none;
+    margin: 16px 0 0;
+    padding: 0;
+    &[hidden] {
+      display: none;
+    }
+  }
+  &__result {
+    border-top: 1px solid variables.$c_ui_neutral_600;
+    @include mixins.pref_dark {
+      border-top-color: variables.$c_ui_neutral_600--dark;
+    }
+  }
+  &__result-link {
+    display: block;
+    padding: 16px 8px 16px 12px;
+    border-left: 3px solid transparent;
+    text-decoration: none;
+    color: inherit;
+    &:hover {
+      background-color: variables.$c_ui_neutral_200;
+      @include mixins.pref_dark {
+        background-color: variables.$c_ui_neutral_300--dark;
+      }
+    }
+    &:focus-visible {
+      @include dd_search_focus_ring;
+      border-left-color: variables.$c_text_primary;
+      @include mixins.pref_dark {
+        border-left-color: variables.$c_text_primary--dark;
+      }
+    }
+  }
+  &__result-title {
+    display: block;
+    @include mixins.font_headline(bold);
+    @include mixins.font_size(20px);
+    color: variables.$c_text_primary;
+    @include mixins.pref_dark {
+      color: variables.$c_text_primary--dark;
+    }
+  }
+  &__result-description {
+    display: block;
+    margin-top: 6px;
+    color: variables.$c_text_secondary;
+    @include mixins.pref_dark {
+      color: variables.$c_text_secondary--dark;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dd-search,
+  .dd-search *,
+  .dd-search-page,
+  .dd-search-page * {
+    transition: none !important;
+    animation: none !important;
   }
 }

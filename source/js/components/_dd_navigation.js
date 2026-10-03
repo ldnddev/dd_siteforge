@@ -10,10 +10,9 @@ function dd_navigation() {
         dd_menu_toggle.classList.toggle('-active');
         // Toggle the -active class on the main menu div
         dd_main_menu.classList.toggle('-active');
-        // Force close search
-        // Toggle the -active class on the search element
-        document.querySelector('.dd-search__toggle').classList.remove('-active');
-        document.querySelector('.dd-search').classList.remove('-active');
+        if (typeof dd_search_close === 'function') {
+          dd_search_close();
+        }
       });
     }
 

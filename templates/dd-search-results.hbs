@@ -1,0 +1,12 @@
+<div class="dd-search-page">
+  <h1 class="dd-search-page__title">Search</h1>
+  <form class="dd-search-page__form" action="/search/" method="get" role="search">
+    <label class="dd-search-page__label" for="dd-page-search-q">Search the site</label>
+    <div class="dd-search-page__field">
+      <input class="dd-search-page__input" type="search" id="dd-page-search-q" name="q" autocomplete="off" spellcheck="false" placeholder="Search pages, services, and insights" aria-describedby="dd-page-search-status">
+      <button class="dd-search-page__submit dd-button -primary" type="submit">Search</button>
+    </div>
+  </form>
+  <p class="dd-search-page__status" id="dd-page-search-status" role="status"></p>
+  <ul class="dd-search-page__results" hidden aria-label="Search results"></ul>
+</div>

@@ -45,6 +45,19 @@
     }
   }
   & .dd-search__toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 8px;
+    &:focus-visible {
+      outline: 2px solid variables.$c_text_primary;
+      outline-offset: 2px;
+      @include mixins.pref_dark {
+        outline-color: variables.$c_text_primary--dark;
+      }
+    }
     &-open {
       display: block;
     }

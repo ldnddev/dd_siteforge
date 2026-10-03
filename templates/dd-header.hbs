@@ -2,15 +2,35 @@
 {{#if banner}}<div class="dd-header__banner"><div class="dd-header__banner-copy">{{banner}}</div></div>
 {{/if}}{{{alert_html}}}
   <div class="dd-header__top">
-{{{sections_html}}}
-{{#if cta_url}}    <div class="dd-header__cta"><a href="{{cta_url}}" class="dd-button -primary">{{cta_label}}</a></div>
-{{/if}}  </div>
-  <div class="dd-search">
-    <button class="dd-search__close">- search</button>
-    <form action="">
-      <label for="name">Search<br />
-        <input type="text" id="name">
-      </label>
-    </form>
+    {{{sections_html}}}
+    {{#if cta_url}}
+    <div class="dd-header__cta">
+      <a href="{{cta_url}}" class="dd-button -primary">{{cta_label}}</a>
+    </div>
+    {{/if}}
   </div>
+  <dialog class="dd-search" id="dd-search" aria-labelledby="dd-search-title">
+    <div class="dd-search__panel">
+      <div class="dd-search__header">
+        <h2 class="dd-search__title" id="dd-search-title">Search</h2>
+        <button class="dd-search__close" type="button">
+          <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M0 0h24v24H0z" fill="none"></path>
+            <path fill="currentColor" d="m12 13.4l-4.9 4.9q-.275.275-.7.275t-.7-.275t-.275-.7t.275-.7l4.9-4.9l-4.9-4.9q-.275-.275-.275-.7t.275-.7t.7-.275t.7.275l4.9 4.9l4.9-4.9q.275-.275.7-.275t.7.275t.275.7t-.275.7L13.4 12l4.9 4.9q.275.275.275.7t-.275.7t-.7.275t-.7-.275z"></path>
+          </svg>
+          <span class="visually-hidden">Close search</span>
+        </button>
+      </div>
+      <form class="dd-search__form" action="/search/" method="get" role="search">
+        <label class="dd-search__label" for="dd-search-q">Search the site</label>
+        <div class="dd-search__field">
+          <input class="dd-search__input" type="search" id="dd-search-q" name="q" autocomplete="off" spellcheck="false" placeholder="Search pages, services, and insights" aria-describedby="dd-search-status">
+          <button class="dd-search__submit dd-button -primary" type="submit">Search</button>
+        </div>
+      </form>
+      <p class="dd-search__status" id="dd-search-status" role="status"></p>
+      <ul class="dd-search__results" id="dd-search-results" hidden aria-label="Search results"></ul>
+      <p class="dd-search__more" hidden></p>
+    </div>
+  </dialog>
 </header>
