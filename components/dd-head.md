@@ -42,6 +42,7 @@ fields:
     required: false
     type: string
     maps_to: "<link rel='canonical'>"
+    notes: "Path or full URL. Empty uses base_url + public path (`/page/` when Pretty URLs is on). A path such as `/page/` is joined with Site base_url."
 
   - id: robots
     required: false
@@ -185,7 +186,7 @@ fields render conditionally below them.
 - `title` required and non-empty (after trimming); this is the page label in the TUI, not necessarily the HTML title
 - `meta_title` optional; when empty, `<title>` / OG title / schema name fall back to `title`
 - `meta_description` optional; recommended 50–160 characters when provided (warning only, not a hard fail)
-- `canonical_url` optional; when provided, must pass URL check (`http://`, `https://`, or `/`)
+- `canonical_url` optional; path or full URL. Empty export fills `base_url` + public path. A path is joined with Site `base_url`. When provided, must pass URL check (`http://`, `https://`, or `/`)
 - `robots` optional; must be one of the enum options when provided
 - `schema_type` required; must be one of the enum options (`WebPage`, `Article`, `AboutPage`, `ContactPage`, `CollectionPage`, `Organization`, `LocalBusiness`, `Product`, `Service`)
 - `og_title`, `og_description`, `og_image` all optional and independent; `og_image` must pass URL check when provided

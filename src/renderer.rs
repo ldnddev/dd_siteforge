@@ -25,7 +25,8 @@ pub fn render_site_to_dir(
     let footer_html = render_footer(&r, &site.footer, &site.name)?;
     for page in &site.pages {
         let html = render_page_html_with_chrome(&r, page, &header_html, &footer_html, site)?;
-        let file_name = crate::model::page_file_name(&page.slug, site.pretty_urls);
+        let pretty = page.slug != "404" && site.pretty_urls;
+        let file_name = crate::model::page_file_name(&page.slug, pretty);
         let out_path = output_dir.join(&file_name);
         if let Some(parent) = out_path.parent() {
             fs::create_dir_all(parent).with_context(|| {
@@ -80,7 +81,8 @@ pub fn render_page_html_with_chrome(
             "body_gtm": gtm_body_html(site.body_gtm_tag.as_deref()),
         }),
     )?;
-    let prefix = crate::model::relative_prefix(&page.slug, site.pretty_urls);
+    let prefix =
+        crate::model::url_prefix_for_page(&page.slug, site.pretty_urls, site.base_url.as_deref());
     Ok(prefix_relative_urls(&html, &prefix))
 }
 
@@ -103,25 +105,22 @@ fn render_head(r: &Renderer, head: &DdHead, site: &Site, page: &Page) -> anyhow:
     {
         schema.insert("description".to_string(), Value::String(d.to_string()));
     }
-    let file = crate::model::page_href(&page.slug, site.pretty_urls);
-    let stored_canonical = head
-        .canonical_url
-        .as_deref()
-        .map(str::trim)
-        .filter(|v| !v.is_empty())
-        .map(str::to_string);
-    let canonical = stored_canonical
-        .clone()
-        .or_else(|| crate::model::absolute_url(site.base_url.as_deref(), &file));
+    let canonical = crate::model::resolve_canonical_url(
+        site.base_url.as_deref(),
+        head.canonical_url.as_deref(),
+        &page.slug,
+        site.pretty_urls,
+    );
     if let Some(u) = canonical.as_deref() {
         schema.insert("url".to_string(), Value::String(u.to_string()));
     }
-    if let Some(i) = head
+    let og_image = head
         .og_image
         .as_deref()
         .map(str::trim)
         .filter(|v| !v.is_empty())
-    {
+        .map(|v| resolve_head_asset_url(v, site, page));
+    if let Some(i) = og_image.as_deref() {
         schema.insert("image".to_string(), Value::String(i.to_string()));
     }
     let schema_json =
@@ -147,12 +146,6 @@ fn render_head(r: &Renderer, head: &DdHead, site: &Site, page: &Page) -> anyhow:
                 .filter(|v| !v.is_empty())
                 .map(str::to_string)
         });
-    let og_image = head
-        .og_image
-        .as_deref()
-        .map(str::trim)
-        .filter(|v| !v.is_empty())
-        .map(|v| public_url(v));
     let og_url = canonical.clone();
     let twitter_card = og_image.as_ref().map(|_| "summary_large_image".to_string());
 
@@ -1350,8 +1343,9 @@ fn media_to_json(media: &Media) -> Value {
     }
 }
 
-/// Prefix site-relative `href`/`src`/`poster`/`content`/`srcset`/`data-search-index`
+/// Prefix site-relative `href`/`src`/`poster`/`srcset`/`data-search-index`
 /// values and JSON-LD `url`/`image` strings so nested pages still reach the export root.
+/// Meta `content` is skipped: viewport, robots, description, and OG titles are not URLs.
 fn prefix_relative_urls(html: &str, prefix: &str) -> String {
     if prefix.is_empty() {
         return html.to_string();
@@ -1359,7 +1353,6 @@ fn prefix_relative_urls(html: &str, prefix: &str) -> String {
     let mut html = prefix_quoted_attrs(html, prefix, "href");
     html = prefix_quoted_attrs(&html, prefix, "src");
     html = prefix_quoted_attrs(&html, prefix, "poster");
-    html = prefix_quoted_attrs(&html, prefix, "content");
     html = prefix_quoted_attrs(&html, prefix, "data-search-index");
     html = prefix_srcset_attrs(&html, prefix);
     html = prefix_json_string_key(&html, prefix, "url");
@@ -1462,6 +1455,20 @@ fn public_url(stored: &str) -> String {
     } else {
         t.trim_start_matches('/').to_string()
     }
+}
+
+/// Absolute asset URL when `base_url` is set; otherwise the page's relative prefix.
+fn resolve_head_asset_url(stored: &str, site: &Site, page: &Page) -> String {
+    let u = public_url(stored);
+    if crate::model::is_absolute_http_url(&u) {
+        return u;
+    }
+    if let Some(abs) = crate::model::absolute_url(site.base_url.as_deref(), &u) {
+        return abs;
+    }
+    let prefix =
+        crate::model::url_prefix_for_page(&page.slug, site.pretty_urls, site.base_url.as_deref());
+    format!("{prefix}{u}")
 }
 
 fn markdown_to_html(input: &str) -> String {
@@ -2185,8 +2192,8 @@ mod tests {
         let html = super::render_page_html_with_chrome(&r, &site.pages[0], &header, &footer, &site)
             .unwrap();
         assert!(html.contains("lang=\"fr\""));
-        assert!(html.contains("rel=\"canonical\" href=\"https://ex.com/index.html\""));
-        assert!(html.contains("property=\"og:url\" content=\"https://ex.com/index.html\""));
+        assert!(html.contains("rel=\"canonical\" href=\"https://ex.com/\""));
+        assert!(html.contains("property=\"og:url\" content=\"https://ex.com/\""));
         assert!(html.contains("property=\"og:title\" content=\"Home\""));
         assert!(html.contains("<title>Home</title>"));
         assert!(html.contains("©"));
@@ -2206,22 +2213,80 @@ mod tests {
         assert!(html.contains("../../assets/css/style.min.css"), "{html}");
         assert!(html.contains("../../assets/js/main.min.js"), "{html}");
         assert!(
-            html.contains("data-search-index=\"../../search-index.json\""),
+            html.contains("data-search-index=\"/search-index.json\"")
+                || html.contains("data-search-index=\"../../search-index.json\""),
             "{html}"
         );
         assert!(html.contains("class=\"page page-blog-entry\""));
-        assert!(html.contains("https://ex.com/blog/entry/index.html"));
+        assert!(html.contains("https://ex.com/blog/entry/"));
+        assert!(!html.contains("blog/entry/index.html"), "{html}");
+        assert!(
+            html.contains("content=\"width=device-width, initial-scale=1.0\""),
+            "viewport must not get a ../ prefix: {html}"
+        );
+        assert!(
+            html.contains("content=\"index, follow\""),
+            "robots must not get a ../ prefix: {html}"
+        );
+        assert!(
+            html.contains("property=\"og:title\" content=\"Home\""),
+            "og:title must not get a ../ prefix: {html}"
+        );
+        assert!(
+            html.contains("property=\"og:type\" content=\"website\""),
+            "og:type must not get a ../ prefix: {html}"
+        );
+        assert!(
+            html.contains("name=\"theme-color\" content=\"#ffffff\""),
+            "{html}"
+        );
+    }
+
+    #[test]
+    fn nested_page_joins_typed_canonical_path_with_base_url() {
+        let mut site = Site::starter();
+        site.pretty_urls = true;
+        site.base_url = Some("https://www.ldnddev.com".to_string());
+        site.pages[0].slug = "services".to_string();
+        site.pages[0].head.canonical_url = Some("/page/".to_string());
+        site.pages[0].head.meta_description = Some("We build sites.".to_string());
+        site.pages[0].head.og_image = Some("assets/images/og.jpg".to_string());
+        let r = crate::templates::Renderer::bundled_only().unwrap();
+        let html = super::render_page_html_with_chrome(&r, &site.pages[0], "", "", &site).unwrap();
+        assert!(
+            html.contains("rel=\"canonical\" href=\"https://www.ldnddev.com/page/\""),
+            "{html}"
+        );
+        assert!(
+            html.contains("property=\"og:url\" content=\"https://www.ldnddev.com/page/\""),
+            "{html}"
+        );
+        assert!(
+            html.contains("content=\"We build sites.\""),
+            "description must not get a ../ prefix: {html}"
+        );
+        assert!(
+            html.contains(
+                "property=\"og:image\" content=\"https://www.ldnddev.com/assets/images/og.jpg\""
+            ),
+            "{html}"
+        );
     }
 
     #[test]
     fn prefix_relative_urls_skips_absolute_and_hash() {
-        let html = r##"<a href="contact.html">c</a><a href="https://x.com">x</a><a href="#top">t</a><img src="assets/a.jpg"><html data-search-index="search-index.json">"##;
+        let html = r##"<a href="contact.html">c</a><a href="https://x.com">x</a><a href="#top">t</a><img src="assets/a.jpg"><html data-search-index="search-index.json"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="robots" content="index, follow"><meta name="description" content="Hello world"><meta property="og:type" content="website">"##;
         let out = super::prefix_relative_urls(html, "../");
         assert!(out.contains("href=\"../contact.html\""));
         assert!(out.contains("href=\"https://x.com\""));
         assert!(out.contains("href=\"#top\""));
         assert!(out.contains("src=\"../assets/a.jpg\""));
         assert!(out.contains("data-search-index=\"../search-index.json\""));
+        assert!(out.contains("content=\"width=device-width, initial-scale=1.0\""));
+        assert!(out.contains("content=\"index, follow\""));
+        assert!(out.contains("content=\"Hello world\""));
+        assert!(out.contains("content=\"website\""));
+        assert!(!out.contains("content=\"../"));
     }
 
     #[test]

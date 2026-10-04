@@ -1882,6 +1882,86 @@ pub fn relative_prefix(slug: &str, pretty: bool) -> String {
     "../".repeat(page_dir_depth(slug, pretty))
 }
 
+/// Public URL path visitors use (leading slash). Home is `/`.
+/// Pretty: `/blog/`, `/blog/entry/`. Files: `/blog.html`, `/blog/entry.html`.
+pub fn page_public_path(slug: &str, pretty: bool) -> String {
+    if slug == "index" {
+        "/".to_string()
+    } else if pretty {
+        format!("/{slug}/")
+    } else {
+        format!("/{slug}.html")
+    }
+}
+
+/// Prefix for site-relative `href`/`src` on this page. Nested pages get `../`.
+/// `404.html` is served at arbitrary depths, so it uses the site origin
+/// (or `/` when `base_url` is unset) instead of `../`.
+pub fn url_prefix_for_page(slug: &str, pretty: bool, base_url: Option<&str>) -> String {
+    if slug == "404" {
+        match base_url.map(str::trim).filter(|s| !s.is_empty()) {
+            Some(base) => format!("{}/", base.trim_end_matches('/')),
+            None => "/".to_string(),
+        }
+    } else {
+        relative_prefix(slug, pretty)
+    }
+}
+
+/// True for `http://` or `https://` URLs.
+pub fn is_absolute_http_url(url: &str) -> bool {
+    let u = url.trim();
+    u.starts_with("https://") || u.starts_with("http://")
+}
+
+/// Canonical href: a stored path or full URL joined with `base_url`, or
+/// `base_url` + [`page_public_path`] when stored is empty. Auto-fill is
+/// skipped for the `404` slug so error documents do not canonicalize to
+/// `/404/index.html`.
+pub fn resolve_canonical_url(
+    base_url: Option<&str>,
+    stored: Option<&str>,
+    slug: &str,
+    pretty: bool,
+) -> Option<String> {
+    let stored = stored.map(str::trim).filter(|s| !s.is_empty());
+    if let Some(s) = stored {
+        if is_absolute_http_url(s) {
+            return Some(s.to_string());
+        }
+        return absolute_url(base_url, s).or_else(|| Some(s.to_string()));
+    }
+    if slug == "404" {
+        return None;
+    }
+    absolute_url(base_url, &page_public_path(slug, pretty))
+}
+
+/// UTC calendar date as `YYYY-MM-DD`.
+pub fn utc_date_ymd() -> String {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let (y, m, d) = unix_secs_to_ymd(secs);
+    format!("{y:04}-{m:02}-{d:02}")
+}
+
+/// Civil date from Unix seconds (UTC). Howard Hinnant's algorithm.
+pub(crate) fn unix_secs_to_ymd(secs: u64) -> (i32, u32, u32) {
+    let z = (secs / 86_400) as i64 + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = (z - era * 146_097) as u64;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    (y as i32, m as u32, d as u32)
+}
+
 /// Prefix `column_id` with `{section_id}-` when it does not already have that prefix.
 pub fn qualify_column_id(section_id: &str, column_id: &str) -> String {
     let section_id = section_id.trim();
@@ -2251,6 +2331,72 @@ mod tests {
         );
         assert!(absolute_url(None, "index.html").is_none());
         assert!(absolute_url(Some("  "), "index.html").is_none());
+    }
+
+    #[test]
+    fn page_public_path_pretty_and_files() {
+        assert_eq!(page_public_path("index", true), "/");
+        assert_eq!(page_public_path("index", false), "/");
+        assert_eq!(page_public_path("services", true), "/services/");
+        assert_eq!(page_public_path("services", false), "/services.html");
+        assert_eq!(page_public_path("blog/entry", true), "/blog/entry/");
+        assert_eq!(page_public_path("blog/entry", false), "/blog/entry.html");
+    }
+
+    #[test]
+    fn resolve_canonical_joins_base_url_with_path_or_slug() {
+        assert_eq!(
+            resolve_canonical_url(Some("https://www.ldnddev.com"), None, "page", true).as_deref(),
+            Some("https://www.ldnddev.com/page/")
+        );
+        assert_eq!(
+            resolve_canonical_url(
+                Some("https://www.ldnddev.com"),
+                Some("/page/"),
+                "ignored",
+                true
+            )
+            .as_deref(),
+            Some("https://www.ldnddev.com/page/")
+        );
+        assert_eq!(
+            resolve_canonical_url(
+                Some("https://www.ldnddev.com/"),
+                Some("https://other.example/x"),
+                "page",
+                true
+            )
+            .as_deref(),
+            Some("https://other.example/x")
+        );
+        assert_eq!(
+            resolve_canonical_url(Some("https://ex.com"), None, "index", false).as_deref(),
+            Some("https://ex.com/")
+        );
+        assert!(resolve_canonical_url(Some("https://ex.com"), None, "404", true).is_none());
+        assert!(resolve_canonical_url(None, None, "page", true).is_none());
+    }
+
+    #[test]
+    fn url_prefix_for_404_uses_origin_or_root() {
+        assert_eq!(
+            url_prefix_for_page("404", true, Some("https://www.ldnddev.com")),
+            "https://www.ldnddev.com/"
+        );
+        assert_eq!(url_prefix_for_page("404", true, None), "/");
+        assert_eq!(url_prefix_for_page("services", true, None), "../");
+        assert_eq!(url_prefix_for_page("index", true, None), "");
+    }
+
+    #[test]
+    fn unix_secs_to_ymd_known_instants() {
+        assert_eq!(unix_secs_to_ymd(0), (1970, 1, 1));
+        assert_eq!(unix_secs_to_ymd(1_700_000_000), (2023, 11, 14));
+        assert_eq!(unix_secs_to_ymd(1_735_689_600), (2025, 1, 1));
+        let today = utc_date_ymd();
+        assert_eq!(today.len(), 10);
+        assert_eq!(&today[4..5], "-");
+        assert_eq!(&today[7..8], "-");
     }
 
     #[test]

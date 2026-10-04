@@ -296,7 +296,7 @@ pub static PAGE_HEAD_FORM: EditForm = EditForm {
         },
         FormField {
             id: "canonical_url",
-            label: "Canonical URL",
+            label: "Canonical URL (path or full)",
             kind: FieldKind::Text { default: "" },
             required: false,
             visible_when: None,

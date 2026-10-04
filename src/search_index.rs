@@ -10,7 +10,7 @@ use crate::model::{
     DdAccordion, DdAlert, DdAlternating, DdBanner, DdBlockquote, DdCard, DdCta, DdDataTable,
     DdFilmstrip, DdHero, DdImage, DdMilestones, DdModal, DdNavigation, DdRichText, DdSection,
     DdSlider, DdTabs, DdTimeline, Media, NavigationItem, Page, PageNode, RobotsDirective,
-    SectionComponent, Site, page_href,
+    SectionComponent, Site, page_href, page_public_path,
 };
 
 const INDEX_VERSION: u32 = 1;
@@ -83,7 +83,7 @@ fn index_page(page: &Page, pretty: bool) -> SearchPage {
         .map(str::to_string);
     SearchPage {
         url: page_href(&page.slug, pretty),
-        path: page_display_path(&page.slug, pretty),
+        path: page_public_path(&page.slug, pretty),
         title: page.head.title.trim().to_string(),
         description,
         body,
@@ -93,14 +93,7 @@ fn index_page(page: &Page, pretty: bool) -> SearchPage {
 }
 
 pub(crate) fn page_display_path(slug: &str, pretty: bool) -> String {
-    if slug == "index" {
-        return "/".to_string();
-    }
-    if pretty {
-        format!("/{slug}/")
-    } else {
-        format!("/{slug}.html")
-    }
+    page_public_path(slug, pretty)
 }
 
 fn page_description(head: &crate::model::DdHead, body: &str) -> String {

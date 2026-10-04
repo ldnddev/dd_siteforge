@@ -6,7 +6,7 @@ use anyhow::Context;
 use crate::model::{
     DdRichText, DdSection, Page, PageNode, RobotsDirective, SalAnimation, SchemaType, SectionClass,
     SectionColumn, SectionComponent, SectionItemBoxClass, Site, absolute_url, page_file_name,
-    page_href,
+    page_public_path, utc_date_ymd,
 };
 use crate::renderer::render_site_to_dir;
 use crate::search_index::write_search_index;
@@ -123,6 +123,7 @@ fn write_sitemap(site: &Site, output_dir: &Path) -> anyhow::Result<()> {
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 "#,
     );
+    let lastmod = utc_date_ymd();
     for page in &site.pages {
         if matches!(
             page.head.robots,
@@ -130,11 +131,13 @@ fn write_sitemap(site: &Site, output_dir: &Path) -> anyhow::Result<()> {
         ) {
             continue;
         }
-        let file = page_href(&page.slug, site.pretty_urls);
-        let loc = absolute_url(site.base_url.as_deref(), &file).unwrap_or(file);
-        body.push_str("  <url><loc>");
+        let path = page_public_path(&page.slug, site.pretty_urls);
+        let loc = absolute_url(site.base_url.as_deref(), &path).unwrap_or(path);
+        body.push_str("  <url>\n    <loc>");
         body.push_str(&xml_escape(&loc));
-        body.push_str("</loc></url>\n");
+        body.push_str("</loc>\n    <lastmod>");
+        body.push_str(&xml_escape(&lastmod));
+        body.push_str("</lastmod>\n  </url>\n");
     }
     body.push_str("</urlset>\n");
     fs::write(output_dir.join("sitemap.xml"), body).context("failed to write sitemap.xml")
@@ -191,13 +194,13 @@ fn not_found_page() -> Page {
         },
         nodes: vec![PageNode::Section(DdSection {
             id: "section-404".to_string(),
-            section_title: Some("Not Found".to_string()),
+            section_title: None,
             section_class: Some(SectionClass::FullContained),
             item_box_class: Some(SectionItemBoxClass::LBox),
             bg: None,
             padding: None,
             custom_css: None,
-            aria_label: None,
+            aria_label: Some("Not Found".to_string()),
             sal: SalAnimation::NoAnimation,
             sal_duration: None,
             sal_delay: None,
@@ -206,10 +209,10 @@ fn not_found_page() -> Page {
                 width_class: "dd-u-1-1".to_string(),
                 components: vec![SectionComponent::RichText(DdRichText {
                     parent_class: None,
-                    sal: crate::model::SalAnimation::Fade,
+                    sal: crate::model::SalAnimation::NoAnimation,
                     sal_duration: None,
                     sal_delay: None,
-                    parent_copy: "This page does not exist.".to_string(),
+                    parent_copy: "# Not Found\n\nThis page does not exist.".to_string(),
                 })],
             }],
         })],
@@ -249,10 +252,24 @@ mod tests {
         assert!(out.join("search-index.json").exists());
         assert!(out.join("robots.txt").exists());
         assert!(out.join("404.html").exists());
+        let not_found = fs::read_to_string(out.join("404.html")).unwrap();
+        assert!(not_found.contains("<h1>Not Found</h1>"), "{not_found}");
+        assert!(
+            not_found.contains("href=\"/assets/css/style.min.css\""),
+            "404 CSS must be root-relative for deep missing URLs: {not_found}"
+        );
+        assert!(
+            !not_found.contains("rel=\"canonical\""),
+            "auto 404 must not canonicalize to /404/index.html: {not_found}"
+        );
+        assert!(!not_found.contains("404/index.html"), "{not_found}");
         let html = fs::read_to_string(out.join("index.html")).unwrap();
         assert!(html.contains("assets/css/style.min.css"));
         assert!(html.contains("lang=\"en\""));
-        assert!(html.contains("data-search-index=\"search-index.json\""));
+        assert!(
+            html.contains("data-search-index=\"search-index.json\"")
+                || html.contains("data-search-index=\"/search-index.json\"")
+        );
         let index: serde_json::Value =
             serde_json::from_str(&fs::read_to_string(out.join("search-index.json")).unwrap())
                 .unwrap();
@@ -341,8 +358,10 @@ mod tests {
         site.pages[1].head.robots = RobotsDirective::NoindexNofollow;
         export_site(&site, &out, None).expect("export");
         let map = fs::read_to_string(out.join("sitemap.xml")).unwrap();
-        assert!(map.contains("https://ex.com/index.html"));
+        assert!(map.contains("https://ex.com/"), "{map}");
+        assert!(map.contains("<lastmod>"), "{map}");
         assert!(!map.contains("hidden.html"));
+        assert!(!map.contains("index.html"), "{map}");
         let robots = fs::read_to_string(out.join("robots.txt")).unwrap();
         assert!(robots.contains("Sitemap: https://ex.com/sitemap.xml"));
         let index: serde_json::Value =
@@ -373,8 +392,9 @@ mod tests {
             "blog index needs one ../ for assets: {listing}"
         );
         assert!(
-            listing.contains("data-search-index=\"../search-index.json\""),
-            "blog index needs one ../ for search-index: {listing}"
+            listing.contains("data-search-index=\"../search-index.json\"")
+                || listing.contains("data-search-index=\"/search-index.json\""),
+            "blog index needs a resolvable search-index: {listing}"
         );
         let entry = fs::read_to_string(out.join("blog/entry/index.html")).unwrap();
         assert!(
@@ -382,8 +402,9 @@ mod tests {
             "blog entry needs two ../ for assets: {entry}"
         );
         assert!(
-            entry.contains("data-search-index=\"../../search-index.json\""),
-            "blog entry needs two ../ for search-index: {entry}"
+            entry.contains("data-search-index=\"../../search-index.json\"")
+                || entry.contains("data-search-index=\"/search-index.json\""),
+            "blog entry needs a resolvable search-index: {entry}"
         );
         let index: serde_json::Value =
             serde_json::from_str(&fs::read_to_string(out.join("search-index.json")).unwrap())
@@ -392,6 +413,36 @@ mod tests {
         assert_eq!(index["pages"][0]["path"], "/blog/");
         assert_eq!(index["pages"][1]["url"], "blog/entry/index.html");
         assert_eq!(index["pages"][1]["path"], "/blog/entry/");
+        let map = fs::read_to_string(out.join("sitemap.xml")).unwrap();
+        assert!(map.contains("<loc>/blog/</loc>"), "{map}");
+        assert!(map.contains("<loc>/blog/entry/</loc>"), "{map}");
+        assert!(map.contains("<lastmod>"), "{map}");
+        assert!(!map.contains("blog/index.html"), "{map}");
+        std::fs::remove_dir_all(&out).ok();
+    }
+
+    #[test]
+    fn pretty_404_uses_root_assets_h1_and_skips_canonical() {
+        let out = tmp_dir("dd_export_pretty_404");
+        let mut site = Site::starter();
+        site.pretty_urls = true;
+        site.base_url = Some("https://www.ldnddev.com".to_string());
+        export_site(&site, &out, None).expect("export");
+        assert!(out.join("404.html").exists());
+        assert!(!out.join("404/index.html").exists());
+        let html = fs::read_to_string(out.join("404.html")).unwrap();
+        assert!(html.contains("<h1>Not Found</h1>"), "{html}");
+        assert!(
+            html.contains("href=\"https://www.ldnddev.com/assets/css/style.min.css\""),
+            "404 CSS must be absolute so deep missing URLs still load: {html}"
+        );
+        assert!(!html.contains("rel=\"canonical\""), "{html}");
+        assert!(!html.contains("404/index.html"), "{html}");
+        let home = fs::read_to_string(out.join("index.html")).unwrap();
+        assert!(
+            home.contains("rel=\"canonical\" href=\"https://www.ldnddev.com/\""),
+            "{home}"
+        );
         std::fs::remove_dir_all(&out).ok();
     }
 

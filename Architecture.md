@@ -66,7 +66,7 @@ Each component spec lives in `components/dd-*.md` (single source of truth for fi
 
 ## Renderer
 
-- Iterates `site.pages` in order. Home (`index`) is always `index.html`. Nested slugs (`blog/entry`) create folders. With site `pretty_urls`, non-home pages write `{slug}/index.html` (so `blog` → `blog/index.html`, `blog/entry` → `blog/entry/index.html`); otherwise `{slug}.html`. Nested pages prefix `href`/`src`/`data-search-index` with `../` so `assets/`, page links, and `search-index.json` still resolve.
+- Iterates `site.pages` in order. Home (`index`) is always `index.html`. Nested slugs (`blog/entry`) create folders. With site `pretty_urls`, non-home pages write `{slug}/index.html` (so `blog` → `blog/index.html`, `blog/entry` → `blog/entry/index.html`); otherwise `{slug}.html`. Nested pages prefix `href`/`src`/`poster`/`srcset`/`data-search-index` with `../` so `assets/`, page links, and `search-index.json` still resolve. Meta `content` (viewport, robots, description, OG titles) is not prefixed. Canonical, `og:url`, schema `url`, and sitemap `<loc>` use `base_url` plus the public path (`/` home, `/{slug}/` pretty, `/{slug}.html` otherwise). A stored canonical path such as `/page/` is joined with `base_url`. Auto 404 writes root `404.html` with an `<h1>`, no self-canonical, and origin- or `/`-prefixed assets so CSS still loads at deep missing URLs. Sitemap entries include `<lastmod>` (`YYYY-MM-DD` UTC export date).
 - `dd-hero` / `dd-section` / each section component has a dedicated `render_*` fn in `src/renderer.rs`.
 - Special cases:
   - `dd-accordion` emits FAQ JSON-LD only when `parent_type == -faq`.
