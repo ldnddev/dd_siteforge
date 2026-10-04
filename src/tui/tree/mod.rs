@@ -14,7 +14,7 @@ pub(in crate::tui) struct TreeRow {
     pub(in crate::tui) kind: TreeRowKind,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(in crate::tui) enum TreeRowKind {
     SiteRoot,
     HeaderRoot,

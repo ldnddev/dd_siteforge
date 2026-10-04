@@ -816,9 +816,10 @@ impl App {
                 self.push_undo();
                 let page = self.current_page_mut().unwrap();
                 page.nodes.swap(node_idx, dest as usize);
-                self.selected_node = dest as usize;
+                let dest = dest as usize;
+                self.selected_node = dest;
                 self.push_toast(ToastLevel::Info, "Moved node.");
-                self.sync_tree_row_with_selection();
+                self.snap_tree_row_to_kind(moved_tree_row_kind(kind, dest));
             }
             TreeRowKind::Component {
                 node_idx,
@@ -846,9 +847,10 @@ impl App {
                 section.columns[column_idx]
                     .components
                     .swap(component_idx, dest as usize);
-                self.selected_component = dest as usize;
+                let dest = dest as usize;
+                self.selected_component = dest;
                 self.push_toast(ToastLevel::Info, "Moved component.");
-                self.sync_tree_row_with_selection();
+                self.snap_tree_row_to_kind(moved_tree_row_kind(kind, dest));
             }
             TreeRowKind::HeaderComponent {
                 section_idx,
@@ -882,7 +884,10 @@ impl App {
                 self.push_undo();
                 if self.move_selected_collection_item(delta) {
                     self.push_toast(ToastLevel::Info, "Moved item.");
-                    self.sync_tree_row_with_selection();
+                    self.snap_tree_row_to_kind(moved_tree_row_kind(
+                        kind,
+                        self.selected_nested_item,
+                    ));
                 } else {
                     self.undo_stack.pop();
                 }
@@ -929,7 +934,8 @@ impl App {
         };
         let col = &mut sections[section_idx].columns[column_idx];
         col.components.swap(component_idx, dest as usize);
-        self.selected_header_component = dest as usize;
+        let dest = dest as usize;
+        self.selected_header_component = dest;
         self.push_toast(
             ToastLevel::Info,
             if footer {
@@ -938,7 +944,20 @@ impl App {
                 "Moved header component."
             },
         );
-        self.sync_tree_row_with_selection();
+        let dest_kind = if footer {
+            TreeRowKind::FooterComponent {
+                section_idx,
+                column_idx,
+                component_idx: dest,
+            }
+        } else {
+            TreeRowKind::HeaderComponent {
+                section_idx,
+                column_idx,
+                component_idx: dest,
+            }
+        };
+        self.snap_tree_row_to_kind(dest_kind);
     }
 
     pub(in crate::tui) fn move_selected_collection_item(&mut self, delta: isize) -> bool {
@@ -1007,5 +1026,151 @@ impl App {
             self.selected_nested_item = dest;
         }
         swapped
+    }
+}
+
+fn moved_tree_row_kind(kind: TreeRowKind, dest: usize) -> TreeRowKind {
+    match kind {
+        TreeRowKind::Hero { .. } => TreeRowKind::Hero { node_idx: dest },
+        TreeRowKind::Section { .. } => TreeRowKind::Section { node_idx: dest },
+        TreeRowKind::Component {
+            node_idx,
+            column_idx,
+            ..
+        } => TreeRowKind::Component {
+            node_idx,
+            column_idx,
+            component_idx: dest,
+        },
+        TreeRowKind::HeaderComponent {
+            section_idx,
+            column_idx,
+            ..
+        } => TreeRowKind::HeaderComponent {
+            section_idx,
+            column_idx,
+            component_idx: dest,
+        },
+        TreeRowKind::FooterComponent {
+            section_idx,
+            column_idx,
+            ..
+        } => TreeRowKind::FooterComponent {
+            section_idx,
+            column_idx,
+            component_idx: dest,
+        },
+        TreeRowKind::Column { node_idx, .. } => TreeRowKind::Column {
+            node_idx,
+            column_idx: dest,
+        },
+        TreeRowKind::HeaderColumn { section_idx, .. } => TreeRowKind::HeaderColumn {
+            section_idx,
+            column_idx: dest,
+        },
+        TreeRowKind::FooterColumn { section_idx, .. } => TreeRowKind::FooterColumn {
+            section_idx,
+            column_idx: dest,
+        },
+        TreeRowKind::AccordionItem {
+            node_idx,
+            column_idx,
+            component_idx,
+            ..
+        } => TreeRowKind::AccordionItem {
+            node_idx,
+            column_idx,
+            component_idx,
+            item_idx: dest,
+        },
+        TreeRowKind::AlternatingItem {
+            node_idx,
+            column_idx,
+            component_idx,
+            ..
+        } => TreeRowKind::AlternatingItem {
+            node_idx,
+            column_idx,
+            component_idx,
+            item_idx: dest,
+        },
+        TreeRowKind::CardItem {
+            node_idx,
+            column_idx,
+            component_idx,
+            ..
+        } => TreeRowKind::CardItem {
+            node_idx,
+            column_idx,
+            component_idx,
+            item_idx: dest,
+        },
+        TreeRowKind::FilmstripItem {
+            node_idx,
+            column_idx,
+            component_idx,
+            ..
+        } => TreeRowKind::FilmstripItem {
+            node_idx,
+            column_idx,
+            component_idx,
+            item_idx: dest,
+        },
+        TreeRowKind::MilestonesItem {
+            node_idx,
+            column_idx,
+            component_idx,
+            ..
+        } => TreeRowKind::MilestonesItem {
+            node_idx,
+            column_idx,
+            component_idx,
+            item_idx: dest,
+        },
+        TreeRowKind::SliderItem {
+            node_idx,
+            column_idx,
+            component_idx,
+            ..
+        } => TreeRowKind::SliderItem {
+            node_idx,
+            column_idx,
+            component_idx,
+            item_idx: dest,
+        },
+        TreeRowKind::TabsItem {
+            node_idx,
+            column_idx,
+            component_idx,
+            ..
+        } => TreeRowKind::TabsItem {
+            node_idx,
+            column_idx,
+            component_idx,
+            item_idx: dest,
+        },
+        TreeRowKind::TimelineItem {
+            node_idx,
+            column_idx,
+            component_idx,
+            ..
+        } => TreeRowKind::TimelineItem {
+            node_idx,
+            column_idx,
+            component_idx,
+            item_idx: dest,
+        },
+        TreeRowKind::DataTableRow {
+            node_idx,
+            column_idx,
+            component_idx,
+            ..
+        } => TreeRowKind::DataTableRow {
+            node_idx,
+            column_idx,
+            component_idx,
+            item_idx: dest,
+        },
+        other => other,
     }
 }

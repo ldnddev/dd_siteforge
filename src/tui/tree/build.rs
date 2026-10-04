@@ -1145,4 +1145,15 @@ impl App {
             .unwrap_or_else(|| self.selected_tree_row.min(rows.len().saturating_sub(1)));
         self.selected_tree_row = wanted;
     }
+
+    /// Keep the layout highlight on an exact row after a reorder. Generic
+    /// `sync_tree_row_with_selection` matches parent section/root rows first.
+    pub(in crate::tui) fn snap_tree_row_to_kind(&mut self, kind: TreeRowKind) {
+        let rows = self.build_tree_rows();
+        if let Some(idx) = rows.iter().position(|r| r.kind == kind) {
+            self.selected_tree_row = idx;
+            return;
+        }
+        self.sync_tree_row_with_selection();
+    }
 }

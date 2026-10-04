@@ -3732,8 +3732,157 @@ fn jk_reorders_nodes() {
     send_key(&mut app, KeyCode::Char('J'), KeyModifiers::SHIFT);
     assert!(matches!(app.site.pages[0].nodes[0], PageNode::Section(_)));
     assert!(matches!(app.site.pages[0].nodes[1], PageNode::Hero(_)));
+    assert!(
+        matches!(
+            app.selected_tree_row_kind(),
+            Some(TreeRowKind::Hero { node_idx: 1 })
+        ),
+        "hero should stay selected after moving down, got {:?}",
+        app.selected_tree_row_kind()
+    );
     send_key(&mut app, KeyCode::Char('K'), KeyModifiers::SHIFT);
     assert!(matches!(app.site.pages[0].nodes[0], PageNode::Hero(_)));
+    assert!(
+        matches!(
+            app.selected_tree_row_kind(),
+            Some(TreeRowKind::Hero { node_idx: 0 })
+        ),
+        "hero should stay selected after moving up, got {:?}",
+        app.selected_tree_row_kind()
+    );
+}
+
+#[test]
+fn shift_jk_keeps_focus_on_moved_component() {
+    let mut app = app_with_component(ComponentKind::Banner);
+    app.component_kind = ComponentKind::Image;
+    app.add_selected_component_to_section();
+    select_first_component_row(&mut app);
+    assert!(matches!(
+        app.selected_tree_row_kind(),
+        Some(TreeRowKind::Component {
+            component_idx: 0,
+            ..
+        })
+    ));
+    send_key(&mut app, KeyCode::Char('J'), KeyModifiers::SHIFT);
+    assert!(
+        matches!(
+            app.selected_tree_row_kind(),
+            Some(TreeRowKind::Component {
+                component_idx: 1,
+                ..
+            })
+        ),
+        "moved component should stay selected, got {:?}",
+        app.selected_tree_row_kind()
+    );
+    match &app.site.pages[0].nodes[1] {
+        PageNode::Section(s) => {
+            assert!(matches!(
+                s.columns[0].components[1],
+                crate::model::SectionComponent::Banner(_)
+            ));
+        }
+        _ => panic!("expected section"),
+    }
+    send_key(&mut app, KeyCode::Char('K'), KeyModifiers::SHIFT);
+    assert!(matches!(
+        app.selected_tree_row_kind(),
+        Some(TreeRowKind::Component {
+            component_idx: 0,
+            ..
+        })
+    ));
+}
+
+#[test]
+fn shift_jk_keeps_focus_on_moved_collection_item() {
+    let mut app = app_with_component(ComponentKind::Card);
+    if let PageNode::Section(section) = &mut app.site.pages[0].nodes[1] {
+        let crate::model::SectionComponent::Card(card) = &mut section.columns[0].components[0]
+        else {
+            panic!("expected card");
+        };
+        card.items.push(crate::model::CardItem {
+            child_image_url: "https://dummyimage.com/720x720/000/fff".to_string(),
+            child_image_alt: "Second".to_string(),
+            child_title: "Second".to_string(),
+            child_subtitle: String::new(),
+            child_copy: "Copy".to_string(),
+            child_link_url: None,
+            child_link_target: None,
+            child_link_label: None,
+            child_link_style: crate::model::ButtonStyle::Primary,
+        });
+    }
+    let rows = app.build_tree_rows();
+    let idx = rows
+        .iter()
+        .position(|r| matches!(r.kind, TreeRowKind::CardItem { item_idx: 0, .. }))
+        .expect("card item row");
+    app.selected_tree_row = idx;
+    app.apply_tree_row_selection(rows[idx]);
+    send_key(&mut app, KeyCode::Char('J'), KeyModifiers::SHIFT);
+    assert!(
+        matches!(
+            app.selected_tree_row_kind(),
+            Some(TreeRowKind::CardItem { item_idx: 1, .. })
+        ),
+        "moved card item should stay selected, got {:?}",
+        app.selected_tree_row_kind()
+    );
+    send_key(&mut app, KeyCode::Char('K'), KeyModifiers::SHIFT);
+    assert!(matches!(
+        app.selected_tree_row_kind(),
+        Some(TreeRowKind::CardItem { item_idx: 0, .. })
+    ));
+}
+
+#[test]
+fn shift_jk_keeps_focus_on_moved_header_component() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    app.selected_region = SelectedRegion::Header;
+    app.header_column_expanded = true;
+    app.set_header_section_expanded(0, true);
+    app.site.header.sections[0].columns[1]
+        .components
+        .push(ComponentKind::HeaderSearch.default_component());
+    let rows = app.build_header_tree_rows();
+    let idx = rows
+        .iter()
+        .position(|r| {
+            matches!(
+                r.kind,
+                TreeRowKind::HeaderComponent {
+                    column_idx: 1,
+                    component_idx: 0,
+                    ..
+                }
+            )
+        })
+        .expect("header component row");
+    app.selected_tree_row = idx;
+    app.apply_tree_row_selection(rows[idx]);
+    send_key(&mut app, KeyCode::Char('J'), KeyModifiers::SHIFT);
+    assert!(
+        matches!(
+            app.selected_tree_row_kind(),
+            Some(TreeRowKind::HeaderComponent {
+                column_idx: 1,
+                component_idx: 1,
+                ..
+            })
+        ),
+        "moved header component should stay selected, got {:?}",
+        app.selected_tree_row_kind()
+    );
 }
 
 #[test]
