@@ -8,7 +8,7 @@ insert:
     parent_class: "-top-left"
     parent_image_url: "https://dummyimage.com/1920x1080/000000/fff"
     parent_image_alt: "Image alt"
-    sal: "fade"
+    sal: "no-animation"
     parent_title: "Title"
     parent_subtitle: "Subtitle"
     parent_copy: "Copy"
@@ -39,7 +39,7 @@ fields:
     required: true
     type: enum
     options: ["no-animation","fade","slide-up","slide-down","slide-left","slide-right","zoom-in","zoom-out","flip-up","flip-down","flip-left","flip-right"]
-    default: "fade"
+    default: "no-animation"
     maps_to: ".dd-cta__content[data-sal]"
 
   - id: sal_duration

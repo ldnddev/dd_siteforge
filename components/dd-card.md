@@ -7,7 +7,7 @@ insert:
   defaults:
     # parent fields
     parent_type: "-default"
-    sal: "fade"
+    sal: "no-animation"
     parent_width: "dd-u-1-1 dd-u-md-12-24 dd-u-lg-8-24"
 
     # required children collection
@@ -36,7 +36,7 @@ fields:
     required: true
     type: enum
     options: ["no-animation","fade","slide-up","slide-down","slide-left","slide-right","zoom-in","zoom-out","flip-up","flip-down","flip-left","flip-right"]
-    default: "fade"
+    default: "no-animation"
     maps_to: ".dd-card[data-sal] OR child[data-sal]"
 
   - id: sal_duration

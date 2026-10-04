@@ -8,9 +8,9 @@ use serde_json::{Value, json};
 use crate::model::{
     ButtonStyle, DATA_TABLE_MAX_COLUMNS, DataTableAlign, DataTableBadge, DataTableCellType,
     DdAccordion, DdAlert, DdAlternating, DdBanner, DdBlockquote, DdCard, DdCta, DdDataTable,
-    DdFilmstrip, DdFooter, DdHead, DdHeader, DdHero, DdLink, DdMilestones, DdModal, DdSection,
-    DdSlider, DdSpacer, DdTabs, DdTimeline, Media, OembedProvider, Page, PageNode,
-    SectionComponent, Site, parse_oembed_url,
+    DdFilmstrip, DdFooter, DdHead, DdHeader, DdHero, DdLink, DdMilestones, DdModal,
+    DdSearchResults, DdSection, DdSlider, DdSpacer, DdTabs, DdTimeline, Media, OembedProvider,
+    Page, PageNode, SectionComponent, Site, parse_oembed_url,
 };
 use crate::templates::Renderer;
 
@@ -362,6 +362,7 @@ fn render_section(r: &Renderer, section: &DdSection) -> anyhow::Result<String> {
                 SectionComponent::Tabs(v) => render_tabs(r, v)?,
                 SectionComponent::Timeline(v) => render_timeline(r, v)?,
                 SectionComponent::DataTable(v) => render_data_table(r, v)?,
+                SectionComponent::SearchResults(v) => render_search_results(r, v)?,
             };
             inner.push_str(&html);
             inner.push('\n');
@@ -1081,6 +1082,13 @@ fn render_header_menu(r: &Renderer, menu: &crate::model::DdHeaderMenu) -> anyhow
     r.render("dd-header-menu", &data)
 }
 
+fn render_search_results(r: &Renderer, search: &DdSearchResults) -> anyhow::Result<String> {
+    let data = json!({
+        "sal_attr": sal_html_attrs(search.sal, search.sal_duration, search.sal_delay),
+    });
+    r.render("dd-search-results", &data)
+}
+
 fn sal_token(sal: crate::model::SalAnimation) -> String {
     serde_json::to_value(sal)
         .map(|v| stringify_json(&v))
@@ -1646,6 +1654,25 @@ mod tests {
         assert!(html.contains("src=\"assets/images/v1.jpg\""), "{html}");
         assert!(html.contains("data-sal=\"fade\""), "{html}");
         assert!(html.contains("data-sal-delay=\"100\""), "{html}");
+    }
+
+    #[test]
+    fn search_results_renders_page_form() {
+        use crate::model::*;
+        let html = render_page_html(&page_with_component(SectionComponent::SearchResults(
+            DdSearchResults {
+                sal: SalAnimation::NoAnimation,
+                sal_duration: None,
+                sal_delay: None,
+            },
+        )))
+        .expect("search_results");
+        assert!(html.contains("class=\"dd-search-page\""), "{html}");
+        assert!(html.contains("dd-search-page__title"), "{html}");
+        assert!(html.contains("id=\"dd-page-search-q\""), "{html}");
+        assert!(html.contains("role=\"search\""), "{html}");
+        assert!(html.contains("dd-search-page__results"), "{html}");
+        assert!(!html.contains("data-sal="), "{html}");
     }
 
     #[test]

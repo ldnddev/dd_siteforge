@@ -502,6 +502,7 @@ impl App {
             kind,
             ComponentKind::HeaderSearch | ComponentKind::HeaderMenu
         );
+        let page_only = matches!(kind, ComponentKind::SearchResults);
         match self.selected_region {
             SelectedRegion::Site => {
                 self.push_toast(ToastLevel::Warning, "Cannot paste on Site settings.");
@@ -511,6 +512,13 @@ impl App {
                 self.push_toast(
                     ToastLevel::Warning,
                     format!("{} can only be pasted in the header.", kind.label()),
+                );
+                false
+            }
+            SelectedRegion::Header | SelectedRegion::Footer if page_only => {
+                self.push_toast(
+                    ToastLevel::Warning,
+                    format!("{} can only be pasted on a page.", kind.label()),
                 );
                 false
             }

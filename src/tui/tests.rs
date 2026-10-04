@@ -428,7 +428,7 @@ fn tier_a_image_form_edit_round_trip() {
             crate::model::SectionComponent::Image(i) => {
                 assert_eq!(
                     i.sal,
-                    crate::model::SalAnimation::SlideUp,
+                    crate::model::SalAnimation::Fade,
                     "image sal should advance one step from default"
                 );
                 assert_eq!(
@@ -446,6 +446,7 @@ fn tier_a_image_form_edit_round_trip() {
 fn image_form_saves_sal_duration() {
     let mut app = app_with_component(ComponentKind::Image);
     open_form_edit_on_page_component(&mut app);
+    send_key(&mut app, KeyCode::Right, KeyModifiers::NONE);
     send_key(&mut app, KeyCode::Tab, KeyModifiers::NONE);
     send_key(&mut app, KeyCode::Right, KeyModifiers::NONE);
     send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
@@ -464,7 +465,6 @@ fn image_form_saves_sal_duration() {
 fn image_form_no_animation_omits_duration_on_save() {
     let mut app = app_with_component(ComponentKind::Image);
     open_form_edit_on_page_component(&mut app);
-    send_key(&mut app, KeyCode::Left, KeyModifiers::NONE);
     send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
     match &app.site.pages[0].nodes[1] {
         PageNode::Section(s) => match &s.columns[0].components[0] {
@@ -535,10 +535,7 @@ fn tier_a_rich_text_form_edit_round_trip() {
 }
 
 fn focus_rich_text_copy(app: &mut App) {
-    send_key(app, KeyCode::Tab, KeyModifiers::NONE);
-    send_key(app, KeyCode::Tab, KeyModifiers::NONE);
-    send_key(app, KeyCode::Tab, KeyModifiers::NONE);
-    send_key(app, KeyCode::Tab, KeyModifiers::NONE);
+    tab_to_field(app, "parent_copy");
     assert_eq!(form_focused_field_id(app), Some("parent_copy"));
 }
 
@@ -1355,7 +1352,7 @@ fn tier_a_blockquote_form_edit_round_trip() {
     match &app.site.pages[0].nodes[1] {
         PageNode::Section(s) => match &s.columns[0].components[0] {
             crate::model::SectionComponent::Blockquote(bq) => {
-                assert_eq!(bq.sal, crate::model::SalAnimation::SlideUp);
+                assert_eq!(bq.sal, crate::model::SalAnimation::Fade);
             }
             _ => panic!("expected Blockquote"),
         },
@@ -5114,12 +5111,14 @@ fn insert_picker_allowed_kinds_match_focused_region() {
     let page = app.filtered_component_kinds("");
     assert!(page.contains(&ComponentKind::Hero));
     assert!(page.contains(&ComponentKind::Section));
+    assert!(page.contains(&ComponentKind::SearchResults));
     assert!(!page.contains(&ComponentKind::HeaderSearch));
     assert!(!page.contains(&ComponentKind::HeaderMenu));
 
     app.selected_region = SelectedRegion::Header;
     let header = app.filtered_component_kinds("");
     assert!(!header.contains(&ComponentKind::Hero));
+    assert!(!header.contains(&ComponentKind::SearchResults));
     assert!(header.contains(&ComponentKind::Section));
     assert!(header.contains(&ComponentKind::HeaderSearch));
     assert!(header.contains(&ComponentKind::HeaderMenu));
@@ -5128,6 +5127,7 @@ fn insert_picker_allowed_kinds_match_focused_region() {
     app.selected_region = SelectedRegion::Footer;
     let footer = app.filtered_component_kinds("");
     assert!(!footer.contains(&ComponentKind::Hero));
+    assert!(!footer.contains(&ComponentKind::SearchResults));
     assert!(footer.contains(&ComponentKind::Section));
     assert!(!footer.contains(&ComponentKind::HeaderSearch));
     assert!(!footer.contains(&ComponentKind::HeaderMenu));
@@ -5152,6 +5152,25 @@ fn insert_picker_allowed_kinds_match_focused_region() {
 
     app.selected_region = SelectedRegion::Site;
     assert!(app.filtered_component_kinds("").is_empty());
+}
+
+#[test]
+fn sal_capable_inserts_default_to_no_animation() {
+    for kind in ComponentKind::all() {
+        if matches!(kind, ComponentKind::Hero | ComponentKind::Section) {
+            continue;
+        }
+        let value = serde_json::to_value(kind.default_component())
+            .expect("default component should serialize");
+        if let Some(sal) = value.get("sal") {
+            assert_eq!(
+                sal,
+                "no-animation",
+                "{} insert default should be no-animation",
+                kind.label()
+            );
+        }
+    }
 }
 
 #[test]

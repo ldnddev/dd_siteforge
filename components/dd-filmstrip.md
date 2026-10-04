@@ -8,7 +8,7 @@ insert:
   defaults:
     # parent fields
     parent_type: "-default"
-    sal: "fade"
+    sal: "no-animation"
 
     # required children collection
     items:
@@ -31,7 +31,7 @@ fields:
     required: true
     type: enum
     options: ["no-animation","fade","slide-up","slide-down","slide-left","slide-right","zoom-in","zoom-out","flip-up","flip-down","flip-left","flip-right"]
-    default: "fade"
+    default: "no-animation"
     maps_to: ".dd-filmstrip[data-sal]"
 
   - id: sal_duration

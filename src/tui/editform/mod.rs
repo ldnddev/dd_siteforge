@@ -299,7 +299,7 @@ pub(super) static SAL_STYLE_FIELD: FormField = FormField {
     label: "Animation",
     kind: FieldKind::Enum {
         options: SAL_OPTIONS,
-        default: "fade",
+        default: "no-animation",
     },
     required: true,
     visible_when: None,
@@ -519,10 +519,13 @@ mod tests {
                 .unwrap_or(false)
         };
         assert!(visible(&state, "sal"));
+        assert!(!visible(&state, "sal_duration"));
+        assert!(!visible(&state, "sal_delay"));
+        state.set("sal", "fade");
+        assert!(visible(&state, "sal"));
         assert!(visible(&state, "sal_duration"));
         assert!(visible(&state, "sal_delay"));
         state.set("sal", "no-animation");
-        assert!(visible(&state, "sal"));
         assert!(!visible(&state, "sal_duration"));
         assert!(!visible(&state, "sal_delay"));
     }

@@ -58,9 +58,9 @@ Site
 
 **Top-level (Page node):** `dd-hero`, `dd-section`.
 
-**Section components:** `dd-alert`, `dd-banner`, `dd-blockquote`, `dd-card`, `dd-cta`, `dd-filmstrip`, `dd-image`, `dd-milestones`, `dd-modal`, `dd-rich_text`, `dd-slider`, `dd-alternating`, `dd-accordion`, `dd-navigation`, `dd-spacer`, `dd-tabs`, `dd-timeline`.
+**Section components:** `dd-alert`, `dd-banner`, `dd-blockquote`, `dd-card`, `dd-cta`, `dd-filmstrip`, `dd-image`, `dd-milestones`, `dd-modal`, `dd-rich_text`, `dd-slider`, `dd-alternating`, `dd-accordion`, `dd-navigation`, `dd-spacer`, `dd-tabs`, `dd-timeline`, `dd-search-results`.
 
-**Header / Footer slots:** same component set as section components plus `dd-header-search`, `dd-header-menu`.
+**Header / Footer slots:** same component set as section components plus `dd-header-search`, `dd-header-menu`, except page-only `dd-search-results`.
 
 Each component spec lives in `components/dd-*.md` (single source of truth for fields, render rules, validation).
 
@@ -83,6 +83,7 @@ Each component spec lives in `components/dd-*.md` (single source of truth for fi
 - Tabs: `parent_id`, orientation `-horizontal`/`-vertical`, ARIA label default `"Content tabs"`, SAL on the root, items of label + markdown panel. Buttons with APG tablist roles; first tab active.
 - Timeline: optional ARIA label default `"Timeline"`, SAL stagger on items, events with year, optional datetime, title, heading 2–6 (default 3), markdown copy, optional image. `<ol>` of events. Datetime required when year is not YYYY / YYYY-MM / YYYY-MM-DD.
 - Data table: required caption, optional `-dense`, optional scroll label (default `"{caption}, scrollable"`), optional empty message, 1–5 columns (label / align / sortable), rows of text or `dd-badge` cells. First cell is `<th scope="row">`. No SAL. `sort_key` is derived from the column label slug. JS owns overflow `tabindex`/`role`/`aria-label`.
+- Search results: page-only SAL component (`dd-search-results`) that renders the `.dd-search-page` form, status, and results list. Title, placeholder, and form action stay in the template. Kit JS fills results from `search-index.json`. Header and footer reject it. Search-index export skips its copy; the page still indexes from `head.title`.
 - Site options: header CTA + banner on `DdHeader`; footer blurb / copyright / socials on `DdFooter`; GTM snippets on `Site`. GTM export extracts `GTM-XXXX` and emits canonical googletagmanager.com markup.
 - Static export: `crate::export::export_site(&site, &out, site_root)`. Writes page HTML (see slug rules above), copies Grunt `web/assets/{css,js,webfonts,favicon,vendors}` when the dest is not already `web/` (does not clobber a local `grunt build`), fills missing webfonts/favicon from `source/`, copies `<site_dir>/source/images/` → `<out>/assets/images/`, plus `sitemap.xml`, `search-index.json`, `robots.txt`, and `404.html` when no author 404 page exists.
 - `search-index.json` is a flattened per-page index for client-side JS search (`v`, `pages[]` with `url`, `path`, `title`, `description`, `body`, `headings`, optional `image`). Same noindex skip as sitemap. Header/footer copy is omitted. `url` is `page_href`; `path` is the display path (`/` for home, `/{slug}/` pretty, `/{slug}.html` otherwise). Description is meta, then og, then a ~160-character body excerpt. Body is identifying copy with markdown stripped, whitespace collapsed, capped at 12k characters. Pages stamp `data-search-index="search-index.json"` on `<html>`; nested pages prefix that attribute with `../`.

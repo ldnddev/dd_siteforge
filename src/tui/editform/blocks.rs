@@ -176,6 +176,11 @@ pub static HEADER_MENU_FORM: EditForm = EditForm {
     fields: &[SAL_STYLE_FIELD, SAL_DURATION_FIELD, SAL_DELAY_FIELD],
 };
 
+pub static SEARCH_RESULTS_FORM: EditForm = EditForm {
+    title: "dd-search-results",
+    fields: &[SAL_STYLE_FIELD, SAL_DURATION_FIELD, SAL_DELAY_FIELD],
+};
+
 pub static RICH_TEXT_FORM: EditForm = EditForm {
     title: "dd-rich_text",
     fields: &[

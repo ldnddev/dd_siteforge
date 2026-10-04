@@ -20,11 +20,11 @@ use crate::model::{
     DataTableColumn, DataTableRow, DdAccordion, DdAlert, DdAlternating, DdBanner, DdBlockquote,
     DdCard, DdCta, DdDataTable, DdFilmstrip, DdFooter, DdHead, DdHeader, DdHeaderMenu,
     DdHeaderSearch, DdHero, DdImage, DdLink, DdMilestones, DdModal, DdNavigation, DdRichText,
-    DdSection, DdSlider, DdSpacer, DdTabs, DdTimeline, FilmstripItem, FilmstripType,
-    HeroCopyPosition, HeroImageClass, HeroOverlay, Media, MilestonesItem, NavigationClass,
-    NavigationItem, NavigationKind, NavigationType, PageNode, SalAnimation, SectionBg,
-    SectionClass, SectionColumn, SectionComponent, SectionItemBoxClass, SectionPadding, Site,
-    SliderItem, SpacerSize, TabsItem, TabsOrientation, TimelineItem, column_id_local_part,
+    DdSearchResults, DdSection, DdSlider, DdSpacer, DdTabs, DdTimeline, FilmstripItem,
+    FilmstripType, HeroCopyPosition, HeroImageClass, HeroOverlay, Media, MilestonesItem,
+    NavigationClass, NavigationItem, NavigationKind, NavigationType, PageNode, SalAnimation,
+    SectionBg, SectionClass, SectionColumn, SectionComponent, SectionItemBoxClass, SectionPadding,
+    Site, SliderItem, SpacerSize, TabsItem, TabsOrientation, TimelineItem, column_id_local_part,
     rehome_column_id, uniquify_id,
 };
 use crate::tui::editform::{self, EditFormState, FieldKind};
@@ -290,6 +290,7 @@ pub fn apply_edit_form_to_component(
             SectionComponent::Tabs(t) => apply_tabs_values(t, state),
             SectionComponent::Timeline(t) => apply_timeline_values(t, state),
             SectionComponent::DataTable(t) => apply_data_table_values(t, state),
+            SectionComponent::SearchResults(s) => apply_search_results_values(s, state),
         },
         CursorRef::Hero(hero) => apply_hero_values(hero, state),
         CursorRef::Section(section) => apply_section_values(section, state),
@@ -343,6 +344,7 @@ pub fn component_to_form_state(component: &SectionComponent) -> Option<EditFormS
         SectionComponent::Tabs(t) => Some(tabs_to_form_state(t)),
         SectionComponent::Timeline(t) => Some(timeline_to_form_state(t)),
         SectionComponent::DataTable(t) => Some(data_table_to_form_state(t)),
+        SectionComponent::SearchResults(s) => Some(search_results_to_form_state(s)),
     }
 }
 
@@ -450,6 +452,19 @@ fn apply_header_menu_values(h: &mut DdHeaderMenu, state: &EditFormState) -> Resu
     h.sal = sal;
     h.sal_duration = sal_duration;
     h.sal_delay = sal_delay;
+    Ok(())
+}
+
+pub fn search_results_to_form_state(s: &DdSearchResults) -> EditFormState {
+    let mut state = EditFormState::new(&editform::SEARCH_RESULTS_FORM);
+    set_sal_fields(&mut state, s.sal, s.sal_duration, s.sal_delay);
+    state
+}
+fn apply_search_results_values(s: &mut DdSearchResults, state: &EditFormState) -> Result<()> {
+    let (sal, sal_duration, sal_delay) = apply_sal_fields(state)?;
+    s.sal = sal;
+    s.sal_duration = sal_duration;
+    s.sal_delay = sal_delay;
     Ok(())
 }
 

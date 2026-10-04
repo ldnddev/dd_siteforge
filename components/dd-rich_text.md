@@ -6,7 +6,7 @@ node_scope: section_item   # one of: page_node | section_item
 insert:
   defaults:
     parent_class: ""
-    sal: "fade"
+    sal: "no-animation"
     parent_copy: "Copy"
 
 fields:
@@ -20,7 +20,7 @@ fields:
     required: true
     type: enum
     options: ["no-animation","fade","slide-up","slide-down","slide-left","slide-right","zoom-in","zoom-out","flip-up","flip-down","flip-left","flip-right"]
-    default: "fade"
+    default: "no-animation"
     maps_to: ".dd-rich_text[data-sal]"
 
   - id: sal_duration

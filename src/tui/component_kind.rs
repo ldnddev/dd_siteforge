@@ -23,6 +23,7 @@ pub(super) enum ComponentKind {
     Tabs,
     Timeline,
     DataTable,
+    SearchResults,
 }
 
 impl ComponentKind {
@@ -50,6 +51,7 @@ impl ComponentKind {
             Self::Tabs,
             Self::Timeline,
             Self::DataTable,
+            Self::SearchResults,
         ]
     }
 
@@ -77,6 +79,7 @@ impl ComponentKind {
             ComponentKind::Tabs => "dd-tabs",
             ComponentKind::Timeline => "dd-timeline",
             ComponentKind::DataTable => "dd-data-table",
+            ComponentKind::SearchResults => "dd-search-results",
         }
     }
 
@@ -102,6 +105,7 @@ impl ComponentKind {
             crate::model::SectionComponent::Tabs(_) => Self::Tabs,
             crate::model::SectionComponent::Timeline(_) => Self::Timeline,
             crate::model::SectionComponent::DataTable(_) => Self::DataTable,
+            crate::model::SectionComponent::SearchResults(_) => Self::SearchResults,
         }
     }
 
@@ -114,7 +118,7 @@ impl ComponentKind {
                 parent_class: crate::model::CtaClass::TopLeft,
                 parent_image_url: "https://dummyimage.com/1920x1080/000000/fff".to_string(),
                 parent_image_alt: "Image alt".to_string(),
-                sal: crate::model::SalAnimation::Fade,
+                sal: crate::model::SalAnimation::NoAnimation,
                 sal_duration: None,
                 sal_delay: None,
                 parent_title: "Title".to_string(),
@@ -133,7 +137,7 @@ impl ComponentKind {
             ComponentKind::Banner => {
                 crate::model::SectionComponent::Banner(crate::model::DdBanner {
                     parent_class: crate::model::BannerClass::BgCenterCenter,
-                    sal: crate::model::SalAnimation::Fade,
+                    sal: crate::model::SalAnimation::NoAnimation,
                     sal_duration: None,
                     sal_delay: None,
                     parent_image_url: "https://dummyimage.com/1920x1080/000/fff".to_string(),
@@ -143,7 +147,7 @@ impl ComponentKind {
             }
             ComponentKind::Blockquote => {
                 crate::model::SectionComponent::Blockquote(crate::model::DdBlockquote {
-                    sal: crate::model::SalAnimation::Fade,
+                    sal: crate::model::SalAnimation::NoAnimation,
                     sal_duration: None,
                     sal_delay: None,
                     parent_image_url: "https://dummyimage.com/512x512/000/fff".to_string(),
@@ -157,7 +161,7 @@ impl ComponentKind {
                 crate::model::SectionComponent::Accordion(crate::model::DdAccordion {
                     parent_type: crate::model::AccordionType::Default,
                     parent_class: crate::model::AccordionClass::Primary,
-                    sal: crate::model::SalAnimation::Fade,
+                    sal: crate::model::SalAnimation::NoAnimation,
                     sal_duration: None,
                     sal_delay: None,
                     parent_group_name: "group1".to_string(),
@@ -172,7 +176,7 @@ impl ComponentKind {
                 crate::model::SectionComponent::Alternating(crate::model::DdAlternating {
                     parent_type: crate::model::AlternatingType::Default,
                     parent_class: "-default".to_string(),
-                    sal: crate::model::SalAnimation::Fade,
+                    sal: crate::model::SalAnimation::NoAnimation,
                     sal_duration: None,
                     sal_delay: None,
                     items: vec![crate::model::AlternatingItem {
@@ -188,7 +192,7 @@ impl ComponentKind {
             }
             ComponentKind::Card => crate::model::SectionComponent::Card(crate::model::DdCard {
                 parent_type: crate::model::CardType::Default,
-                sal: crate::model::SalAnimation::Fade,
+                sal: crate::model::SalAnimation::NoAnimation,
                 sal_duration: None,
                 sal_delay: None,
                 parent_width: "dd-u-1-1 dd-u-md-12-24 dd-u-lg-8-24".to_string(),
@@ -207,7 +211,7 @@ impl ComponentKind {
             ComponentKind::Filmstrip => {
                 crate::model::SectionComponent::Filmstrip(crate::model::DdFilmstrip {
                     parent_type: crate::model::FilmstripType::Default,
-                    sal: crate::model::SalAnimation::Fade,
+                    sal: crate::model::SalAnimation::NoAnimation,
                     sal_duration: None,
                     sal_delay: None,
                     items: vec![crate::model::FilmstripItem {
@@ -219,7 +223,7 @@ impl ComponentKind {
             }
             ComponentKind::Milestones => {
                 crate::model::SectionComponent::Milestones(crate::model::DdMilestones {
-                    sal: crate::model::SalAnimation::Fade,
+                    sal: crate::model::SalAnimation::NoAnimation,
                     sal_duration: None,
                     sal_delay: None,
                     parent_width: "dd-u-1-1 dd-u-md-12-24".to_string(),
@@ -263,14 +267,14 @@ impl ComponentKind {
             ComponentKind::Alert => crate::model::SectionComponent::Alert(crate::model::DdAlert {
                 parent_type: crate::model::AlertType::Default,
                 parent_class: crate::model::AlertClass::Default,
-                sal: crate::model::SalAnimation::Fade,
+                sal: crate::model::SalAnimation::NoAnimation,
                 sal_duration: None,
                 sal_delay: None,
                 parent_title: Some("Alert Title".to_string()),
                 parent_copy: "Alert content".to_string(),
             }),
             ComponentKind::Image => crate::model::SectionComponent::Image(crate::model::DdImage {
-                sal: crate::model::SalAnimation::Fade,
+                sal: crate::model::SalAnimation::NoAnimation,
                 sal_duration: None,
                 sal_delay: None,
                 parent_image_url: "https://dummyimage.com/1200x600/000/fff".to_string(),
@@ -282,7 +286,7 @@ impl ComponentKind {
             ComponentKind::RichText => {
                 crate::model::SectionComponent::RichText(crate::model::DdRichText {
                     parent_class: None,
-                    sal: crate::model::SalAnimation::Fade,
+                    sal: crate::model::SalAnimation::NoAnimation,
                     sal_duration: None,
                     sal_delay: None,
                     parent_copy: "Copy".to_string(),
@@ -292,7 +296,7 @@ impl ComponentKind {
                 crate::model::SectionComponent::Navigation(crate::model::DdNavigation {
                     parent_type: crate::model::NavigationType::HeaderNav,
                     parent_class: crate::model::NavigationClass::MainMenu,
-                    sal: crate::model::SalAnimation::Fade,
+                    sal: crate::model::SalAnimation::NoAnimation,
                     sal_duration: None,
                     sal_delay: None,
                     items: vec![crate::model::NavigationItem {
@@ -307,14 +311,14 @@ impl ComponentKind {
             }
             ComponentKind::HeaderSearch => {
                 crate::model::SectionComponent::HeaderSearch(crate::model::DdHeaderSearch {
-                    sal: crate::model::SalAnimation::Fade,
+                    sal: crate::model::SalAnimation::NoAnimation,
                     sal_duration: None,
                     sal_delay: None,
                 })
             }
             ComponentKind::HeaderMenu => {
                 crate::model::SectionComponent::HeaderMenu(crate::model::DdHeaderMenu {
-                    sal: crate::model::SalAnimation::Fade,
+                    sal: crate::model::SalAnimation::NoAnimation,
                     sal_duration: None,
                     sal_delay: None,
                 })
@@ -329,7 +333,7 @@ impl ComponentKind {
                 parent_id: "tabs".to_string(),
                 parent_class: crate::model::TabsOrientation::Horizontal,
                 aria_label: Some("Content tabs".to_string()),
-                sal: crate::model::SalAnimation::Fade,
+                sal: crate::model::SalAnimation::NoAnimation,
                 sal_duration: None,
                 sal_delay: None,
                 items: vec![crate::model::TabsItem {
@@ -340,7 +344,7 @@ impl ComponentKind {
             ComponentKind::Timeline => {
                 crate::model::SectionComponent::Timeline(crate::model::DdTimeline {
                     aria_label: Some("Timeline".to_string()),
-                    sal: crate::model::SalAnimation::Fade,
+                    sal: crate::model::SalAnimation::NoAnimation,
                     sal_duration: None,
                     sal_delay: None,
                     items: vec![crate::model::TimelineItem {
@@ -356,6 +360,13 @@ impl ComponentKind {
             }
             ComponentKind::DataTable => {
                 crate::model::SectionComponent::DataTable(crate::model::DdDataTable::seed())
+            }
+            ComponentKind::SearchResults => {
+                crate::model::SectionComponent::SearchResults(crate::model::DdSearchResults {
+                    sal: crate::model::SalAnimation::NoAnimation,
+                    sal_duration: None,
+                    sal_delay: None,
+                })
             }
         }
     }

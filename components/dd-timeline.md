@@ -5,7 +5,7 @@ node_scope: section_item
 insert:
   defaults:
     aria_label: "Timeline"
-    sal: "fade"
+    sal: "no-animation"
     items:
       - child_year: "2024"
         child_title: "Title"
@@ -21,7 +21,7 @@ fields:
     required: true
     type: enum
     options: ["no-animation","fade","slide-up","slide-down","slide-left","slide-right","zoom-in","zoom-out","flip-up","flip-down","flip-left","flip-right"]
-    default: "fade"
+    default: "no-animation"
     maps_to: ".dd-timeline__item[data-sal]"
     notes: "Stagger delay 100×index, cap 1000."
   - id: sal_duration

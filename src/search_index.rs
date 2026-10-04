@@ -92,10 +92,6 @@ fn index_page(page: &Page, pretty: bool) -> SearchPage {
     }
 }
 
-pub(crate) fn page_display_path(slug: &str, pretty: bool) -> String {
-    page_public_path(slug, pretty)
-}
-
 fn page_description(head: &crate::model::DdHead, body: &str) -> String {
     first_nonempty(&[
         head.meta_description.as_deref(),
@@ -160,7 +156,8 @@ fn collect_component(
         SectionComponent::DataTable(v) => collect_data_table(v, parts, headings),
         SectionComponent::HeaderSearch(_)
         | SectionComponent::HeaderMenu(_)
-        | SectionComponent::Spacer(_) => {}
+        | SectionComponent::Spacer(_)
+        | SectionComponent::SearchResults(_) => {}
     }
 }
 
@@ -422,13 +419,6 @@ mod tests {
         let page = &build_search_index(&site).pages[0];
         assert_eq!(page.url, "services/index.html");
         assert_eq!(page.path, "/services/");
-    }
-
-    #[test]
-    fn nested_slug_paths() {
-        assert_eq!(page_display_path("blog/entry", true), "/blog/entry/");
-        assert_eq!(page_display_path("blog/entry", false), "/blog/entry.html");
-        assert_eq!(page_display_path("index", true), "/");
     }
 
     #[test]

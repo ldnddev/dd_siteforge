@@ -5,7 +5,7 @@ node_scope: page_node
 insert:
   defaults:
     hero_class: "-full-full"
-    sal: "fade"
+    sal: "no-animation"
     custom_css: ""
     image: "https://dummyimage.com/1920x1080/000/fff"
     title: "Build with dd-framework"
@@ -33,7 +33,7 @@ fields:
     required: true
     type: enum
     options: ["no-animation","fade","slide-up","slide-down","slide-left","slide-right","zoom-in","zoom-out","flip-up","flip-down","flip-left","flip-right"]
-    default: "fade"
+    default: "no-animation"
     maps_to: ".dd-hero__content[data-sal]"
 
   - id: sal_duration

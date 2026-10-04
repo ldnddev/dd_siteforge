@@ -169,6 +169,7 @@ pub enum SectionComponent {
     Tabs(DdTabs),
     Timeline(DdTimeline),
     DataTable(DdDataTable),
+    SearchResults(DdSearchResults),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -706,6 +707,16 @@ pub struct DdHeaderMenu {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DdSearchResults {
+    #[serde(default = "default_search_results_sal", alias = "parent_data_aos")]
+    pub sal: SalAnimation,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sal_duration: Option<u16>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sal_delay: Option<u16>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DdHeader {
     pub id: String,
     pub custom_css: Option<String>,
@@ -911,6 +922,10 @@ fn default_header_search_sal() -> SalAnimation {
 
 fn default_header_menu_sal() -> SalAnimation {
     SalAnimation::Fade
+}
+
+fn default_search_results_sal() -> SalAnimation {
+    SalAnimation::NoAnimation
 }
 
 fn default_head_robots() -> RobotsDirective {
@@ -1762,7 +1777,7 @@ impl Page {
             parent_image_url: String::new(),
             parent_image_alt: None,
             parent_class: Some(HeroImageClass::FullFull),
-            sal: Some(SalAnimation::Fade),
+            sal: Some(SalAnimation::NoAnimation),
             sal_duration: None,
             sal_delay: None,
             parent_custom_css: None,
@@ -2147,7 +2162,12 @@ mod tests {
     fn page_from_template_hero_only_has_one_hero_node() {
         let p = Page::from_template("Gallery", PageTemplate::HeroOnly);
         assert_eq!(p.nodes.len(), 1);
-        assert!(matches!(p.nodes[0], PageNode::Hero(_)));
+        match &p.nodes[0] {
+            PageNode::Hero(hero) => {
+                assert_eq!(hero.sal, Some(SalAnimation::NoAnimation));
+            }
+            _ => panic!("expected hero"),
+        }
     }
 
     #[test]
@@ -2685,5 +2705,54 @@ mod tests {
             }
             other => panic!("expected image, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn search_results_parses_sal_only_json() {
+        let c: SectionComponent =
+            serde_json::from_str(r#"{"component_type":"search_results","sal":"no-animation"}"#)
+                .expect("search_results JSON should parse");
+        match c {
+            SectionComponent::SearchResults(s) => {
+                assert_eq!(s.sal, SalAnimation::NoAnimation);
+                assert!(s.sal_duration.is_none());
+                assert!(s.sal_delay.is_none());
+            }
+            other => panic!("expected SearchResults, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn search_results_missing_sal_defaults_to_no_animation() {
+        let c: SectionComponent = serde_json::from_str(r#"{"component_type":"search_results"}"#)
+            .expect("search_results without sal should parse");
+        match c {
+            SectionComponent::SearchResults(s) => {
+                assert_eq!(s.sal, SalAnimation::NoAnimation);
+            }
+            other => panic!("expected SearchResults, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn site_tmp_json_loads_search_results() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("site-tmp.json");
+        if !path.is_file() {
+            return;
+        }
+        let raw = std::fs::read_to_string(&path).expect("read site-tmp.json");
+        let site: Site = serde_json::from_str(&raw).expect("site-tmp.json should parse");
+        let found = site.pages.iter().any(|page| {
+            page.nodes.iter().any(|node| match node {
+                PageNode::Section(section) => section.columns.iter().any(|column| {
+                    column
+                        .components
+                        .iter()
+                        .any(|c| matches!(c, SectionComponent::SearchResults(_)))
+                }),
+                _ => false,
+            })
+        });
+        assert!(found, "site-tmp.json should contain search_results");
     }
 }

@@ -81,6 +81,10 @@ pub const BUNDLED: &[(&str, &str)] = &[
         "dd-data-table",
         include_str!("../templates/dd-data-table.hbs"),
     ),
+    (
+        "dd-search-results",
+        include_str!("../templates/dd-search-results.hbs"),
+    ),
 ];
 
 pub fn bundled(name: &str) -> Option<&'static str> {

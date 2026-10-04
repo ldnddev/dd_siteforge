@@ -99,6 +99,7 @@ pub(in crate::tui) fn component_label(component: &crate::model::SectionComponent
         crate::model::SectionComponent::Tabs(_) => "dd-tabs",
         crate::model::SectionComponent::Timeline(_) => "dd-timeline",
         crate::model::SectionComponent::DataTable(_) => "dd-data-table",
+        crate::model::SectionComponent::SearchResults(_) => "dd-search-results",
     }
 }
 

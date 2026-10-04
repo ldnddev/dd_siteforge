@@ -542,7 +542,8 @@ fn validate_section_component(
         }
         SectionComponent::HeaderSearch(_)
         | SectionComponent::HeaderMenu(_)
-        | SectionComponent::Spacer(_) => {}
+        | SectionComponent::Spacer(_)
+        | SectionComponent::SearchResults(_) => {}
         SectionComponent::DataTable(table) => {
             if table.caption.trim().is_empty() {
                 errors.push(format!(
@@ -830,6 +831,7 @@ fn component_sal(component: &SectionComponent) -> Option<(SalAnimation, Option<u
         SectionComponent::HeaderMenu(c) => Some((c.sal, c.sal_duration, c.sal_delay)),
         SectionComponent::Tabs(c) => Some((c.sal, c.sal_duration, c.sal_delay)),
         SectionComponent::Timeline(c) => Some((c.sal, c.sal_duration, c.sal_delay)),
+        SectionComponent::SearchResults(c) => Some((c.sal, c.sal_duration, c.sal_delay)),
         SectionComponent::Slider(_)
         | SectionComponent::Modal(_)
         | SectionComponent::Spacer(_)
@@ -1037,6 +1039,7 @@ fn section_component_type_name(component: &SectionComponent) -> &'static str {
         SectionComponent::Tabs(_) => "dd-tabs",
         SectionComponent::Timeline(_) => "dd-timeline",
         SectionComponent::DataTable(_) => "dd-data-table",
+        SectionComponent::SearchResults(_) => "dd-search-results",
     }
 }
 

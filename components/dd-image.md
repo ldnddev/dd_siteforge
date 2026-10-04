@@ -5,7 +5,7 @@ node_scope: section_item   # one of: page_node | section_item
 
 insert:
   defaults:
-    sal: "fade"
+    sal: "no-animation"
     parent_image_url: "https://dummyimage.com/256x256/000/fff"
     parent_image_url_dark: ""
     parent_image_alt: "Image alt text"
@@ -17,7 +17,7 @@ fields:
     required: true
     type: enum
     options: ["no-animation","fade","slide-up","slide-down","slide-left","slide-right","zoom-in","zoom-out","flip-up","flip-down","flip-left","flip-right"]
-    default: "fade"
+    default: "no-animation"
     maps_to: ".dd-image[data-sal]"
 
   - id: sal_duration

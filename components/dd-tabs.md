@@ -7,7 +7,7 @@ insert:
     parent_id: "tabs"
     parent_class: "-horizontal"
     aria_label: "Content tabs"
-    sal: "fade"
+    sal: "no-animation"
     items:
       - child_title: "Tab 1"
         child_copy: "Panel copy"
@@ -33,7 +33,7 @@ fields:
     required: true
     type: enum
     options: ["no-animation","fade","slide-up","slide-down","slide-left","slide-right","zoom-in","zoom-out","flip-up","flip-down","flip-left","flip-right"]
-    default: "fade"
+    default: "no-animation"
     maps_to: ".dd-tabs[data-sal]"
   - id: sal_duration
     required: false

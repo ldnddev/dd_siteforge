@@ -515,12 +515,17 @@ impl App {
             );
             return;
         }
-        if matches!(self.component_kind, ComponentKind::Hero)
-            && self.selected_region != SelectedRegion::Page
+        if matches!(
+            self.component_kind,
+            ComponentKind::Hero | ComponentKind::SearchResults
+        ) && self.selected_region != SelectedRegion::Page
         {
             self.push_toast(
                 ToastLevel::Warning,
-                "dd-hero can only be inserted on a page.",
+                format!(
+                    "{} can only be inserted on a page.",
+                    self.component_kind.label()
+                ),
             );
             return;
         }
@@ -762,12 +767,14 @@ impl App {
             return Vec::new();
         }
         let all = ComponentKind::all();
-        // Hero is page-only; HeaderSearch/HeaderMenu are header-only. Details uses selected_region.
+        // Hero and SearchResults are page-only; HeaderSearch/HeaderMenu are header-only.
         let allowed: Vec<ComponentKind> = all
             .iter()
             .copied()
             .filter(|k| match k {
-                ComponentKind::Hero => self.selected_region == SelectedRegion::Page,
+                ComponentKind::Hero | ComponentKind::SearchResults => {
+                    self.selected_region == SelectedRegion::Page
+                }
                 ComponentKind::HeaderSearch | ComponentKind::HeaderMenu => {
                     self.selected_region == SelectedRegion::Header
                 }
@@ -801,7 +808,7 @@ impl App {
         let hero = crate::model::DdHero {
             parent_image_url: "/assets/images/hero-new.jpg".to_string(),
             parent_class: Some(crate::model::HeroImageClass::FullFull),
-            sal: Some(crate::model::SalAnimation::Fade),
+            sal: Some(crate::model::SalAnimation::NoAnimation),
             sal_duration: None,
             sal_delay: None,
             parent_custom_css: None,
