@@ -33,13 +33,7 @@ impl App {
         use crossterm::event::{KeyCode, KeyModifiers};
         match key.code {
             KeyCode::Char('A') if key.modifiers.contains(KeyModifiers::SHIFT) => {
-                self.modal = Some(Modal::NewPageTitlePrompt {
-                    title: String::new(),
-                });
-                self.push_toast(
-                    ToastLevel::Info,
-                    "New page: type a title, Enter to continue.",
-                );
+                self.begin_add_page();
                 true
             }
             KeyCode::Char('X') if key.modifiers.contains(KeyModifiers::SHIFT) => {
@@ -102,6 +96,11 @@ impl App {
             }
             _ => false,
         }
+    }
+
+    pub(in crate::tui) fn begin_add_page(&mut self) {
+        self.modal = Some(Modal::TemplatePicker { selected: 0 });
+        self.push_toast(ToastLevel::Info, "New page: choose a template.");
     }
 
     pub(super) fn handle_event(&mut self, evt: Event) -> anyhow::Result<bool> {

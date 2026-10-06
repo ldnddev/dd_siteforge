@@ -24,8 +24,6 @@ pub(in crate::tui) enum Modal {
         /// Index within the template option list that is currently highlighted.
         selected: usize,
     },
-    /// Title entry prompt shown before the TemplatePicker when adding a new page.
-    NewPageTitlePrompt { title: String },
     /// Path entry prompt shown when exporting the site to a local directory.
     ExportPathPrompt { path: String },
     /// Path entry prompt shown when previewing the site in a browser.
@@ -208,7 +206,6 @@ impl Modal {
             Modal::SavePrompt { .. } => "SavePrompt",
             Modal::FormEdit { .. } => "FormEdit",
             Modal::TemplatePicker { .. } => "TemplatePicker",
-            Modal::NewPageTitlePrompt { .. } => "NewPageTitlePrompt",
             Modal::ExportPathPrompt { .. } => "ExportPathPrompt",
             Modal::PreviewPathPrompt { .. } => "PreviewPathPrompt",
             Modal::RenamePagePrompt { .. } => "RenamePagePrompt",

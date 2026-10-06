@@ -76,12 +76,35 @@ impl App {
                     return Some(ModalResult::Continue);
                 }
                 // Top-level save: commit to the model.
+                if self.creating_page_idx.is_some() && state.get("title").trim().is_empty() {
+                    self.push_toast(ToastLevel::Warning, "Title required.");
+                    self.modal = Some(Modal::FormEdit {
+                        state,
+                        cursor,
+                        cursor_pos,
+                        selection_anchor: None,
+                        drill_stack,
+                        scroll_offset: 0,
+                    });
+                    return Some(ModalResult::Continue);
+                }
                 match cursor::apply_edit_form_to_component(&mut self.site, &cursor, &state) {
                     Ok(()) => {
                         self.form_textarea_expanded = false;
                         self.form_text_undo = None;
-                        let msg = format!("Saved {}.", state.form.title);
-                        self.push_toast(ToastLevel::Success, msg);
+                        if let Some(idx) = self.creating_page_idx.take() {
+                            self.finalize_creating_page_identity(idx);
+                            let title = self
+                                .site
+                                .pages
+                                .get(idx)
+                                .map(|p| p.head.title.clone())
+                                .unwrap_or_default();
+                            self.push_toast(ToastLevel::Success, format!("Added page: {title}"));
+                        } else {
+                            let msg = format!("Saved {}.", state.form.title);
+                            self.push_toast(ToastLevel::Success, msg);
+                        }
                         self.refresh_preview_if_running();
                         return Some(ModalResult::CloseSuccess);
                     }
@@ -134,6 +157,9 @@ impl App {
             self.form_textarea_expanded = false;
             self.form_text_undo = None;
             self.modal = None;
+            if self.creating_page_idx.is_some() {
+                self.discard_creating_page();
+            }
             return Some(ModalResult::CloseCancel);
         }
 

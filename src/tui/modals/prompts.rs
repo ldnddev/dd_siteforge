@@ -74,20 +74,6 @@ impl App {
         frame.render_stateful_widget(list, area, &mut state);
     }
 
-    pub(in crate::tui) fn render_new_page_title_prompt(
-        &self,
-        frame: &mut ratatui::Frame,
-        title: &str,
-    ) {
-        self.render_single_input_modal(
-            frame,
-            " New page — title ",
-            "Title",
-            title,
-            "Enter or Ctrl+S: continue  |  Esc: cancel",
-        );
-    }
-
     pub(in crate::tui) fn render_export_path_prompt(&self, frame: &mut ratatui::Frame, path: &str) {
         self.render_single_input_modal(
             frame,

@@ -43,9 +43,6 @@ impl App {
             Modal::TemplatePicker { selected } => {
                 self.render_template_picker_modal(frame, *selected);
             }
-            Modal::NewPageTitlePrompt { title } => {
-                self.render_new_page_title_prompt(frame, title);
-            }
             Modal::ExportPathPrompt { path } => {
                 self.render_export_path_prompt(frame, path);
             }
@@ -519,9 +516,11 @@ impl App {
         match &field.kind {
             editform::FieldKind::Text { .. } | editform::FieldKind::Url { .. } => {
                 let value = state.get(field.id);
+                let pos = if focused { cursor_pos } else { 0 };
+                let (scroll, visible) = single_line_visible(value, pos, rect.width);
                 let line = Line::from(spans_with_selection(
-                    value,
-                    0,
+                    &visible,
+                    scroll,
                     sel,
                     value_style,
                     selected_style,

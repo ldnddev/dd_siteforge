@@ -189,9 +189,9 @@ pub(super) struct App {
     awaiting_site: bool,
     /// Copied tree grain for `y` / `p`. Session-only, not persisted.
     clipboard: Option<Clipboard>,
-    /// Title captured while the TemplatePicker is open after the title prompt.
-    /// None outside of the add-page flow.
-    pending_new_page_title: Option<String>,
+    /// Index of a page inserted by the add-page flow and not yet confirmed
+    /// with Ctrl+S on the HEAD form. Esc discards it.
+    creating_page_idx: Option<usize>,
     /// Ephemeral bottom-right notifications; expire ~5s after `shown_at`.
     toasts: Vec<Toast>,
     /// True when in-memory site differs from `last_saved_json`.
@@ -302,7 +302,7 @@ impl App {
             build_rx: None,
             awaiting_site: false,
             clipboard: None,
-            pending_new_page_title: None,
+            creating_page_idx: None,
             toasts: Vec::new(),
             list_area: Rect::default(),
             details_area: Rect::default(),

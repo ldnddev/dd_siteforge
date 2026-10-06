@@ -1866,6 +1866,95 @@ fn textarea_display_rows_grows_with_content_and_caps() {
 }
 
 #[test]
+fn single_line_field_scrolls_horizontally_with_caret() {
+    let url = "https://res.cloudinary.com/eojrsoca/image/upload/v1790859893/building-custom-ai-skills-to-enhance-your-workflow-lg.webp";
+    let inner_w = 24u16;
+    let end = url.chars().count();
+    let (scroll, visible) = single_line_visible(url, 0, inner_w);
+    assert_eq!(scroll, 0);
+    assert!(visible.starts_with("https://"));
+    assert_eq!(visible.chars().count(), inner_w as usize);
+
+    let (scroll, visible) = single_line_visible(url, end, inner_w);
+    assert!(scroll > 0);
+    assert!(
+        visible.ends_with("lg.webp"),
+        "caret at end should reveal the URL tail, got {visible:?}"
+    );
+
+    let text = editform::FieldKind::Url { default: "" };
+    let box_rect = Rect {
+        x: 0,
+        y: 0,
+        width: inner_w + 2,
+        height: 3,
+    };
+    let (x, _, ch) =
+        form_input_cursor_cell(&text, url, end, box_rect).expect("caret at end of overflowing URL");
+    assert_eq!(ch, ' ');
+    assert_eq!(x, inner_w); // last inner column (inner_x=1, col=inner_w-1)
+
+    let (x, _, ch) =
+        form_input_cursor_cell(&text, url, end - 1, box_rect).expect("caret on last URL char");
+    assert_eq!(ch, 'p');
+    assert_eq!(x, inner_w);
+
+    send_key_scroll_round_trip(url, inner_w);
+}
+
+fn send_key_scroll_round_trip(url: &str, inner_w: u16) {
+    let mut app = app_with_cta();
+    open_form_edit_on_selected_cta(&mut app);
+    tab_to_field(&mut app, "parent_image_url");
+    send_key(&mut app, KeyCode::Char('a'), KeyModifiers::CONTROL);
+    send_paste(&mut app, url);
+    assert_eq!(form_value(&app, "parent_image_url"), url);
+    assert_eq!(form_cursor_pos(&app), url.chars().count());
+    let (_, visible) = single_line_visible(url, form_cursor_pos(&app), inner_w);
+    assert!(visible.ends_with("lg.webp"));
+
+    send_key(&mut app, KeyCode::Left, KeyModifiers::NONE);
+    assert_eq!(form_cursor_pos(&app), url.chars().count() - 1);
+    let (_, visible) = single_line_visible(url, form_cursor_pos(&app), inner_w);
+    assert!(visible.contains("webp"));
+
+    send_key(&mut app, KeyCode::Home, KeyModifiers::NONE);
+    assert_eq!(form_cursor_pos(&app), 0);
+    let (scroll, visible) = single_line_visible(url, 0, inner_w);
+    assert_eq!(scroll, 0);
+    assert!(visible.starts_with("https://"));
+
+    send_key(&mut app, KeyCode::End, KeyModifiers::NONE);
+    assert_eq!(form_cursor_pos(&app), url.chars().count());
+    let (_, visible) = single_line_visible(url, form_cursor_pos(&app), inner_w);
+    assert!(visible.ends_with("lg.webp"));
+}
+
+#[test]
+fn text_click_on_scrolled_field_maps_through_hscroll() {
+    let box_rect = Rect {
+        x: 0,
+        y: 0,
+        width: 12,
+        height: 3,
+    };
+    // inner width 10; caret at 20 → scroll 11
+    let value = "abcdefghijklmnopqrstuvwxyz";
+    let caret = 20;
+    assert_eq!(single_line_hscroll(caret, 10), 11);
+    // Left inner cell (x=1) → first visible char (index 11 = 'l')
+    assert_eq!(
+        text_cursor_from_click(value, box_rect, caret, 1, 1).expect("left inner"),
+        11
+    );
+    // Click column 5 of the inner (x=6) → index 16 = 'q'
+    assert_eq!(
+        text_cursor_from_click(value, box_rect, caret, 6, 1).expect("mid"),
+        16
+    );
+}
+
+#[test]
 fn textarea_display_scrolls_to_cursor_without_truncating_value() {
     let value = "one\ntwo\nthree\nfour\nfive";
     let rendered = render_textarea_display(value, value.chars().count(), true, 3);
@@ -1883,9 +1972,10 @@ fn form_input_cursor_overlays_visible_glyph_when_caret_is_past_width() {
         width: 7,
         height: 3,
     };
-    let (_, _, ch) = form_input_cursor_cell(&text, "hello", 5, box_rect)
+    // Caret at end of a full-width value scrolls by one so the caret has a cell.
+    let (x, y, ch) = form_input_cursor_cell(&text, "hello", 5, box_rect)
         .expect("caret at end of a full-width value");
-    assert_eq!(ch, 'o', "overlay the last visible glyph, not a space");
+    assert_eq!((x, y, ch), (5, 1, ' '));
 
     let (x, y, ch) =
         form_input_cursor_cell(&text, "hi", 2, box_rect).expect("on-screen end of value");
@@ -2030,31 +2120,31 @@ fn text_click_sets_cursor_on_cell() {
     };
     let value = "Front Page";
     // Inner starts at (1, 1). Click column 6 → 'P' of Page.
-    let pos = text_cursor_from_click(value, box_rect, 7, 1).expect("click inside title");
+    let pos = text_cursor_from_click(value, box_rect, 0, 7, 1).expect("click inside title");
     assert_eq!(pos, 6);
     // Empty space past the last character clamps to the end.
-    let end = text_cursor_from_click(value, box_rect, 18, 1).expect("click past end");
+    let end = text_cursor_from_click(value, box_rect, 0, 18, 1).expect("click past end");
     assert_eq!(end, value.chars().count());
     // Top/bottom border of the 3-row box still maps x.
     assert_eq!(
-        text_cursor_from_click(value, box_rect, 4, 0).expect("top border"),
+        text_cursor_from_click(value, box_rect, 0, 4, 0).expect("top border"),
         3
     );
     assert_eq!(
-        text_cursor_from_click(value, box_rect, 4, 2).expect("bottom border"),
+        text_cursor_from_click(value, box_rect, 0, 4, 2).expect("bottom border"),
         3
     );
     // Left border → start.
     assert_eq!(
-        text_cursor_from_click(value, box_rect, 0, 1).expect("left border"),
+        text_cursor_from_click(value, box_rect, 0, 0, 1).expect("left border"),
         0
     );
     // One scalar per cell, including a 3-byte em-dash.
     assert_eq!(
-        text_cursor_from_click("A—B", box_rect, 2, 1).expect("unicode"),
+        text_cursor_from_click("A—B", box_rect, 0, 2, 1).expect("unicode"),
         1
     );
-    assert!(text_cursor_from_click(value, box_rect, 21, 1).is_none());
+    assert!(text_cursor_from_click(value, box_rect, 0, 21, 1).is_none());
 }
 
 fn form_cursor_pos(app: &App) -> usize {
@@ -2119,8 +2209,36 @@ fn form_value(app: &App, id: &str) -> String {
     }
 }
 
+fn pick_new_page_template(app: &mut App, selected: usize) {
+    app.selected_sidebar_section = SidebarSection::Pages;
+    send_key(app, KeyCode::Char('A'), KeyModifiers::SHIFT);
+    assert!(matches!(app.modal, Some(Modal::TemplatePicker { .. })));
+    for _ in 0..selected {
+        send_key(app, KeyCode::Down, KeyModifiers::NONE);
+    }
+    send_key(app, KeyCode::Enter, KeyModifiers::NONE);
+    match &app.modal {
+        Some(Modal::FormEdit { state, cursor, .. }) => {
+            assert_eq!(state.form.title, "page-head");
+            assert!(matches!(cursor, cursor::Cursor::PageHead { .. }));
+        }
+        other => panic!(
+            "expected page-head FormEdit, got {}",
+            other.as_ref().map(Modal::variant_name).unwrap_or("None")
+        ),
+    }
+}
+
+fn save_new_page_head(app: &mut App, title: &str) {
+    for c in title.chars() {
+        send_key(app, KeyCode::Char(c), KeyModifiers::NONE);
+    }
+    send_key(app, KeyCode::Char('s'), KeyModifiers::CONTROL);
+    assert!(app.modal.is_none(), "HEAD form should close on save");
+}
+
 #[test]
-fn pages_panel_shift_a_opens_title_prompt_then_template_picker_then_inserts_blank_page() {
+fn pages_panel_shift_a_opens_template_picker_then_head_form_then_inserts_blank_page() {
     let mut app = App::new(
         Site::starter(),
         None,
@@ -2128,23 +2246,12 @@ fn pages_panel_shift_a_opens_title_prompt_then_template_picker_then_inserts_blan
         "default".to_string(),
         None,
     );
-    app.selected_sidebar_section = SidebarSection::Pages;
     let initial_len = app.site.pages.len();
 
-    send_key(&mut app, KeyCode::Char('A'), KeyModifiers::SHIFT);
-    assert!(matches!(app.modal, Some(Modal::NewPageTitlePrompt { .. })));
+    pick_new_page_template(&mut app, 0);
+    assert_eq!(app.site.pages.len(), initial_len + 1);
+    save_new_page_head(&mut app, "Contact Us");
 
-    for c in "Contact Us".chars() {
-        send_key(&mut app, KeyCode::Char(c), KeyModifiers::NONE);
-    }
-    send_key(&mut app, KeyCode::Enter, KeyModifiers::NONE);
-    assert!(matches!(
-        app.modal,
-        Some(Modal::TemplatePicker { selected: 0 })
-    ));
-
-    send_key(&mut app, KeyCode::Enter, KeyModifiers::NONE);
-    assert!(app.modal.is_none());
     assert_eq!(app.site.pages.len(), initial_len + 1);
     let new_page = app.site.pages.last().unwrap();
     assert_eq!(new_page.head.title, "Contact Us");
@@ -2163,19 +2270,14 @@ fn pages_panel_add_hero_only_template_inserts_single_hero() {
         "default".to_string(),
         None,
     );
-    app.selected_sidebar_section = SidebarSection::Pages;
 
-    send_key(&mut app, KeyCode::Char('A'), KeyModifiers::SHIFT);
-    for c in "Gallery".chars() {
-        send_key(&mut app, KeyCode::Char(c), KeyModifiers::NONE);
-    }
-    send_key(&mut app, KeyCode::Enter, KeyModifiers::NONE);
-    send_key(&mut app, KeyCode::Down, KeyModifiers::NONE); // selected=1 (Hero only)
-    send_key(&mut app, KeyCode::Enter, KeyModifiers::NONE);
+    pick_new_page_template(&mut app, 1);
+    save_new_page_head(&mut app, "Gallery");
 
     let p = app.site.pages.last().unwrap();
     assert_eq!(p.nodes.len(), 1);
     assert!(matches!(p.nodes[0], crate::model::PageNode::Hero(_)));
+    assert_eq!(p.head.title, "Gallery");
 }
 
 #[test]
@@ -2187,16 +2289,9 @@ fn pages_panel_add_hero_plus_section_inserts_hero_then_section() {
         "default".to_string(),
         None,
     );
-    app.selected_sidebar_section = SidebarSection::Pages;
 
-    send_key(&mut app, KeyCode::Char('A'), KeyModifiers::SHIFT);
-    for c in "Services".chars() {
-        send_key(&mut app, KeyCode::Char(c), KeyModifiers::NONE);
-    }
-    send_key(&mut app, KeyCode::Enter, KeyModifiers::NONE);
-    send_key(&mut app, KeyCode::Down, KeyModifiers::NONE);
-    send_key(&mut app, KeyCode::Down, KeyModifiers::NONE); // selected=2
-    send_key(&mut app, KeyCode::Enter, KeyModifiers::NONE);
+    pick_new_page_template(&mut app, 2);
+    save_new_page_head(&mut app, "Services");
 
     let p = app.site.pages.last().unwrap();
     assert_eq!(p.nodes.len(), 2);
@@ -2213,18 +2308,11 @@ fn pages_panel_add_duplicate_clones_current_and_appends_copy_suffix() {
         "default".to_string(),
         None,
     );
-    app.selected_sidebar_section = SidebarSection::Pages;
     let orig_len = app.site.pages.len();
     let orig_node_count = app.site.pages[0].nodes.len();
 
-    send_key(&mut app, KeyCode::Char('A'), KeyModifiers::SHIFT);
-    // Type anything — duplicate ignores the typed title and uses src title.
-    send_key(&mut app, KeyCode::Char('x'), KeyModifiers::NONE);
-    send_key(&mut app, KeyCode::Enter, KeyModifiers::NONE);
-    send_key(&mut app, KeyCode::Down, KeyModifiers::NONE);
-    send_key(&mut app, KeyCode::Down, KeyModifiers::NONE);
-    send_key(&mut app, KeyCode::Down, KeyModifiers::NONE); // selected=3 (Duplicate)
-    send_key(&mut app, KeyCode::Enter, KeyModifiers::NONE);
+    pick_new_page_template(&mut app, 3);
+    send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
 
     assert_eq!(app.site.pages.len(), orig_len + 1);
     let dup = app.site.pages.last().unwrap();
@@ -2241,21 +2329,75 @@ fn pages_panel_add_with_duplicate_title_dedupes_id_with_numeric_suffix() {
         "default".to_string(),
         None,
     );
-    app.selected_sidebar_section = SidebarSection::Pages;
     // Starter page has id "page-home". Adding a page titled "Home" (Blank) would
     // generate the same id and should be deduped.
-    send_key(&mut app, KeyCode::Char('A'), KeyModifiers::SHIFT);
-    for c in "Home".chars() {
-        send_key(&mut app, KeyCode::Char(c), KeyModifiers::NONE);
-    }
-    send_key(&mut app, KeyCode::Enter, KeyModifiers::NONE);
-    send_key(&mut app, KeyCode::Enter, KeyModifiers::NONE); // Blank
+    pick_new_page_template(&mut app, 0);
+    save_new_page_head(&mut app, "Home");
 
     let new_page = app.site.pages.last().unwrap();
     assert_eq!(new_page.id, "page-home-2");
     assert_eq!(new_page.slug, "home-2");
     // The starter page keeps its id.
     assert_eq!(app.site.pages[0].id, "page-home");
+}
+
+#[test]
+fn pages_panel_add_esc_from_head_form_discards_draft_page() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    let initial_len = app.site.pages.len();
+    pick_new_page_template(&mut app, 0);
+    assert_eq!(app.site.pages.len(), initial_len + 1);
+    send_key(&mut app, KeyCode::Esc, KeyModifiers::NONE);
+    assert!(app.modal.is_none());
+    assert_eq!(app.site.pages.len(), initial_len);
+    assert_eq!(app.selected_page, 0);
+    assert!(app.creating_page_idx.is_none());
+}
+
+#[test]
+fn pages_panel_add_head_form_saves_meta_in_same_step() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    pick_new_page_template(&mut app, 0);
+    for c in "About".chars() {
+        send_key(&mut app, KeyCode::Char(c), KeyModifiers::NONE);
+    }
+    tab_to_field(&mut app, "meta_description");
+    for c in "About the studio".chars() {
+        send_key(&mut app, KeyCode::Char(c), KeyModifiers::NONE);
+    }
+    send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
+    let p = app.site.pages.last().unwrap();
+    assert_eq!(p.head.title, "About");
+    assert_eq!(p.head.meta_description.as_deref(), Some("About the studio"));
+}
+
+#[test]
+fn pages_panel_add_ctrl_s_without_title_keeps_form_open() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    let initial_len = app.site.pages.len();
+    pick_new_page_template(&mut app, 0);
+    send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
+    assert!(matches!(app.modal, Some(Modal::FormEdit { .. })));
+    assert_eq!(app.site.pages.len(), initial_len + 1);
+    assert!(app.creating_page_idx.is_some());
 }
 
 #[test]
@@ -3680,6 +3822,17 @@ fn y_copies_and_p_pastes_selected_component() {
         PageNode::Section(s) => assert_eq!(s.columns[0].components.len(), 2),
         _ => panic!("expected section"),
     }
+    assert!(
+        matches!(
+            app.selected_tree_row_kind(),
+            Some(TreeRowKind::Component {
+                component_idx: 1,
+                ..
+            })
+        ),
+        "pasted component should stay selected, got {:?}",
+        app.selected_tree_row_kind()
+    );
 }
 
 #[test]
@@ -3701,6 +3854,81 @@ fn y_copies_and_p_pastes_selected_node() {
     send_key(&mut app, KeyCode::Char('p'), KeyModifiers::NONE);
     assert_eq!(app.site.pages[0].nodes.len(), before + 1);
     assert!(matches!(app.site.pages[0].nodes[1], PageNode::Hero(_)));
+    assert!(
+        matches!(
+            app.selected_tree_row_kind(),
+            Some(TreeRowKind::Hero { node_idx: 1 })
+        ),
+        "pasted hero should stay selected, got {:?}",
+        app.selected_tree_row_kind()
+    );
+}
+
+#[test]
+fn y_p_keeps_focus_on_pasted_collection_item() {
+    let mut app = app_with_component(ComponentKind::Card);
+    app.selected_sidebar_section = SidebarSection::Layouts;
+    let rows = app.build_tree_rows();
+    let idx = rows
+        .iter()
+        .position(|r| matches!(r.kind, TreeRowKind::CardItem { item_idx: 0, .. }))
+        .expect("card item row");
+    app.selected_tree_row = idx;
+    app.apply_tree_row_selection(rows[idx]);
+    send_key(&mut app, KeyCode::Char('y'), KeyModifiers::NONE);
+    send_key(&mut app, KeyCode::Char('p'), KeyModifiers::NONE);
+    assert!(
+        matches!(
+            app.selected_tree_row_kind(),
+            Some(TreeRowKind::CardItem { item_idx: 1, .. })
+        ),
+        "pasted card item should stay selected, got {:?}",
+        app.selected_tree_row_kind()
+    );
+}
+
+#[test]
+fn y_p_keeps_focus_on_pasted_header_component() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    app.selected_region = SelectedRegion::Header;
+    app.header_column_expanded = true;
+    app.set_header_section_expanded(0, true);
+    let rows = app.build_header_tree_rows();
+    let idx = rows
+        .iter()
+        .position(|r| {
+            matches!(
+                r.kind,
+                TreeRowKind::HeaderComponent {
+                    column_idx: 1,
+                    component_idx: 0,
+                    ..
+                }
+            )
+        })
+        .expect("header menu component row");
+    app.selected_tree_row = idx;
+    app.apply_tree_row_selection(rows[idx]);
+    send_key(&mut app, KeyCode::Char('y'), KeyModifiers::NONE);
+    send_key(&mut app, KeyCode::Char('p'), KeyModifiers::NONE);
+    assert!(
+        matches!(
+            app.selected_tree_row_kind(),
+            Some(TreeRowKind::HeaderComponent {
+                column_idx: 1,
+                component_idx: 1,
+                ..
+            })
+        ),
+        "pasted header component should stay selected, got {:?}",
+        app.selected_tree_row_kind()
+    );
 }
 
 #[test]

@@ -411,17 +411,131 @@ impl App {
         };
         let label = clip.label();
         self.push_undo();
-        let ok = match clip {
+        let ok = match clip.clone() {
             Clipboard::Node(node) => self.paste_node(node),
             Clipboard::Component(component) => self.paste_component(component),
             Clipboard::CollectionItem(item) => self.paste_collection_item(item),
         };
         if ok {
             self.push_toast(ToastLevel::Success, format!("Pasted {label}."));
-            self.sync_tree_row_with_selection();
+            self.snap_pasted_tree_row(&clip);
         } else {
             self.undo_stack.pop();
         }
+    }
+
+    /// Keep the layout highlight on the pasted grain. Generic
+    /// `sync_tree_row_with_selection` matches parent section/root rows first.
+    fn snap_pasted_tree_row(&mut self, clip: &Clipboard) {
+        let kind = match clip {
+            Clipboard::Node(PageNode::Hero(_)) => TreeRowKind::Hero {
+                node_idx: self.selected_node,
+            },
+            Clipboard::Node(PageNode::Section(_)) => match self.selected_region {
+                SelectedRegion::Page => TreeRowKind::Section {
+                    node_idx: self.selected_node,
+                },
+                SelectedRegion::Header => TreeRowKind::HeaderSection {
+                    section_idx: self.selected_header_section,
+                },
+                SelectedRegion::Footer => TreeRowKind::FooterSection {
+                    section_idx: self.selected_header_section,
+                },
+                SelectedRegion::Site => {
+                    self.sync_tree_row_with_selection();
+                    return;
+                }
+            },
+            Clipboard::Component(crate::model::SectionComponent::Alert(_))
+                if self.selected_region == SelectedRegion::Header && self.header_alert_selected =>
+            {
+                TreeRowKind::HeaderAlert
+            }
+            Clipboard::Component(_) => match self.selected_region {
+                SelectedRegion::Page => TreeRowKind::Component {
+                    node_idx: self.selected_node,
+                    column_idx: self.selected_column,
+                    component_idx: self.selected_component,
+                },
+                SelectedRegion::Header => TreeRowKind::HeaderComponent {
+                    section_idx: self.selected_header_section,
+                    column_idx: self.selected_header_column,
+                    component_idx: self.selected_header_component,
+                },
+                SelectedRegion::Footer => TreeRowKind::FooterComponent {
+                    section_idx: self.selected_header_section,
+                    column_idx: self.selected_header_column,
+                    component_idx: self.selected_header_component,
+                },
+                SelectedRegion::Site => {
+                    self.sync_tree_row_with_selection();
+                    return;
+                }
+            },
+            Clipboard::CollectionItem(item) => {
+                let node_idx = self.selected_node;
+                let column_idx = self.selected_column;
+                let component_idx = self.selected_component;
+                let item_idx = self.selected_nested_item;
+                match item {
+                    CollectionClip::Accordion(_) => TreeRowKind::AccordionItem {
+                        node_idx,
+                        column_idx,
+                        component_idx,
+                        item_idx,
+                    },
+                    CollectionClip::Alternating(_) => TreeRowKind::AlternatingItem {
+                        node_idx,
+                        column_idx,
+                        component_idx,
+                        item_idx,
+                    },
+                    CollectionClip::Card(_) => TreeRowKind::CardItem {
+                        node_idx,
+                        column_idx,
+                        component_idx,
+                        item_idx,
+                    },
+                    CollectionClip::Filmstrip(_) => TreeRowKind::FilmstripItem {
+                        node_idx,
+                        column_idx,
+                        component_idx,
+                        item_idx,
+                    },
+                    CollectionClip::Milestones(_) => TreeRowKind::MilestonesItem {
+                        node_idx,
+                        column_idx,
+                        component_idx,
+                        item_idx,
+                    },
+                    CollectionClip::Slider(_) => TreeRowKind::SliderItem {
+                        node_idx,
+                        column_idx,
+                        component_idx,
+                        item_idx,
+                    },
+                    CollectionClip::Tabs(_) => TreeRowKind::TabsItem {
+                        node_idx,
+                        column_idx,
+                        component_idx,
+                        item_idx,
+                    },
+                    CollectionClip::Timeline(_) => TreeRowKind::TimelineItem {
+                        node_idx,
+                        column_idx,
+                        component_idx,
+                        item_idx,
+                    },
+                    CollectionClip::DataTable(_) => TreeRowKind::DataTableRow {
+                        node_idx,
+                        column_idx,
+                        component_idx,
+                        item_idx,
+                    },
+                }
+            }
+        };
+        self.snap_tree_row_to_kind(kind);
     }
 
     fn paste_node(&mut self, node: PageNode) -> bool {

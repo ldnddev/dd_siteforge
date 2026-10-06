@@ -61,12 +61,6 @@ impl App {
                 self.modal = Some(Modal::SavePrompt { path });
                 ModalResult::Continue
             }
-            Some(Modal::NewPageTitlePrompt { title }) => {
-                let mut title = title.clone();
-                title.push_str(&sanitize_paste(text, false));
-                self.modal = Some(Modal::NewPageTitlePrompt { title });
-                ModalResult::Continue
-            }
             Some(Modal::RenamePagePrompt { title, page_idx }) => {
                 let mut title = title.clone();
                 let page_idx = *page_idx;
@@ -154,7 +148,6 @@ impl App {
                 Modal::SavePrompt { .. } => self.handle_save_prompt_event_unified(key),
                 Modal::FormEdit { .. } => self.handle_form_edit_event(key),
                 Modal::TemplatePicker { .. } => self.handle_template_picker_event(key),
-                Modal::NewPageTitlePrompt { .. } => self.handle_new_page_title_prompt_event(key),
                 Modal::ExportPathPrompt { .. } => self.handle_export_path_prompt_event(key),
                 Modal::PreviewPathPrompt { .. } => self.handle_preview_path_prompt_event(key),
                 Modal::RenamePagePrompt { .. } => self.handle_rename_page_prompt_event(key),
@@ -471,124 +464,117 @@ impl App {
             }
             KeyCode::Enter => {
                 let picked = *selected;
-                let title = self.pending_new_page_title.take().unwrap_or_default();
-                if title.is_empty() {
-                    self.modal = None;
-                    self.push_toast(ToastLevel::Info, "Cancelled — no title.");
-                    return Some(ModalResult::CloseCancel);
-                }
                 let mut new_page = match picked {
-                    0 => {
-                        crate::model::Page::from_template(&title, crate::model::PageTemplate::Blank)
+                    1 => {
+                        crate::model::Page::from_template("", crate::model::PageTemplate::HeroOnly)
                     }
-                    1 => crate::model::Page::from_template(
-                        &title,
-                        crate::model::PageTemplate::HeroOnly,
-                    ),
                     2 => crate::model::Page::from_template(
-                        &title,
+                        "",
                         crate::model::PageTemplate::HeroPlusSection,
                     ),
-                    3 => {
+                    3 if !self.site.pages.is_empty() => {
                         let src_idx = self
                             .selected_page
                             .min(self.site.pages.len().saturating_sub(1));
-                        let src = &self.site.pages[src_idx];
-                        crate::model::Page::duplicate_from(src)
+                        crate::model::Page::duplicate_from(&self.site.pages[src_idx])
                     }
-                    _ => {
-                        crate::model::Page::from_template(&title, crate::model::PageTemplate::Blank)
-                    }
+                    _ => crate::model::Page::from_template("", crate::model::PageTemplate::Blank),
                 };
-                // Dedup id/slug to avoid collisions.
-                if self.site.pages.iter().any(|p| p.id == new_page.id) {
-                    let base_id = new_page.id.clone();
-                    let base_slug = new_page.slug.clone();
-                    for n in 2.. {
-                        let candidate_id = format!("{}-{}", base_id, n);
-                        if !self.site.pages.iter().any(|p| p.id == candidate_id) {
-                            new_page.id = candidate_id;
-                            new_page.slug = format!("{}-{}", base_slug, n);
-                            break;
-                        }
-                    }
-                }
+                Self::dedup_page_id_slug(&self.site.pages, None, &mut new_page);
                 self.site.pages.push(new_page);
                 self.selected_page = self.site.pages.len() - 1;
                 self.selected_node = 0;
                 self.selected_column = 0;
                 self.selected_component = 0;
                 self.selected_nested_item = 0;
-                self.modal = None;
-                let msg = format!(
-                    "Added page: {}",
-                    self.site.pages[self.selected_page].head.title
-                );
-                self.push_toast(ToastLevel::Success, msg);
-                Some(ModalResult::CloseSuccess)
+                self.page_head_selected = true;
+                self.sync_tree_row_with_selection();
+                self.open_new_page_head_form();
+                Some(ModalResult::Continue)
             }
             _ => Some(ModalResult::Continue),
         }
     }
 
-    pub(in crate::tui) fn handle_new_page_title_prompt_event(
-        &mut self,
-        key: event::KeyEvent,
-    ) -> Option<ModalResult> {
-        use crossterm::event::KeyCode;
-
-        let title = if let Some(Modal::NewPageTitlePrompt { title }) = self.modal.take() {
-            title
-        } else {
-            return Some(ModalResult::CloseCancel);
+    fn open_new_page_head_form(&mut self) {
+        let page_idx = self.selected_page;
+        let Some(page) = self.site.pages.get(page_idx) else {
+            self.modal = None;
+            return;
         };
+        let state = cursor::page_head_to_form_state(page);
+        let focused = state
+            .focused_field
+            .min(state.form.fields.len().saturating_sub(1));
+        let cursor_pos = text_end(state.get(state.form.fields[focused].id));
+        self.creating_page_idx = Some(page_idx);
+        self.modal = Some(Modal::FormEdit {
+            state,
+            cursor: cursor::Cursor::PageHead { page: page_idx },
+            cursor_pos,
+            selection_anchor: None,
+            drill_stack: Vec::new(),
+            scroll_offset: 0,
+        });
+        self.push_toast(
+            ToastLevel::Info,
+            "New page — fill in title and HEAD, Ctrl+S to add.",
+        );
+    }
 
-        match key.code {
-            KeyCode::Esc => {
-                self.push_toast(ToastLevel::Info, "Add page cancelled.");
-                Some(ModalResult::CloseCancel)
-            }
-            KeyCode::Enter => {
-                let trimmed = title.trim().to_string();
-                if trimmed.is_empty() {
-                    self.push_toast(ToastLevel::Warning, "Title required.");
-                    self.modal = Some(Modal::NewPageTitlePrompt { title });
-                    Some(ModalResult::Continue)
-                } else {
-                    self.pending_new_page_title = Some(trimmed);
-                    self.modal = Some(Modal::TemplatePicker { selected: 0 });
-                    Some(ModalResult::Continue)
-                }
-            }
-            KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                let trimmed = title.trim().to_string();
-                if trimmed.is_empty() {
-                    self.push_toast(ToastLevel::Warning, "Title required.");
-                    self.modal = Some(Modal::NewPageTitlePrompt { title });
-                    Some(ModalResult::Continue)
-                } else {
-                    self.pending_new_page_title = Some(trimmed);
-                    self.modal = Some(Modal::TemplatePicker { selected: 0 });
-                    Some(ModalResult::Continue)
-                }
-            }
-            KeyCode::Backspace => {
-                let mut new_title = title;
-                new_title.pop();
-                self.modal = Some(Modal::NewPageTitlePrompt { title: new_title });
-                Some(ModalResult::Continue)
-            }
-            KeyCode::Char(c) => {
-                let mut new_title = title;
-                new_title.push(c);
-                self.modal = Some(Modal::NewPageTitlePrompt { title: new_title });
-                Some(ModalResult::Continue)
-            }
-            _ => {
-                self.modal = Some(Modal::NewPageTitlePrompt { title });
-                Some(ModalResult::Continue)
+    fn dedup_page_id_slug(
+        pages: &[crate::model::Page],
+        skip_idx: Option<usize>,
+        page: &mut crate::model::Page,
+    ) {
+        let taken = |id: &str| {
+            pages
+                .iter()
+                .enumerate()
+                .any(|(i, p)| skip_idx != Some(i) && p.id == id)
+        };
+        if !taken(&page.id) {
+            return;
+        }
+        let base_id = page.id.clone();
+        let base_slug = page.slug.clone();
+        for n in 2.. {
+            let candidate_id = format!("{}-{}", base_id, n);
+            if !taken(&candidate_id) {
+                page.id = candidate_id;
+                page.slug = format!("{}-{}", base_slug, n);
+                return;
             }
         }
+    }
+
+    pub(in crate::tui) fn finalize_creating_page_identity(&mut self, page_idx: usize) {
+        let Some(page) = self.site.pages.get_mut(page_idx) else {
+            return;
+        };
+        page.id = format!("page-{}", page.slug);
+        let mut page = self.site.pages[page_idx].clone();
+        Self::dedup_page_id_slug(&self.site.pages, Some(page_idx), &mut page);
+        self.site.pages[page_idx] = page;
+    }
+
+    pub(in crate::tui) fn discard_creating_page(&mut self) {
+        let Some(idx) = self.creating_page_idx.take() else {
+            return;
+        };
+        if idx < self.site.pages.len() {
+            self.site.pages.remove(idx);
+            self.selected_page = idx
+                .saturating_sub(1)
+                .min(self.site.pages.len().saturating_sub(1));
+            self.selected_node = 0;
+            self.selected_column = 0;
+            self.selected_component = 0;
+            self.selected_nested_item = 0;
+            self.page_head_selected = false;
+            self.sync_tree_row_with_selection();
+        }
+        self.push_toast(ToastLevel::Info, "Add page cancelled.");
     }
 
     pub(in crate::tui) fn handle_rename_page_prompt_event(

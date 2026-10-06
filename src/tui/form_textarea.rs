@@ -225,13 +225,34 @@ pub(super) fn clamp_to_rect(rect: Rect, x: u16, y: u16) -> (u16, u16) {
     (x.clamp(rect.x, max_x), y.clamp(rect.y, max_y))
 }
 
+/// Horizontal origin so `cursor_pos` stays inside a single-line field of
+/// `inner_w` columns. `cursor_pos` is a Unicode scalar index.
+pub(super) fn single_line_hscroll(cursor_pos: usize, inner_w: u16) -> usize {
+    let w = inner_w.max(1) as usize;
+    cursor_pos.saturating_sub(w.saturating_sub(1))
+}
+
+/// Visible slice of a single-line field and the char offset it starts at.
+pub(super) fn single_line_visible(value: &str, cursor_pos: usize, inner_w: u16) -> (usize, String) {
+    let pos = cursor_pos.min(value.chars().count());
+    let scroll = single_line_hscroll(pos, inner_w);
+    let visible: String = value
+        .chars()
+        .skip(scroll)
+        .take(inner_w.max(1) as usize)
+        .collect();
+    (scroll, visible)
+}
+
 /// Map a click inside a bordered single-line input `box_rect` to a caret
 /// offset. Any click in the box (including the top/bottom border of the
-/// 3-row field) maps `x` from the inner origin. Past the last character
-/// clamps to the end. Returns `None` when the box is too small to edit.
+/// 3-row field) maps `x` from the inner origin plus the caret-following
+/// horizontal scroll. Past the last character clamps to the end. Returns
+/// `None` when the box is too small to edit.
 pub(super) fn text_cursor_from_click(
     value: &str,
     box_rect: Rect,
+    cursor_pos: usize,
     click_x: u16,
     click_y: u16,
 ) -> Option<usize> {
@@ -242,12 +263,14 @@ pub(super) fn text_cursor_from_click(
         return None;
     }
     let inner_x = box_rect.x.saturating_add(1);
+    let inner_w = box_rect.width.saturating_sub(2);
     let end = value.chars().count();
+    let scroll = single_line_hscroll(cursor_pos.min(end), inner_w);
     if click_x <= inner_x {
-        return Some(0);
+        return Some(scroll);
     }
     let rel_x = (click_x - inner_x) as usize;
-    Some(rel_x.min(end))
+    Some(scroll.saturating_add(rel_x).min(end))
 }
 
 /// Map a click inside the bordered textarea `box_rect` to a caret offset.
@@ -305,9 +328,8 @@ fn overlay_glyph_at(line: &str, col: usize) -> char {
 }
 
 /// Map a FormEdit text caret to a 1-cell overlay inside the bordered `box_rect`.
-/// Single-line fields have no horizontal scroll, so a caret past the inner
-/// width overlays the last visible glyph. Textareas wrap, so the caret sits
-/// on the visual row/col of the wrapped layout.
+/// Single-line fields scroll horizontally so the caret stays in view.
+/// Textareas wrap, so the caret sits on the visual row/col of the wrapped layout.
 pub(super) fn form_input_cursor_cell(
     kind: &editform::FieldKind,
     value: &str,
@@ -329,8 +351,9 @@ pub(super) fn form_input_cursor_cell(
 
     match kind {
         editform::FieldKind::Text { .. } | editform::FieldKind::Url { .. } => {
-            let col = (pos as u16).min(inner_w.saturating_sub(1));
-            let ch = overlay_glyph_at(value, col as usize);
+            let (scroll, visible) = single_line_visible(value, pos, inner_w);
+            let col = (pos.saturating_sub(scroll) as u16).min(inner_w.saturating_sub(1));
+            let ch = overlay_glyph_at(&visible, col as usize);
             Some((inner_x.saturating_add(col), inner_y, ch))
         }
         editform::FieldKind::Textarea { .. } => {
@@ -628,7 +651,12 @@ impl App {
                     textarea_cursor_from_click(value, rect, *cursor_pos, focused, x, y)?
                 }
                 editform::FieldKind::Text { .. } | editform::FieldKind::Url { .. } => {
-                    text_cursor_from_click(value, rect, x, y)?
+                    let caret = if idx == state.focused_field {
+                        *cursor_pos
+                    } else {
+                        0
+                    };
+                    text_cursor_from_click(value, rect, caret, x, y)?
                 }
                 _ => return None,
             };

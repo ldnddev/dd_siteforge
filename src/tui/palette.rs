@@ -112,13 +112,7 @@ impl App {
             PaletteCommand::Find => self.open_find(),
             PaletteCommand::Insert => self.open_component_picker(),
             PaletteCommand::AddPage => {
-                self.modal = Some(Modal::NewPageTitlePrompt {
-                    title: String::new(),
-                });
-                self.push_toast(
-                    ToastLevel::Info,
-                    "New page: type a title, Enter to continue.",
-                );
+                self.begin_add_page();
             }
             PaletteCommand::BuildAssets => self.start_asset_build(),
             PaletteCommand::PageHealth => self.open_page_health(),

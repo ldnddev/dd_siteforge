@@ -221,7 +221,7 @@ pub(crate) fn build_help_text(theme: &AppTheme, width: usize) -> Text<'static> {
         &[
             (
                 "Shift+A",
-                "Add page (title prompt → template picker: Blank / Hero only / Hero + Section / Duplicate)",
+                "Add page (template picker, then page HEAD form: title, slug, meta, SEO)",
             ),
             (
                 "Shift+X",
