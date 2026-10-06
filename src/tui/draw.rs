@@ -50,7 +50,16 @@ impl App {
         // Full-screen app shell base layer (base_background + text_primary).
         frame.render_widget(Block::default().style(self.theme.app_shell), frame.area());
 
-        let page = self.current_page();
+        let page_label = {
+            let page = self.current_page();
+            if page.head.title.trim().is_empty() {
+                page.slug.clone()
+            } else {
+                page.head.title.clone()
+            }
+        };
+        let page_idx = self.page_tree_ordinal(self.selected_page);
+        let details_title = format!("Details — {:02}: {}", page_idx, page_label);
         let root = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -88,16 +97,6 @@ impl App {
         }
         // (no mouse/keyboard capture for header — purely decorative)
 
-        // Compute page context early so the & from current_page() does not live across later
-        // self.* field assigns (list_area etc) in the panel rendering.
-        let page_idx = self.selected_page + 1;
-        let page_label = if page.head.title.trim().is_empty() {
-            page.slug.as_str()
-        } else {
-            page.head.title.as_str()
-        };
-        let details_title = format!("Details — {:02}: {}", page_idx, page_label);
-
         // Regions section (Site, Header, Footer)
         let regions_items: Vec<ListItem> = vec!["  Site", "  Header", "  Footer"]
             .iter()
@@ -121,11 +120,12 @@ impl App {
             .collect();
 
         // Length = 2 border rows + visible items. Pages cap shrinks so Layout keeps Min(1).
-        let page_count = self.site.pages.len();
+        let page_rows = self.build_pages_panel_rows();
+        let visible_page_count = page_rows.len();
         let regions_height = 2 + regions_items.len();
         let remaining = (main[0].height as usize).saturating_sub(regions_height);
         let pages_cap = remaining.saturating_sub(1 + 2).clamp(1, 10);
-        let pages_height = 2 + page_count.clamp(1, pages_cap);
+        let pages_height = 2 + visible_page_count.clamp(1, pages_cap);
 
         let sidebar = Layout::default()
             .direction(Direction::Vertical)
@@ -209,22 +209,12 @@ impl App {
         frame.render_stateful_widget(regions_list, sidebar[0], &mut regions_state);
         self.regions_area = sidebar[0];
 
-        // Pages section (numbered list)
-        let page_items: Vec<ListItem> = self
-            .site
-            .pages
+        // Pages section (nested by slug; parents expand/collapse)
+        let page_items: Vec<ListItem> = page_rows
             .iter()
-            .enumerate()
-            .map(|(idx, page)| {
-                let num = format!("{:02}", idx + 1);
-                let title = page.head.title.trim();
-                let label_body = if title.is_empty() {
-                    page.slug.as_str()
-                } else {
-                    title
-                };
-                let label = format!("{} {}", num, label_body);
-                let style = if idx == self.selected_page {
+            .map(|row| {
+                let label = self.page_tree_label(row);
+                let style = if row.page_idx == self.selected_page {
                     Style::default()
                         .fg(self.theme.text_active_focus)
                         .bg(self.theme.selected_background)
@@ -237,7 +227,7 @@ impl App {
         let pages_title = sidebar_pane_title(
             SidebarSection::Pages,
             sidebar[1].width,
-            self.selected_page + 1,
+            self.page_tree_ordinal(self.selected_page),
             self.site.pages.len(),
         );
         let pages_list = List::new(page_items)
@@ -273,8 +263,11 @@ impl App {
                     .add_modifier(Modifier::BOLD),
             )
             .highlight_symbol("> ");
-        if !self.site.pages.is_empty() {
-            self.pages_list_state.select(Some(self.selected_page));
+        if let Some(vis) = page_rows
+            .iter()
+            .position(|r| r.page_idx == self.selected_page)
+        {
+            self.pages_list_state.select(Some(vis));
         } else {
             self.pages_list_state.select(None);
         }

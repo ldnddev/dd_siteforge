@@ -126,6 +126,8 @@ fn render_head(r: &Renderer, head: &DdHead, site: &Site, page: &Page) -> anyhow:
     let schema_json =
         serde_json::to_string_pretty(&Value::Object(schema)).unwrap_or_else(|_| "{}".to_string());
 
+    // Empty OG title uses meta title, then the page title (`html_title`).
+    // Empty OG description uses meta description.
     let og_title = head
         .og_title
         .as_deref()
@@ -2378,6 +2380,40 @@ mod tests {
         ) || html.contains(
             "property=\"og:title\" content=\"Custom Drupal & WordPress Development | ldnddev\""
         ));
+    }
+
+    #[test]
+    fn og_description_uses_meta_description_when_og_is_empty() {
+        let mut site = Site::starter();
+        site.pages[0].head.og_description = None;
+        site.pages[0].head.meta_description = Some("We build sites.".to_string());
+        let r = crate::templates::Renderer::bundled_only().unwrap();
+        let html = super::render_page_html_with_chrome(&r, &site.pages[0], "", "", &site).unwrap();
+        assert!(
+            html.contains("property=\"og:description\" content=\"We build sites.\""),
+            "{html}"
+        );
+    }
+
+    #[test]
+    fn og_fields_prefer_explicit_values_over_meta() {
+        let mut site = Site::starter();
+        site.pages[0].head.meta_title = Some("Meta Title".to_string());
+        site.pages[0].head.meta_description = Some("Meta Description".to_string());
+        site.pages[0].head.og_title = Some("OG Title".to_string());
+        site.pages[0].head.og_description = Some("OG Description".to_string());
+        let r = crate::templates::Renderer::bundled_only().unwrap();
+        let html = super::render_page_html_with_chrome(&r, &site.pages[0], "", "", &site).unwrap();
+        assert!(
+            html.contains("property=\"og:title\" content=\"OG Title\""),
+            "{html}"
+        );
+        assert!(
+            html.contains("property=\"og:description\" content=\"OG Description\""),
+            "{html}"
+        );
+        assert!(!html.contains("property=\"og:title\" content=\"Meta Title\""));
+        assert!(!html.contains("property=\"og:description\" content=\"Meta Description\""));
     }
 
     fn page_with_image(dark: Option<&str>, link: Option<&str>) -> crate::model::Page {

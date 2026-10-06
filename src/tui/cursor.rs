@@ -1412,12 +1412,7 @@ pub fn page_head_to_form_state(page: &crate::model::Page) -> EditFormState {
         crate::model::SchemaType::Service => "Service",
     };
     s.set("schema_type", schema.to_string());
-    s.set(
-        "og_title",
-        head.og_title
-            .clone()
-            .unwrap_or_else(|| head.html_title().to_string()),
-    );
+    s.set("og_title", head.og_title.clone().unwrap_or_default());
     s.set(
         "og_description",
         head.og_description.clone().unwrap_or_default(),

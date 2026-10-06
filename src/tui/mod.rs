@@ -44,6 +44,7 @@ mod grunt;
 mod help;
 mod modals;
 mod open_site;
+mod pages;
 mod palette;
 mod scrollbar;
 #[cfg(test)]
@@ -260,6 +261,8 @@ pub(super) struct App {
     expanded_timeline_items: HashSet<(usize, usize, usize, usize)>,
     expanded_data_table_rows: HashSet<(usize, usize, usize, usize)>,
     header_column_expanded: bool,
+    /// Page ids whose children are hidden in `[2] Pages`. Default expanded.
+    collapsed_page_ids: HashSet<String>,
 }
 
 impl App {
@@ -346,6 +349,7 @@ impl App {
             expanded_timeline_items: HashSet::new(),
             expanded_data_table_rows: HashSet::new(),
             header_column_expanded: true,
+            collapsed_page_ids: HashSet::new(),
             dirty: false,
             dirty_since: None,
             last_saved_json,

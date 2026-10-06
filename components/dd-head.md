@@ -62,11 +62,13 @@ fields:
     required: false
     type: string
     maps_to: "<meta property='og:title'>"
+    notes: "When empty, export uses meta_title, then title"
 
   - id: og_description
     required: false
     type: string
     maps_to: "<meta property='og:description'>"
+    notes: "When empty, export uses meta_description"
 
   - id: og_image
     required: false
@@ -176,7 +178,9 @@ fields render conditionally below them.
 - `<meta name="description">` renders only when `meta_description` is non-empty
 - `<link rel="canonical">` renders only when `canonical_url` is non-empty
 - `<meta name="robots">` always renders (defaults to `"index, follow"`)
-- Each OpenGraph meta (`og:title`, `og:description`, `og:image`) renders independently when its field is non-empty
+- `og:title` uses `og_title` when set, otherwise `meta_title`, otherwise `title`
+- `og:description` uses `og_description` when set, otherwise `meta_description` (omitted if both empty)
+- `og:image` renders when `og_image` is non-empty
 - favicon + manifest + theme-color chrome tags always render
 - `<script type="application/ld+json">` always renders; `@type` comes from `schema_type`; optional properties (`description`, `url`, `image`) are included only when their source fields are non-empty
 - chrome tags (`charset`, `viewport`, stylesheet link) always render
@@ -189,5 +193,7 @@ fields render conditionally below them.
 - `canonical_url` optional; path or full URL. Empty export fills `base_url` + public path. A path is joined with Site `base_url`. When provided, must pass URL check (`http://`, `https://`, or `/`)
 - `robots` optional; must be one of the enum options when provided
 - `schema_type` required; must be one of the enum options (`WebPage`, `Article`, `AboutPage`, `ContactPage`, `CollectionPage`, `Organization`, `LocalBusiness`, `Product`, `Service`)
-- `og_title`, `og_description`, `og_image` all optional and independent; `og_image` must pass URL check when provided
+- `og_title` optional; when empty, export uses `meta_title` then `title`. Leave blank unless it should differ from the meta title
+- `og_description` optional; when empty, export uses `meta_description`. Leave blank unless it should differ from the meta description
+- `og_image` optional; must pass URL check when provided
 - rendered LD-JSON must be valid JSON — renderer escapes string values and omits optional keys with trailing-comma safety

@@ -24,6 +24,7 @@ impl App {
     ) {
         if !self.site.pages.is_empty() {
             self.selected_page = page.min(self.site.pages.len() - 1);
+            self.reveal_selected_page();
         }
         self.selected_region = region;
         self.selected_sidebar_section = match region {

@@ -262,6 +262,7 @@ impl App {
                 self.set_section_expanded(node, true);
             }
         }
+        self.reveal_selected_page();
         self.sync_tree_row_with_selection();
     }
 

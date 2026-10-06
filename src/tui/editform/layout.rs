@@ -323,14 +323,14 @@ pub static PAGE_HEAD_FORM: EditForm = EditForm {
         },
         FormField {
             id: "og_title",
-            label: "OG Title",
+            label: "OG Title (uses Meta Title if empty)",
             kind: FieldKind::Text { default: "" },
             required: false,
             visible_when: None,
         },
         FormField {
             id: "og_description",
-            label: "OG Description",
+            label: "OG Description (uses Meta Description if empty)",
             kind: FieldKind::Text { default: "" },
             required: false,
             visible_when: None,

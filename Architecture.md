@@ -137,7 +137,7 @@ Bracketed paste is enabled for the session. `Event::Paste` inserts the clipboard
 
 ### Pages panel (`[2] Pages`)
 
-`Shift+A` add (template picker, then page HEAD form) · `Shift+X` delete (confirm + session trash) · `u` undo delete · `Shift+J/K` reorder · `r` rename.
+`Shift+A` add (template picker, then page HEAD form) · `Shift+X` delete (confirm + session trash) · `u` undo delete · `Shift+J/K` reorder among siblings · `Space`/`h`/`l` expand/collapse nested slug children (`blog/entry` under `blog`) · `r` rename. The list is a tree by slug path; missing intermediate pages nest under the longest existing parent.
 
 ### Layout panel (`[3]`)
 

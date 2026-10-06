@@ -116,21 +116,7 @@ impl App {
                 self.cycle_selected_region(-1);
             }
             SidebarSection::Pages => {
-                if self.site.pages.is_empty() {
-                    return;
-                }
-                if self.selected_page == 0 {
-                    self.selected_page = self.site.pages.len() - 1;
-                } else {
-                    self.selected_page -= 1;
-                }
-                self.selected_node = 0;
-                self.selected_tree_row = 0;
-                self.selected_column = 0;
-                self.selected_component = 0;
-                self.selected_nested_item = 0;
-                self.details_scroll_row = 0;
-                self.sync_tree_row_with_selection();
+                self.select_visible_page_by(-1, true);
             }
             SidebarSection::Layouts => {
                 self.select_prev();
@@ -147,17 +133,7 @@ impl App {
                 self.cycle_selected_region(1);
             }
             SidebarSection::Pages => {
-                if self.site.pages.is_empty() {
-                    return;
-                }
-                self.selected_page = (self.selected_page + 1) % self.site.pages.len();
-                self.selected_node = 0;
-                self.selected_tree_row = 0;
-                self.selected_column = 0;
-                self.selected_component = 0;
-                self.selected_nested_item = 0;
-                self.details_scroll_row = 0;
-                self.sync_tree_row_with_selection();
+                self.select_visible_page_by(1, true);
             }
             SidebarSection::Layouts => {
                 self.select_next();
@@ -200,6 +176,7 @@ impl App {
         self.selected_component = 0;
         self.selected_nested_item = 0;
         self.details_scroll_row = 0;
+        self.reveal_selected_page();
         self.sync_tree_row_with_selection();
     }
 
@@ -218,6 +195,7 @@ impl App {
         self.selected_component = 0;
         self.selected_nested_item = 0;
         self.details_scroll_row = 0;
+        self.reveal_selected_page();
         self.sync_tree_row_with_selection();
     }
 

@@ -230,9 +230,16 @@ pub(crate) fn build_help_text(theme: &AppTheme, width: usize) -> Text<'static> {
             ("u", "Undo last page deletion (session trash)"),
             (
                 "Shift+J / Shift+K",
-                "Move current page down / up (also = sitemap order)",
+                "Move current page down / up among siblings (also = sitemap order)",
             ),
-            ("PageUp/PageDown", "Jump ±5 pages (clamped, no wrap)"),
+            (
+                "Space / h / l",
+                "Expand/collapse a parent page to show or hide nested slug children (blog/entry under blog)",
+            ),
+            (
+                "PageUp/PageDown",
+                "Jump ±5 visible pages (clamped, no wrap)",
+            ),
             (
                 "r",
                 "Rename page label (auto-slug until first disk save). [HEAD] edits Title, Slug/path (blog/entry), Meta Title, Meta Description, SEO",

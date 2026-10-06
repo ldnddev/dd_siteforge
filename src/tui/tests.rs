@@ -34,6 +34,13 @@ fn send_key(app: &mut App, code: KeyCode, modifiers: KeyModifiers) {
         .expect("key event should be handled");
 }
 
+fn blank_page(title: &str, slug: &str) -> crate::model::Page {
+    let mut page = crate::model::Page::from_template(title, crate::model::PageTemplate::Blank);
+    page.slug = slug.to_string();
+    page.id = format!("page-{}", slug.replace('/', "-"));
+    page
+}
+
 fn send_paste(app: &mut App, text: &str) {
     app.handle_event(Event::Paste(text.to_string()))
         .expect("paste event should be handled");
@@ -2381,6 +2388,14 @@ fn pages_panel_add_head_form_saves_meta_in_same_step() {
     let p = app.site.pages.last().unwrap();
     assert_eq!(p.head.title, "About");
     assert_eq!(p.head.meta_description.as_deref(), Some("About the studio"));
+    assert!(
+        p.head.og_title.is_none(),
+        "empty OG title stays unset so export uses meta/title"
+    );
+    assert!(
+        p.head.og_description.is_none(),
+        "empty OG description stays unset so export uses meta description"
+    );
 }
 
 #[test]
@@ -2582,6 +2597,194 @@ fn pages_panel_shift_j_at_last_is_noop() {
 }
 
 #[test]
+fn pages_tree_nests_children_under_parent_slug() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    app.site.pages.push(blank_page("Blog", "blog"));
+    app.site.pages.push(blank_page("Hello", "blog/hello"));
+    app.site.pages.push(blank_page("World", "blog/world"));
+    app.site.pages.push(blank_page("About", "about"));
+    let rows = app.build_pages_panel_rows();
+    let titles: Vec<&str> = rows
+        .iter()
+        .map(|r| app.site.pages[r.page_idx].head.title.as_str())
+        .collect();
+    assert_eq!(titles, ["Home", "Blog", "Hello", "World", "About"]);
+    assert_eq!(rows[1].depth, 0);
+    assert!(rows[1].has_children && rows[1].expanded);
+    assert_eq!(rows[2].depth, 1);
+    assert_eq!(rows[3].depth, 1);
+    assert_eq!(rows[4].depth, 0);
+    assert!(app.page_tree_label(&rows[1]).contains("[-]"));
+    assert!(app.page_tree_label(&rows[1]).contains("Blog"));
+}
+
+#[test]
+fn pages_tree_orphan_nested_slug_stays_at_root() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    app.site.pages.push(blank_page("Entry", "blog/entry"));
+    let rows = app.build_pages_panel_rows();
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[1].depth, 0);
+    assert_eq!(app.site.pages[rows[1].page_idx].slug, "blog/entry");
+}
+
+#[test]
+fn pages_tree_deep_nests_under_longest_existing_parent() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    app.site.pages.push(blank_page("Blog", "blog"));
+    app.site
+        .pages
+        .push(blank_page("January", "blog/2024/january"));
+    let rows = app.build_pages_panel_rows();
+    let jan = rows
+        .iter()
+        .find(|r| app.site.pages[r.page_idx].slug == "blog/2024/january")
+        .expect("january row");
+    assert_eq!(jan.depth, 1);
+    assert_eq!(
+        super::pages::page_parent_idx(&app.site.pages, jan.page_idx),
+        Some(1),
+        "january should nest under blog (index 1)"
+    );
+}
+
+#[test]
+fn pages_tree_space_collapses_and_hides_children() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    app.selected_sidebar_section = SidebarSection::Pages;
+    app.site.pages.push(blank_page("Blog", "blog"));
+    app.site.pages.push(blank_page("Hello", "blog/hello"));
+    app.selected_page = 1;
+    send_key(&mut app, KeyCode::Char(' '), KeyModifiers::NONE);
+    let rows = app.build_pages_panel_rows();
+    let titles: Vec<&str> = rows
+        .iter()
+        .map(|r| app.site.pages[r.page_idx].head.title.as_str())
+        .collect();
+    assert_eq!(titles, ["Home", "Blog"]);
+    assert!(app.page_tree_label(&rows[1]).contains("[+]"));
+    send_key(&mut app, KeyCode::Char(' '), KeyModifiers::NONE);
+    let rows = app.build_pages_panel_rows();
+    assert_eq!(rows.len(), 3);
+    assert!(rows[1].expanded);
+}
+
+#[test]
+fn pages_tree_jk_skips_collapsed_children() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    app.selected_sidebar_section = SidebarSection::Pages;
+    app.site.pages.push(blank_page("Blog", "blog"));
+    app.site.pages.push(blank_page("Hello", "blog/hello"));
+    app.site.pages.push(blank_page("About", "about"));
+    app.selected_page = 1;
+    send_key(&mut app, KeyCode::Char(' '), KeyModifiers::NONE);
+    app.selected_page = 1;
+    send_key(&mut app, KeyCode::Char('j'), KeyModifiers::NONE);
+    assert_eq!(app.site.pages[app.selected_page].head.title, "About");
+}
+
+#[test]
+fn pages_tree_collapse_moves_focus_from_child_to_parent() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    app.site.pages.push(blank_page("Blog", "blog"));
+    app.site.pages.push(blank_page("Hello", "blog/hello"));
+    app.selected_page = 2;
+    app.set_page_expanded(1, false);
+    assert_eq!(app.selected_page, 1);
+    assert_eq!(app.site.pages[app.selected_page].slug, "blog");
+}
+
+#[test]
+fn pages_tree_shift_j_moves_among_siblings_only() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    app.selected_sidebar_section = SidebarSection::Pages;
+    app.site.pages.push(blank_page("Blog", "blog"));
+    app.site.pages.push(blank_page("Hello", "blog/hello"));
+    app.site.pages.push(blank_page("World", "blog/world"));
+    app.selected_page = 2;
+    send_key(&mut app, KeyCode::Char('J'), KeyModifiers::SHIFT);
+    assert_eq!(app.site.pages[app.selected_page].slug, "blog/hello");
+    assert_eq!(app.site.pages[2].slug, "blog/world");
+    assert_eq!(app.site.pages[3].slug, "blog/hello");
+    app.selected_page = 1;
+    send_key(&mut app, KeyCode::Char('J'), KeyModifiers::SHIFT);
+    assert_eq!(
+        app.site.pages[app.selected_page].slug, "blog",
+        "parent should not swap with a child"
+    );
+}
+
+#[test]
+fn pages_tree_click_uses_visible_rows() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    app.site.pages.push(blank_page("Blog", "blog"));
+    app.site.pages.push(blank_page("Hello", "blog/hello"));
+    app.site.pages.push(blank_page("About", "about"));
+    app.set_page_expanded(1, false);
+    app.pages_area = Rect {
+        x: 0,
+        y: 1,
+        width: 30,
+        height: 10,
+        ..Default::default()
+    };
+    app.list_area = Rect::default();
+    app.regions_area = Rect::default();
+    app.details_area = Rect::default();
+    // visible: Home (row 0), Blog (row 1), About (row 2)
+    app.handle_click(10, 4);
+    assert_eq!(app.site.pages[app.selected_page].slug, "about");
+}
+
+#[test]
 fn pages_panel_r_renames_and_regenerates_slug_when_unlocked() {
     let mut app = App::new(
         Site::starter(),
@@ -2776,7 +2979,7 @@ fn page_head_modal_save_leaves_slug_unchanged_when_user_did_not_edit_it() {
 }
 
 #[test]
-fn page_head_modal_default_og_title_is_page_title() {
+fn page_head_modal_empty_og_title_stays_empty() {
     let mut app = App::new(
         Site::starter(),
         None,
@@ -2790,12 +2993,25 @@ fn page_head_modal_default_og_title_is_page_title() {
         Some(Modal::FormEdit { state, .. }) => {
             assert_eq!(
                 state.get("og_title"),
-                app.site.pages[0].head.title,
-                "OG Title should default to the page title when unset"
+                "",
+                "OG Title stays empty so export can use Meta Title"
+            );
+            let og = state
+                .form
+                .fields
+                .iter()
+                .find(|f| f.id == "og_title")
+                .expect("og_title field");
+            assert!(
+                og.label.to_lowercase().contains("meta title"),
+                "OG Title label should say it uses Meta Title if empty, got {:?}",
+                og.label
             );
         }
         _ => panic!("expected FormEdit"),
     }
+    send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
+    assert!(app.site.pages[0].head.og_title.is_none());
 }
 
 #[test]
@@ -2908,7 +3124,7 @@ fn page_head_meta_title_edit_does_not_regen_slug() {
 }
 
 #[test]
-fn page_head_modal_default_og_title_uses_meta_title_when_set() {
+fn page_head_modal_empty_og_does_not_copy_meta_on_save() {
     let mut app = App::new(
         Site::starter(),
         None,
@@ -2917,13 +3133,37 @@ fn page_head_modal_default_og_title_uses_meta_title_when_set() {
         None,
     );
     app.site.pages[0].head.meta_title = Some("SEO Home".to_string());
+    app.site.pages[0].head.meta_description = Some("Home blurb".to_string());
     open_page_head_form(&mut app);
     match &app.modal {
         Some(Modal::FormEdit { state, .. }) => {
-            assert_eq!(state.get("og_title"), "SEO Home");
+            assert_eq!(state.get("og_title"), "");
+            assert_eq!(state.get("og_description"), "");
+            let og_d = state
+                .form
+                .fields
+                .iter()
+                .find(|f| f.id == "og_description")
+                .expect("og_description field");
+            assert!(
+                og_d.label.to_lowercase().contains("meta description"),
+                "OG Description label should say it uses Meta Description if empty, got {:?}",
+                og_d.label
+            );
         }
         _ => panic!("expected FormEdit"),
     }
+    send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
+    assert!(app.site.pages[0].head.og_title.is_none());
+    assert!(app.site.pages[0].head.og_description.is_none());
+    assert_eq!(
+        app.site.pages[0].head.meta_title.as_deref(),
+        Some("SEO Home")
+    );
+    assert_eq!(
+        app.site.pages[0].head.meta_description.as_deref(),
+        Some("Home blurb")
+    );
 }
 
 #[test]

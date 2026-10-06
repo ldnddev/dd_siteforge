@@ -58,27 +58,34 @@ impl App {
                     self.selected_column = 0;
                     self.selected_component = 0;
                     self.selected_nested_item = 0;
+                    self.reveal_selected_page();
                 } else {
                     self.push_toast(ToastLevel::Warning, "No deleted pages to restore.");
                 }
                 true
             }
             KeyCode::Char('J') if key.modifiers.contains(KeyModifiers::SHIFT) => {
-                let idx = self.selected_page;
-                if idx + 1 < self.site.pages.len() {
-                    self.site.pages.swap(idx, idx + 1);
-                    self.selected_page = idx + 1;
+                if self.move_selected_page_among_siblings(true) {
                     self.push_toast(ToastLevel::Success, "Moved page down.");
                 }
                 true
             }
             KeyCode::Char('K') if key.modifiers.contains(KeyModifiers::SHIFT) => {
-                let idx = self.selected_page;
-                if idx > 0 {
-                    self.site.pages.swap(idx, idx - 1);
-                    self.selected_page = idx - 1;
+                if self.move_selected_page_among_siblings(false) {
                     self.push_toast(ToastLevel::Success, "Moved page up.");
                 }
+                true
+            }
+            KeyCode::Char(' ') => {
+                self.toggle_selected_page_expanded();
+                true
+            }
+            KeyCode::Char('h') => {
+                self.collapse_selected_page();
+                true
+            }
+            KeyCode::Char('l') => {
+                self.expand_selected_page();
                 true
             }
             KeyCode::Char('r')
@@ -327,18 +334,20 @@ impl App {
                         false
                     }
                     KeyCode::Char('g') => {
-                        if self.selected_sidebar_section == SidebarSection::Details {
-                            self.details_scroll_row = 0;
-                        } else {
-                            self.vim_jump_to_first_row();
+                        match self.selected_sidebar_section {
+                            SidebarSection::Details => self.details_scroll_row = 0,
+                            SidebarSection::Pages => self.jump_visible_page_to_end(false),
+                            _ => self.vim_jump_to_first_row(),
                         }
                         false
                     }
                     KeyCode::Char('G') => {
-                        if self.selected_sidebar_section == SidebarSection::Details {
-                            self.details_scroll_row = self.details_max_scroll();
-                        } else {
-                            self.vim_jump_to_last_row();
+                        match self.selected_sidebar_section {
+                            SidebarSection::Details => {
+                                self.details_scroll_row = self.details_max_scroll();
+                            }
+                            SidebarSection::Pages => self.jump_visible_page_to_end(true),
+                            _ => self.vim_jump_to_last_row(),
                         }
                         false
                     }
@@ -462,11 +471,7 @@ impl App {
                                 self.cycle_selected_region(if up { -1 } else { 1 });
                             }
                             Some(Pane::Pages) => {
-                                if up {
-                                    self.select_prev_page();
-                                } else {
-                                    self.select_next_page();
-                                }
+                                self.select_visible_page_by(if up { -1 } else { 1 }, true);
                             }
                             Some(Pane::Layout) => {
                                 if up {
@@ -565,18 +570,11 @@ impl App {
             let body_top = self.pages_area.y.saturating_add(1);
             if y >= body_top {
                 let rel = (y - body_top) as usize + self.pages_list_state.offset();
-                if rel < self.site.pages.len() {
-                    self.selected_page = rel;
-                    self.selected_node = 0;
-                    self.selected_column = 0;
-                    self.selected_component = 0;
-                    self.selected_nested_item = 0;
-                    self.details_scroll_row = 0;
-                    self.selected_tree_row = 0;
-                    self.page_head_selected = false;
+                let rows = self.build_pages_panel_rows();
+                if let Some(row) = rows.get(rel) {
                     self.selected_region = SelectedRegion::Page;
                     self.selected_sidebar_section = SidebarSection::Pages;
-                    self.sync_tree_row_with_selection();
+                    self.focus_page(row.page_idx);
                 }
             }
             return;
@@ -651,8 +649,8 @@ impl App {
     }
 
     /// PageUp/PageDown follow the focused pane. Layouts jump the tree
-    /// selection; Pages jump the page list (clamped, no wrap); Details
-    /// and Regions scroll the blueprint.
+    /// selection; Pages jump visible page-tree rows (clamped, no wrap);
+    /// Details and Regions scroll the blueprint.
     fn page_focused_pane(&mut self, delta: isize) {
         let steps = delta.unsigned_abs();
         match self.selected_sidebar_section {
@@ -665,30 +663,9 @@ impl App {
                     }
                 }
             }
-            SidebarSection::Pages => self.jump_selected_page_by(delta),
+            SidebarSection::Pages => self.select_visible_page_by(delta, false),
             SidebarSection::Regions | SidebarSection::Details => self.scroll_details_by(delta),
         }
-    }
-
-    /// Move `selected_page` by `delta`, clamped to `[0, n-1]`. No-op at the
-    /// ends (unlike Tab / wheel, which wrap via `select_next_page`).
-    fn jump_selected_page_by(&mut self, delta: isize) {
-        if self.site.pages.is_empty() {
-            return;
-        }
-        let last = (self.site.pages.len() - 1) as isize;
-        let next = (self.selected_page as isize + delta).clamp(0, last) as usize;
-        if next == self.selected_page {
-            return;
-        }
-        self.selected_page = next;
-        self.selected_node = 0;
-        self.selected_tree_row = 0;
-        self.selected_column = 0;
-        self.selected_component = 0;
-        self.selected_nested_item = 0;
-        self.details_scroll_row = 0;
-        self.sync_tree_row_with_selection();
     }
 
     /// Jump `selected_tree_row` to the first row of the window under `y` on

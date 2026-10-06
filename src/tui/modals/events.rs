@@ -488,6 +488,7 @@ impl App {
                 self.selected_component = 0;
                 self.selected_nested_item = 0;
                 self.page_head_selected = true;
+                self.reveal_selected_page();
                 self.sync_tree_row_with_selection();
                 self.open_new_page_head_form();
                 Some(ModalResult::Continue)
