@@ -629,6 +629,10 @@ impl App {
             _ => {}
         }
 
+        if is_textarea {
+            self.form_textarea_follow_cursor.set(true);
+        }
+
         Some(ModalResult::Continue)
     }
 
@@ -668,6 +672,9 @@ impl App {
             &mut self.form_text_undo,
             &text,
         );
+        if is_textarea {
+            self.form_textarea_follow_cursor.set(true);
+        }
     }
 
     fn restore_form_text_undo(&mut self) {
@@ -692,6 +699,7 @@ impl App {
         state.set(&undo.field_id, undo.value);
         *cursor_pos = undo.cursor_pos;
         *selection_anchor = undo.selection_anchor;
+        self.form_textarea_follow_cursor.set(true);
     }
 
     /// Image / poster / mp4 URL fields open the file picker.

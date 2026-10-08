@@ -12,6 +12,7 @@ impl App {
 
     pub(in crate::tui) fn render_modal(&self, frame: &mut ratatui::Frame) {
         *self.form_scrollbar_track.borrow_mut() = ScrollbarTrack::default();
+        *self.textarea_scrollbar_track.borrow_mut() = ScrollbarTrack::default();
         if let Some(modal) = &self.modal {
             self.render_unified_modal(frame, modal);
         }
@@ -529,7 +530,27 @@ impl App {
             }
             editform::FieldKind::Textarea { .. } => {
                 let value = state.get(field.id);
-                let layout = textarea_layout(value, cursor_pos, focused, rect.width, rect.height);
+                if focused {
+                    if self.form_textarea_view_field.get() != Some(state.focused_field) {
+                        self.form_textarea_view_field.set(Some(state.focused_field));
+                        *self.form_textarea_vscroll.borrow_mut() = 0;
+                        self.form_textarea_follow_cursor.set(true);
+                    }
+                }
+                let vscroll = *self.form_textarea_vscroll.borrow();
+                let follow = focused && self.form_textarea_follow_cursor.get();
+                let layout = textarea_layout(
+                    value,
+                    cursor_pos,
+                    focused,
+                    rect.width,
+                    rect.height,
+                    vscroll,
+                    follow,
+                );
+                if focused {
+                    *self.form_textarea_vscroll.borrow_mut() = layout.first_visible_row;
+                }
                 let text_rect = if layout.has_scrollbar {
                     Rect {
                         width: rect.width.saturating_sub(1),
@@ -563,14 +584,22 @@ impl App {
                 }
                 frame.render_widget(Paragraph::new(lines), text_rect);
                 if layout.has_scrollbar {
+                    let track = Rect {
+                        x: rect.x + rect.width.saturating_sub(1),
+                        y: rect.y,
+                        width: 1,
+                        height: rect.height,
+                    };
+                    if focused {
+                        *self.textarea_scrollbar_track.borrow_mut() = ScrollbarTrack {
+                            rect: track,
+                            total: layout.total_rows,
+                            visible: layout.visible_rows,
+                        };
+                    }
                     render_textarea_scrollbar(
                         frame,
-                        Rect {
-                            x: rect.x + rect.width.saturating_sub(1),
-                            y: rect.y,
-                            width: 1,
-                            height: rect.height,
-                        },
+                        track,
                         layout.first_visible_row,
                         layout.visible_rows,
                         layout.total_rows,

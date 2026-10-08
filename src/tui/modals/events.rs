@@ -182,11 +182,21 @@ impl App {
                 return Some(ModalResult::Continue);
             }
 
+            if matches!(kind, MouseEventKind::Drag(MouseButton::Left))
+                && self.scrollbar_drag == Some(ScrollbarDrag::FormTextarea)
+            {
+                let sb = *self.textarea_scrollbar_track.borrow();
+                *self.form_textarea_vscroll.borrow_mut() = sb.offset_at(row);
+                self.form_textarea_follow_cursor.set(false);
+                return Some(ModalResult::Continue);
+            }
+
             if matches!(kind, MouseEventKind::Drag(MouseButton::Left)) && self.form_text_drag {
                 if let Some((_, pos)) = self.form_text_hit(col, row, true) {
                     if let Some(Modal::FormEdit { cursor_pos, .. }) = self.modal.as_mut() {
                         *cursor_pos = pos;
                     }
+                    self.form_textarea_follow_cursor.set(true);
                 }
                 return Some(ModalResult::Continue);
             }
@@ -245,6 +255,13 @@ impl App {
                     self.try_open_form_url_picker();
                     return Some(ModalResult::Continue);
                 }
+                let ta_sb = *self.textarea_scrollbar_track.borrow();
+                if contains(ta_sb.rect, col, row) {
+                    *self.form_textarea_vscroll.borrow_mut() = ta_sb.offset_at(row);
+                    self.form_textarea_follow_cursor.set(false);
+                    self.scrollbar_drag = Some(ScrollbarDrag::FormTextarea);
+                    return Some(ModalResult::Continue);
+                }
                 let text_click = self.form_text_hit(col, row, false);
                 if let Some((idx, pos)) = text_click {
                     let now = std::time::Instant::now();
@@ -283,6 +300,7 @@ impl App {
                         }
                     }
                     self.form_text_drag = true;
+                    self.form_textarea_follow_cursor.set(true);
                     return Some(ModalResult::Continue);
                 }
                 if self.form_textarea_expanded {
@@ -331,28 +349,12 @@ impl App {
                         3
                     };
                     if self.form_textarea_expanded {
-                        let wrap_width = self.focused_textarea_wrap_width();
-                        if let Some(Modal::FormEdit {
-                            state, cursor_pos, ..
-                        }) = self.modal.as_mut()
-                        {
-                            let field_id = match state.form.fields.get(state.focused_field) {
-                                Some(f)
-                                    if matches!(f.kind, editform::FieldKind::Textarea { .. }) =>
-                                {
-                                    Some(f.id)
-                                }
-                                _ => None,
-                            };
-                            if let Some(field_id) = field_id {
-                                *cursor_pos = textarea_move_cursor_vertical(
-                                    state.get(field_id),
-                                    *cursor_pos,
-                                    delta as isize,
-                                    wrap_width,
-                                );
-                            }
-                        }
+                        self.scroll_focused_textarea_view(delta);
+                        return Some(ModalResult::Continue);
+                    }
+                    if self.pointer_over_focused_textarea(col, row)
+                        && self.scroll_focused_textarea_view(delta)
+                    {
                         return Some(ModalResult::Continue);
                     }
                     if let Some(modal) = self.modal.as_mut() {

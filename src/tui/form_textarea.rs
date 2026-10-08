@@ -195,18 +195,53 @@ pub(super) fn textarea_wrap_width_from_box(value: &str, box_rect: Rect) -> Optio
     Some(textarea_wrap_width(value, inner_w, inner_h))
 }
 
+pub(super) fn textarea_clamp_vscroll(
+    vscroll: usize,
+    visible_rows: usize,
+    total_rows: usize,
+) -> usize {
+    vscroll.min(total_rows.saturating_sub(visible_rows.max(1)))
+}
+
+/// Keep `cursor_row` inside the window. Does not pin it to the last line
+/// when it is already visible.
+pub(super) fn textarea_ensure_cursor_visible(
+    vscroll: usize,
+    cursor_row: usize,
+    visible_rows: usize,
+    total_rows: usize,
+) -> usize {
+    let visible_rows = visible_rows.max(1);
+    let mut start = textarea_clamp_vscroll(vscroll, visible_rows, total_rows);
+    if cursor_row < start {
+        start = cursor_row;
+    } else if cursor_row >= start.saturating_add(visible_rows) {
+        start = cursor_row.saturating_add(1).saturating_sub(visible_rows);
+    }
+    textarea_clamp_vscroll(start, visible_rows, total_rows)
+}
+
 pub(super) fn textarea_layout(
     value: &str,
     cursor_pos: usize,
     focused: bool,
     inner_w: u16,
     inner_h: u16,
+    vscroll: usize,
+    follow_cursor: bool,
 ) -> TextareaLayout {
     let visible_rows = inner_h.max(1) as usize;
     let wrap_width = textarea_wrap_width(value, inner_w, inner_h);
     let has_scrollbar = wrap_width < inner_w.max(1);
-    let (_, first_visible_row, total_rows) =
-        render_textarea_display_window(value, cursor_pos, focused, visible_rows, Some(wrap_width));
+    let (_, first_visible_row, total_rows) = render_textarea_display_window_at(
+        value,
+        cursor_pos,
+        focused,
+        visible_rows,
+        Some(wrap_width),
+        vscroll,
+        follow_cursor,
+    );
     TextareaLayout {
         first_visible_row,
         total_rows,
@@ -282,6 +317,8 @@ pub(super) fn textarea_cursor_from_click(
     focused: bool,
     click_x: u16,
     click_y: u16,
+    vscroll: usize,
+    follow_cursor: bool,
 ) -> Option<usize> {
     if box_rect.width < 3 || box_rect.height < 3 {
         return None;
@@ -290,7 +327,15 @@ pub(super) fn textarea_cursor_from_click(
     let inner_y = box_rect.y.saturating_add(1);
     let inner_w = box_rect.width.saturating_sub(2);
     let inner_h = box_rect.height.saturating_sub(2);
-    let layout = textarea_layout(value, cursor_pos, focused, inner_w, inner_h);
+    let layout = textarea_layout(
+        value,
+        cursor_pos,
+        focused,
+        inner_w,
+        inner_h,
+        vscroll,
+        follow_cursor,
+    );
     let text_rect = Rect {
         x: inner_x,
         y: inner_y,
@@ -335,6 +380,8 @@ pub(super) fn form_input_cursor_cell(
     value: &str,
     cursor_pos: usize,
     box_rect: Rect,
+    textarea_vscroll: usize,
+    textarea_follow: bool,
 ) -> Option<(u16, u16, char)> {
     if box_rect.width < 3 || box_rect.height < 3 {
         return None;
@@ -357,7 +404,15 @@ pub(super) fn form_input_cursor_cell(
             Some((inner_x.saturating_add(col), inner_y, ch))
         }
         editform::FieldKind::Textarea { .. } => {
-            let layout = textarea_layout(value, pos, true, inner_w, inner_h);
+            let layout = textarea_layout(
+                value,
+                pos,
+                true,
+                inner_w,
+                inner_h,
+                textarea_vscroll,
+                textarea_follow,
+            );
             let (cursor_row, cursor_col) =
                 textarea_cursor_visual(value, pos, Some(layout.wrap_width));
             if cursor_row < layout.first_visible_row {
@@ -388,6 +443,7 @@ pub(super) fn form_input_cursor_cell(
     }
 }
 
+#[cfg(test)]
 pub(super) fn render_textarea_display_window(
     value: &str,
     cursor_pos: usize,
@@ -395,14 +451,36 @@ pub(super) fn render_textarea_display_window(
     visible_rows: usize,
     wrap_width: Option<u16>,
 ) -> (String, usize, usize) {
+    render_textarea_display_window_at(
+        value,
+        cursor_pos,
+        focused,
+        visible_rows,
+        wrap_width,
+        0,
+        focused,
+    )
+}
+
+pub(super) fn render_textarea_display_window_at(
+    value: &str,
+    cursor_pos: usize,
+    focused: bool,
+    visible_rows: usize,
+    wrap_width: Option<u16>,
+    vscroll: usize,
+    follow_cursor: bool,
+) -> (String, usize, usize) {
     let visible_rows = visible_rows.max(1);
     let rows = textarea_visual_rows(value, wrap_width);
     let (cursor_row, _) = textarea_cursor_visual(value, cursor_pos, wrap_width);
     let cursor_row = cursor_row.min(rows.len().saturating_sub(1));
-    let start = if focused {
-        cursor_row.saturating_sub(visible_rows.saturating_sub(1))
-    } else {
+    let start = if !focused {
         0
+    } else if follow_cursor {
+        textarea_ensure_cursor_visible(vscroll, cursor_row, visible_rows, rows.len())
+    } else {
+        textarea_clamp_vscroll(vscroll, visible_rows, rows.len())
     };
     let end = (start + visible_rows).min(rows.len());
 
@@ -648,7 +726,18 @@ impl App {
             let pos = match field.kind {
                 editform::FieldKind::Textarea { .. } => {
                     let focused = idx == state.focused_field;
-                    textarea_cursor_from_click(value, rect, *cursor_pos, focused, x, y)?
+                    let vscroll = *self.form_textarea_vscroll.borrow();
+                    let follow = focused && self.form_textarea_follow_cursor.get();
+                    textarea_cursor_from_click(
+                        value,
+                        rect,
+                        *cursor_pos,
+                        focused,
+                        x,
+                        y,
+                        vscroll,
+                        follow,
+                    )?
                 }
                 editform::FieldKind::Text { .. } | editform::FieldKind::Url { .. } => {
                     let caret = if idx == state.focused_field {
@@ -673,6 +762,70 @@ impl App {
             }
             map(*idx, *rect, col, row)
         })
+    }
+
+    /// Scroll the focused textarea's independent view. Returns true when the
+    /// field overflows (the gesture is consumed even at a scroll bound).
+    pub(super) fn scroll_focused_textarea_view(&self, delta: i32) -> bool {
+        let Some((visible, total)) = self.focused_textarea_view_size() else {
+            return false;
+        };
+        if total <= visible {
+            return false;
+        }
+        let current = *self.form_textarea_vscroll.borrow();
+        let next = (current as i32 + delta).max(0) as usize;
+        *self.form_textarea_vscroll.borrow_mut() = textarea_clamp_vscroll(next, visible, total);
+        self.form_textarea_follow_cursor.set(false);
+        true
+    }
+
+    fn focused_textarea_view_size(&self) -> Option<(usize, usize)> {
+        let track = *self.textarea_scrollbar_track.borrow();
+        if track.total > track.visible && track.visible > 0 {
+            return Some((track.visible, track.total));
+        }
+        let Some(Modal::FormEdit {
+            state, cursor_pos, ..
+        }) = &self.modal
+        else {
+            return None;
+        };
+        let field = state.form.fields.get(state.focused_field)?;
+        if !matches!(field.kind, editform::FieldKind::Textarea { .. }) {
+            return None;
+        }
+        let areas = self.modal_field_areas.borrow();
+        let (_, box_rect) = areas.iter().find(|(idx, _)| *idx == state.focused_field)?;
+        if box_rect.width < 3 || box_rect.height < 3 {
+            return None;
+        }
+        let inner_w = box_rect.width.saturating_sub(2);
+        let inner_h = box_rect.height.saturating_sub(2);
+        let layout = textarea_layout(
+            state.get(field.id),
+            *cursor_pos,
+            true,
+            inner_w,
+            inner_h,
+            *self.form_textarea_vscroll.borrow(),
+            false,
+        );
+        Some((layout.visible_rows, layout.total_rows))
+    }
+
+    pub(super) fn pointer_over_focused_textarea(&self, col: u16, row: u16) -> bool {
+        let track = *self.textarea_scrollbar_track.borrow();
+        if contains(track.rect, col, row) {
+            return true;
+        }
+        let Some(Modal::FormEdit { state, .. }) = &self.modal else {
+            return false;
+        };
+        let areas = self.modal_field_areas.borrow();
+        areas
+            .iter()
+            .any(|(idx, rect)| *idx == state.focused_field && contains(*rect, col, row))
     }
 
     /// Wrap width of the focused textarea from the last-painted box, if any.

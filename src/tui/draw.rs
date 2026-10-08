@@ -718,7 +718,14 @@ impl App {
         let field = state.form.fields.get(state.focused_field)?;
         let areas = self.modal_field_areas.borrow();
         let (_, box_rect) = areas.iter().find(|(idx, _)| *idx == state.focused_field)?;
-        form_input_cursor_cell(&field.kind, state.get(field.id), *cursor_pos, *box_rect)
+        form_input_cursor_cell(
+            &field.kind,
+            state.get(field.id),
+            *cursor_pos,
+            *box_rect,
+            *self.form_textarea_vscroll.borrow(),
+            self.form_textarea_follow_cursor.get(),
+        )
     }
 
     pub(super) fn set_cursor_for_active_input(

@@ -19,6 +19,7 @@ pub(super) enum ScrollbarDrag {
     Help,
     Theme,
     FormEdit,
+    FormTextarea,
 }
 
 /// Paint a `│` track and `█` thumb.

@@ -242,6 +242,12 @@ pub(super) struct App {
     /// When true, FormEdit paints the focused textarea full-size. Esc
     /// returns to the compact form; Ctrl+S still saves the component.
     form_textarea_expanded: bool,
+    /// Independent vertical offset inside a focused textarea. Paint follows
+    /// the caret only while `form_textarea_follow_cursor` is true.
+    form_textarea_vscroll: std::cell::RefCell<usize>,
+    form_textarea_follow_cursor: std::cell::Cell<bool>,
+    form_textarea_view_field: std::cell::Cell<Option<usize>>,
+    textarea_scrollbar_track: std::cell::RefCell<ScrollbarTrack>,
     /// Last text-field mutation in the open FormEdit, for Ctrl+Z.
     form_text_undo: Option<FormTextUndo>,
     /// True while the pointer is dragging a text selection inside FormEdit.
@@ -334,6 +340,10 @@ impl App {
             modal_field_areas: std::cell::RefCell::new(Vec::new()),
             paused_form_edit_modal: None,
             form_textarea_expanded: false,
+            form_textarea_vscroll: std::cell::RefCell::new(0),
+            form_textarea_follow_cursor: std::cell::Cell::new(true),
+            form_textarea_view_field: std::cell::Cell::new(None),
+            textarea_scrollbar_track: std::cell::RefCell::new(ScrollbarTrack::default()),
             form_text_undo: None,
             form_text_drag: false,
             form_expand_hits: std::cell::RefCell::new(Vec::new()),

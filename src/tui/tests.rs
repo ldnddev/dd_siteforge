@@ -682,6 +682,153 @@ fn f1_from_expanded_textarea_keeps_form() {
     assert!(matches!(app.modal, Some(Modal::FormEdit { .. })));
 }
 
+fn long_textarea_copy() -> String {
+    (0..40)
+        .map(|i| format!("line-{i:02}"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn seed_textarea_overflow_view(app: &App, box_rect: Rect, visible: usize, total: usize) {
+    seed_focused_textarea_box(app, box_rect);
+    *app.textarea_scrollbar_track.borrow_mut() = ScrollbarTrack {
+        rect: Rect {
+            x: box_rect.x + box_rect.width.saturating_sub(1),
+            y: box_rect.y.saturating_add(1),
+            width: 1,
+            height: box_rect.height.saturating_sub(2),
+        },
+        total,
+        visible,
+    };
+}
+
+fn fill_focused_copy_and_home(app: &mut App, value: &str) {
+    send_key(app, KeyCode::Char('a'), KeyModifiers::CONTROL);
+    send_paste(app, value);
+    send_key(app, KeyCode::Home, KeyModifiers::CONTROL);
+}
+
+#[test]
+fn textarea_expanded_wheel_scrolls_view_without_moving_caret() {
+    let mut app = app_with_component(ComponentKind::RichText);
+    open_form_edit_on_page_component(&mut app);
+    focus_rich_text_copy(&mut app);
+    fill_focused_copy_and_home(&mut app, &long_textarea_copy());
+    send_key(&mut app, KeyCode::Char('e'), KeyModifiers::CONTROL);
+    assert!(app.form_textarea_expanded);
+    assert_eq!(form_cursor_pos(&app), 0);
+
+    let box_rect = Rect {
+        x: 0,
+        y: 0,
+        width: 40,
+        height: 12,
+    };
+    seed_textarea_overflow_view(&app, box_rect, 10, 40);
+    *app.form_textarea_vscroll.borrow_mut() = 0;
+    app.form_textarea_follow_cursor.set(true);
+
+    send_mouse(&mut app, MouseEventKind::ScrollDown, 5, 5);
+    assert_eq!(form_cursor_pos(&app), 0, "wheel must not move the caret");
+    assert_eq!(*app.form_textarea_vscroll.borrow(), 3);
+    assert!(!app.form_textarea_follow_cursor.get());
+
+    let value = form_value(&app, "parent_copy");
+    let (display, first, _) =
+        render_textarea_display_window_at(&value, 0, true, 10, None, 3, false);
+    assert_eq!(first, 3);
+    assert!(
+        display.starts_with("line-03"),
+        "scrolled view should show copy below the caret, got {display:?}"
+    );
+}
+
+#[test]
+fn textarea_key_after_view_scroll_follows_caret() {
+    let mut app = app_with_component(ComponentKind::RichText);
+    open_form_edit_on_page_component(&mut app);
+    focus_rich_text_copy(&mut app);
+    fill_focused_copy_and_home(&mut app, &long_textarea_copy());
+    send_key(&mut app, KeyCode::Char('e'), KeyModifiers::CONTROL);
+    seed_textarea_overflow_view(
+        &app,
+        Rect {
+            x: 0,
+            y: 0,
+            width: 40,
+            height: 12,
+        },
+        10,
+        40,
+    );
+    send_mouse(&mut app, MouseEventKind::ScrollDown, 5, 5);
+    assert!(!app.form_textarea_follow_cursor.get());
+    send_key(&mut app, KeyCode::Down, KeyModifiers::NONE);
+    assert!(app.form_textarea_follow_cursor.get());
+}
+
+#[test]
+fn textarea_compact_wheel_over_field_scrolls_inner_view() {
+    let mut app = app_with_component(ComponentKind::RichText);
+    open_form_edit_on_page_component(&mut app);
+    focus_rich_text_copy(&mut app);
+    fill_focused_copy_and_home(&mut app, &long_textarea_copy());
+    assert!(!app.form_textarea_expanded);
+
+    let box_rect = Rect {
+        x: 2,
+        y: 4,
+        width: 40,
+        height: 12,
+    };
+    seed_textarea_overflow_view(&app, box_rect, 10, 40);
+    *app.form_textarea_vscroll.borrow_mut() = 0;
+    let form_scroll_before = match &app.modal {
+        Some(Modal::FormEdit { scroll_offset, .. }) => *scroll_offset,
+        _ => panic!("expected FormEdit"),
+    };
+
+    send_mouse(&mut app, MouseEventKind::ScrollDown, 10, 6);
+    assert_eq!(form_cursor_pos(&app), 0);
+    assert_eq!(*app.form_textarea_vscroll.borrow(), 3);
+    let form_scroll_after = match &app.modal {
+        Some(Modal::FormEdit { scroll_offset, .. }) => *scroll_offset,
+        _ => panic!("expected FormEdit"),
+    };
+    assert_eq!(form_scroll_before, form_scroll_after);
+    assert!(!app.form_textarea_follow_cursor.get());
+}
+
+#[test]
+fn textarea_inner_scrollbar_click_jumps_view() {
+    let mut app = app_with_component(ComponentKind::RichText);
+    open_form_edit_on_page_component(&mut app);
+    focus_rich_text_copy(&mut app);
+    fill_focused_copy_and_home(&mut app, &long_textarea_copy());
+    send_key(&mut app, KeyCode::Char('e'), KeyModifiers::CONTROL);
+    let box_rect = Rect {
+        x: 0,
+        y: 0,
+        width: 40,
+        height: 12,
+    };
+    seed_textarea_overflow_view(&app, box_rect, 10, 40);
+    *app.form_textarea_vscroll.borrow_mut() = 0;
+    let track = *app.textarea_scrollbar_track.borrow();
+    let bottom = track.rect.y + track.rect.height.saturating_sub(1);
+    send_mouse(
+        &mut app,
+        MouseEventKind::Down(MouseButton::Left),
+        track.rect.x,
+        bottom,
+    );
+    assert_eq!(*app.form_textarea_vscroll.borrow(), 30);
+    assert!(!app.form_textarea_follow_cursor.get());
+    assert_eq!(app.scrollbar_drag, Some(ScrollbarDrag::FormTextarea));
+    assert_eq!(form_cursor_pos(&app), 0);
+}
+
 #[test]
 fn textarea_expand_home_end_move_to_visual_line_ends() {
     let mut app = app_with_component(ComponentKind::RichText);
@@ -1896,13 +2043,13 @@ fn single_line_field_scrolls_horizontally_with_caret() {
         width: inner_w + 2,
         height: 3,
     };
-    let (x, _, ch) =
-        form_input_cursor_cell(&text, url, end, box_rect).expect("caret at end of overflowing URL");
+    let (x, _, ch) = form_input_cursor_cell(&text, url, end, box_rect, 0, true)
+        .expect("caret at end of overflowing URL");
     assert_eq!(ch, ' ');
     assert_eq!(x, inner_w); // last inner column (inner_x=1, col=inner_w-1)
 
-    let (x, _, ch) =
-        form_input_cursor_cell(&text, url, end - 1, box_rect).expect("caret on last URL char");
+    let (x, _, ch) = form_input_cursor_cell(&text, url, end - 1, box_rect, 0, true)
+        .expect("caret on last URL char");
     assert_eq!(ch, 'p');
     assert_eq!(x, inner_w);
 
@@ -1980,16 +2127,16 @@ fn form_input_cursor_overlays_visible_glyph_when_caret_is_past_width() {
         height: 3,
     };
     // Caret at end of a full-width value scrolls by one so the caret has a cell.
-    let (x, y, ch) = form_input_cursor_cell(&text, "hello", 5, box_rect)
+    let (x, y, ch) = form_input_cursor_cell(&text, "hello", 5, box_rect, 0, true)
         .expect("caret at end of a full-width value");
     assert_eq!((x, y, ch), (5, 1, ' '));
 
     let (x, y, ch) =
-        form_input_cursor_cell(&text, "hi", 2, box_rect).expect("on-screen end of value");
+        form_input_cursor_cell(&text, "hi", 2, box_rect, 0, true).expect("on-screen end of value");
     assert_eq!((x, y, ch), (3, 1, ' '));
 
-    let (x, y, ch) =
-        form_input_cursor_cell(&text, "hello", 1, box_rect).expect("caret on a visible char");
+    let (x, y, ch) = form_input_cursor_cell(&text, "hello", 1, box_rect, 0, true)
+        .expect("caret on a visible char");
     assert_eq!((x, y, ch), (2, 1, 'e'));
 
     let textarea = editform::FieldKind::Textarea {
@@ -2004,13 +2151,14 @@ fn form_input_cursor_overlays_visible_glyph_when_caret_is_past_width() {
     };
     // Inner width 5 wraps "abcdefghij" onto two visual rows; caret at
     // the end overlays the last glyph of the second row.
-    let (x, y, ch) = form_input_cursor_cell(&textarea, "abcdefghij", 10, ta_box)
+    let (x, y, ch) = form_input_cursor_cell(&textarea, "abcdefghij", 10, ta_box, 0, true)
         .expect("textarea caret past inner width wraps");
     assert_eq!((x, y, ch), (5, 2, 'j'));
 
     let value = "one\ntwo\nhi";
-    let (x, y, ch) = form_input_cursor_cell(&textarea, value, value.chars().count(), ta_box)
-        .expect("textarea caret on last window row");
+    let (x, y, ch) =
+        form_input_cursor_cell(&textarea, value, value.chars().count(), ta_box, 0, true)
+            .expect("textarea caret on last window row");
     assert_eq!((x, y, ch), (3, 3, ' '));
 }
 
@@ -2107,14 +2255,75 @@ fn textarea_click_sets_cursor_on_visual_cell() {
     };
     let value = "abcdefghij";
     // Inner starts at (1, 1). Click visual row 1 col 2 → 'h' at index 7.
-    let pos = textarea_cursor_from_click(value, box_rect, 0, true, 3, 2)
+    let pos = textarea_cursor_from_click(value, box_rect, 0, true, 3, 2, 0, true)
         .expect("click inside wrapped textarea");
     assert_eq!(pos, 7);
     // Click past the end of a short last line clamps to line end.
     let short = "ab\ncd";
-    let end =
-        textarea_cursor_from_click(short, box_rect, 0, true, 5, 2).expect("click past end of line");
+    let end = textarea_cursor_from_click(short, box_rect, 0, true, 5, 2, 0, true)
+        .expect("click past end of line");
     assert_eq!(end, 5);
+}
+
+#[test]
+fn textarea_clamp_vscroll_stops_at_last_window() {
+    assert_eq!(textarea_clamp_vscroll(0, 3, 10), 0);
+    assert_eq!(textarea_clamp_vscroll(8, 3, 10), 7);
+    assert_eq!(textarea_clamp_vscroll(99, 3, 10), 7);
+    assert_eq!(textarea_clamp_vscroll(4, 10, 6), 0);
+}
+
+#[test]
+fn textarea_ensure_cursor_visible_does_not_pin_when_already_in_view() {
+    // Caret on row 1, window 3, vscroll 0 → keep showing rows 0..2 so copy
+    // below the caret stays visible.
+    assert_eq!(textarea_ensure_cursor_visible(0, 1, 3, 10), 0);
+    // Caret above the window scrolls up just enough.
+    assert_eq!(textarea_ensure_cursor_visible(5, 1, 3, 10), 1);
+    // Caret below the window scrolls down just enough (not pinned beyond that).
+    assert_eq!(textarea_ensure_cursor_visible(0, 8, 3, 10), 6);
+}
+
+#[test]
+fn textarea_independent_vscroll_shows_rows_below_caret() {
+    let value = "one\ntwo\nthree\nfour\nfive\nsix";
+    // Caret stays on "one" (pos 0) while the window starts at row 2.
+    let (display, first, total) =
+        render_textarea_display_window_at(value, 0, true, 3, None, 2, false);
+    assert_eq!(first, 2);
+    assert_eq!(total, 6);
+    let lines: Vec<&str> = display.lines().take(3).collect();
+    assert_eq!(lines, vec!["three", "four", "five"]);
+}
+
+#[test]
+fn textarea_follow_scrolls_only_when_caret_leaves_window() {
+    let value = "one\ntwo\nthree\nfour\nfive\nsix";
+    let caret_two = value.find("two").expect("two");
+    let (display, first, _) =
+        render_textarea_display_window_at(value, caret_two, true, 3, None, 0, true);
+    assert_eq!(first, 0, "caret already in view must keep window at top");
+    let lines: Vec<&str> = display.lines().take(3).collect();
+    assert_eq!(lines, vec!["one", "two", "three"]);
+
+    let caret_six = value.find("six").expect("six");
+    let (_, first, _) = render_textarea_display_window_at(value, caret_six, true, 3, None, 0, true);
+    assert_eq!(first, 3);
+}
+
+#[test]
+fn textarea_click_uses_independent_vscroll() {
+    let box_rect = Rect {
+        x: 0,
+        y: 0,
+        width: 12,
+        height: 5,
+    };
+    let value = "one\ntwo\nthree\nfour\nfive";
+    // vscroll=2 shows three/four/five. Click first inner row → "three".
+    let pos = textarea_cursor_from_click(value, box_rect, 0, true, 1, 1, 2, false)
+        .expect("click into scrolled view");
+    assert_eq!(pos, value.find("three").expect("three"));
 }
 
 #[test]
