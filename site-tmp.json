@@ -1,0 +1,1629 @@
+{
+  "schema_version": 1,
+  "id": "ldnddev",
+  "name": "ldnddev, LLC",
+  "theme": {
+    "primary_color": "#88d9f7",
+    "secondary_color": "#ffca76",
+    "tertiary_color": "#f98971",
+    "support_color": "#46be8c"
+  },
+  "header": {
+    "id": "header",
+    "custom_css": null,
+    "alert": null,
+    "sections": [
+      {
+        "id": "header__section",
+        "section_title": null,
+        "section_class": "-full-contained",
+        "item_box_class": "l-box",
+        "padding": "-no-padding",
+        "sal": "no-animation",
+        "columns": [
+          {
+            "id": "header__logo",
+            "width_class": "dd-u-8-24 dd-u-sm-8-24 dd-u-md-4-24 dd-u-lg-4-24 -y-center dd-header__logo",
+            "components": [
+              {
+                "component_type": "image",
+                "sal": "fade",
+                "parent_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790540409/logo-full-black-text.svg",
+                "parent_image_url_dark": "https://res.cloudinary.com/eojrsoca/image/upload/v1790540410/logo-full-white-text.svg",
+                "parent_image_alt": "Back to front page",
+                "parent_link_url": "/",
+                "parent_link_target": "_self"
+              }
+            ]
+          },
+          {
+            "id": "header__menu",
+            "width_class": "dd-u-6-24 dd-u-sm-6-24 dd-u-md-16-24 dd-u-lg-16-24 -y-center",
+            "components": [
+              {
+                "component_type": "navigation",
+                "parent_type": "dd-header__navigation",
+                "parent_class": "-main-menu",
+                "sal": "no-animation",
+                "items": [
+                  {
+                    "child_kind": "link",
+                    "child_link_label": "Home",
+                    "child_link_url": "/",
+                    "child_link_target": "_self",
+                    "child_link_css": null,
+                    "items": []
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "header__icons",
+            "width_class": "dd-u-10-24 dd-u-sm-10-24 dd-u-md-4-24 dd-u-lg-4-24 dd-header__icons -x-center -y-center",
+            "components": [
+              {
+                "component_type": "header_search",
+                "sal": "no-animation"
+              },
+              {
+                "component_type": "header_menu",
+                "sal": "no-animation",
+                "sal_duration": 350
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "footer": {
+    "id": "footer",
+    "custom_css": null,
+    "sections": [
+      {
+        "id": "footer-section-1",
+        "section_title": null,
+        "section_class": "-full-contained",
+        "item_box_class": "l-box",
+        "sal": "no-animation",
+        "columns": [
+          {
+            "id": "footer-connect",
+            "width_class": "dd-u-1-1 dd-u-sm-1-1 dd-u-md-12-24",
+            "components": [
+              {
+                "component_type": "rich_text",
+                "parent_class": null,
+                "sal": "slide-up",
+                "parent_copy": "<strong>Tell the world!</strong>\n\n<h2>Let's Connect</h2>\n\n<p>Have a project you would like to discuss so? Let's get going so you can show the world.</p>\n\n<p><a href=\"mailto:info@ldnddev.com?subject=Lets tell the world about our new project!\" title=\"Let's Talk\">Let's Talk</a></p>"
+              }
+            ]
+          },
+          {
+            "id": "footer-nav-col",
+            "width_class": "dd-u-1-1 dd-u-sm-1-1 dd-u-md-12-24",
+            "components": [
+              {
+                "component_type": "navigation",
+                "parent_type": "dd-footer__navigation",
+                "parent_class": "-footer-menu",
+                "sal": "no-animation",
+                "items": [
+                  {
+                    "child_kind": "link",
+                    "child_link_label": "Home",
+                    "child_link_url": "/",
+                    "child_link_target": "_self",
+                    "child_link_css": null,
+                    "items": []
+                  },
+                  {
+                    "child_kind": "link",
+                    "child_link_label": "Services",
+                    "child_link_url": "/services/",
+                    "child_link_target": "_self",
+                    "child_link_css": null,
+                    "items": []
+                  },
+                  {
+                    "child_kind": "link",
+                    "child_link_label": "Experience",
+                    "child_link_url": "/experience/",
+                    "child_link_target": "_self",
+                    "child_link_css": null,
+                    "items": []
+                  },
+                  {
+                    "child_kind": "link",
+                    "child_link_label": "Results",
+                    "child_link_url": "/results/",
+                    "child_link_target": "_self",
+                    "child_link_css": null,
+                    "items": []
+                  },
+                  {
+                    "child_kind": "link",
+                    "child_link_label": "Brands",
+                    "child_link_url": "/brands/",
+                    "child_link_target": "_self",
+                    "child_link_css": null,
+                    "items": []
+                  },
+                  {
+                    "child_kind": "link",
+                    "child_link_label": "Insight",
+                    "child_link_url": "/blog/",
+                    "child_link_target": "_self",
+                    "child_link_css": null,
+                    "items": []
+                  },
+                  {
+                    "child_kind": "link",
+                    "child_link_label": "Let's Talk",
+                    "child_link_url": "/contact-us/",
+                    "child_link_target": "_self",
+                    "child_link_css": null,
+                    "items": []
+                  }
+                ]
+              },
+              {
+                "component_type": "navigation",
+                "parent_type": "dd-footer__navigation",
+                "parent_class": "-social-menu",
+                "sal": "no-animation",
+                "items": [
+                  {
+                    "child_kind": "link",
+                    "child_link_label": "CodePen",
+                    "child_link_url": "https://codepen.io/ldnddev",
+                    "child_link_target": "_blank",
+                    "child_link_css": "-codepen",
+                    "items": []
+                  },
+                  {
+                    "child_kind": "link",
+                    "child_link_label": "GitHub",
+                    "child_link_url": "https://github.com/ldnddev",
+                    "child_link_target": "_blank",
+                    "child_link_css": "-github",
+                    "items": []
+                  }
+                ]
+              },
+              {
+                "component_type": "rich_text",
+                "parent_class": null,
+                "sal": "slide-up",
+                "parent_copy": "<p>© ldnddev LLC. All rights reserved.</p>"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "footer-section-2",
+        "section_title": null,
+        "section_class": "-full-full",
+        "item_box_class": "no-box",
+        "padding": "-no-padding",
+        "sal": "no-animation",
+        "columns": [
+          {
+            "id": "footer-logo",
+            "width_class": "dd-u-1-1 dd-footer__logo",
+            "components": [
+              {
+                "component_type": "image",
+                "sal": "no-animation",
+                "parent_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790540409/logo-full-black-text.svg",
+                "parent_image_url_dark": "https://res.cloudinary.com/eojrsoca/image/upload/v1790540410/logo-full-white-text.svg",
+                "parent_image_alt": "ldnddev, LLC. logo",
+                "parent_link_url": "/",
+                "parent_link_target": "_self"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "pages": [
+    {
+      "id": "page-home",
+      "slug": "index",
+      "slug_locked": true,
+      "head": {
+        "title": "Home",
+        "meta_title": "Custom Drupal & WordPress Development | ldnddev",
+        "meta_description": "ldnddev builds custom Drupal and WordPress websites for healthcare, B2B, and outreach organizations. Performance-first. SOC2/HIPAA-compliant. Let's talk.",
+        "canonical_url": "https://www.ldnddev.com/",
+        "robots": "index, follow",
+        "schema_type": "WebPage",
+        "og_title": "Custom Drupal & WordPress Development | ldnddev",
+        "og_description": "ldnddev builds custom Drupal and WordPress websites for healthcare, B2B, and outreach organizations. Performance-first. SOC2/HIPAA-compliant. Let's talk.",
+        "og_image": "https://res.cloudinary.com/eojrsoca/image/upload/v1790537355/hero-home-lg.webp"
+      },
+      "nodes": [
+        {
+          "node_type": "hero",
+          "parent_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790537355/hero-home-lg.webp",
+          "parent_image_alt": "Custom Drupal & WordPress development for healthcare, outreach, and B2B",
+          "parent_class": "-full-full",
+          "sal": "no-animation",
+          "parent_custom_css": null,
+          "parent_title": "Custom Drupal & WordPress development for healthcare, outreach, and B2B",
+          "parent_subtitle": "",
+          "parent_copy": "We are your strategic partner for Drupal & WordPress Development in a digital age.",
+          "links": [
+            {
+              "url": "/contact-us/",
+              "label": "Let's Talk!",
+              "target": "_self",
+              "style": "-primary"
+            }
+          ],
+          "parent_image_mobile": null,
+          "parent_image_tablet": null,
+          "parent_image_desktop": null,
+          "parent_image_class": "-full-full",
+          "media": {
+            "kind": "image",
+            "url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790537355/hero-home-lg.webp",
+            "alt": "Custom Drupal & WordPress development for healthcare, outreach, and B2B"
+          },
+          "copy_position": "-left",
+          "aria_label": "Introduction"
+        },
+        {
+          "node_type": "section",
+          "id": "section-1",
+          "section_title": null,
+          "section_class": "-full-lg",
+          "item_box_class": "l-box",
+          "sal": "no-animation",
+          "columns": [
+            {
+              "id": "section-1-column-1",
+              "width_class": "dd-u-1-1",
+              "components": [
+                {
+                  "component_type": "rich_text",
+                  "parent_class": null,
+                  "sal": "slide-up",
+                  "sal_duration": 700,
+                  "sal_delay": 100,
+                  "parent_copy": "## ldnddev is your strategic partner for digital success\n\nIn a digital world where first impressions are made in seconds, ldnddev is your trusted partner for creating strategic, high-impact web experiences. Our comprehensive services—spanning strategy, hosting, development, DevOps, and quality assurance—empower businesses to build not just websites, but powerful platforms that engage users and drive results. With expertise in custom Drupal and WordPress solutions, we tailor our approach to meet the unique needs of industries like healthcare, outreach, and B2B, ensuring your digital presence is both innovative and reliable.  \n\nAt ldnddev, we go beyond code to deliver solutions that grow with your business. From crafting SOC2 and HIPAA-compliant strategies to implementing robust Pantheon hosting and automated DevOps workflows, our team combines technical excellence with a user-focused mindset. We’re here to streamline your processes, enhance performance, and bring your vision to life with precision and care. Ready to transform your digital strategy? Let’s connect and build something extraordinary together."
+                },
+                {
+                  "component_type": "spacer",
+                  "size": "-xl",
+                  "divider": true
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "node_type": "section",
+          "id": "section-2",
+          "section_title": null,
+          "section_class": "-full-lg",
+          "item_box_class": "l-box",
+          "sal": "no-animation",
+          "columns": [
+            {
+              "id": "section-2-column-1",
+              "width_class": "dd-u-1-1",
+              "components": [
+                {
+                  "component_type": "alternating",
+                  "parent_type": "-default",
+                  "parent_class": "-default",
+                  "sal": "slide-up",
+                  "items": [
+                    {
+                      "child_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790597128/wireframe-isometric.svg",
+                      "child_image_alt": "Knowledge",
+                      "child_title": "Knowledge",
+                      "child_subtitle": "Skills",
+                      "child_copy": "We have the knowledge and the skills to help bring your visions and goals to life.",
+                      "media": {
+                        "kind": "image",
+                        "url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790597128/wireframe-isometric.svg",
+                        "alt": "Knowledge"
+                      }
+                    },
+                    {
+                      "child_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790597127/data-analysis-isometric.svg",
+                      "child_image_alt": "Implementing",
+                      "child_title": "Implementing",
+                      "child_subtitle": "Defining",
+                      "child_copy": "Understanding and achieving your goals is more than just defining and implementing text, images, and buttons on a page.",
+                      "media": {
+                        "kind": "image",
+                        "url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790597127/data-analysis-isometric.svg",
+                        "alt": "Implementing"
+                      }
+                    },
+                    {
+                      "child_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790597128/team-work-isometric-2b484.svg",
+                      "child_image_alt": "Goals",
+                      "child_title": "Goals",
+                      "child_subtitle": "Partnering",
+                      "child_copy": "Partnering with over 200+ Agencies and clients as an integrated extension to their internal teams to reach their goals.",
+                      "media": {
+                        "kind": "image",
+                        "url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790597128/team-work-isometric-2b484.svg",
+                        "alt": "Goals"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "node_type": "section",
+          "id": "section-3",
+          "section_title": null,
+          "section_class": "-full-full",
+          "item_box_class": "no-box",
+          "padding": "-no-padding",
+          "sal": "no-animation",
+          "columns": [
+            {
+              "id": "section-3-column-1",
+              "width_class": "dd-u-1-1",
+              "components": [
+                {
+                  "component_type": "cta",
+                  "parent_class": "-center-center",
+                  "parent_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790537356/cta-bg-lg.webp",
+                  "parent_image_alt": "Ready to go? Let's talk.",
+                  "sal": "fade",
+                  "parent_title": "Ready to go!",
+                  "parent_subtitle": "Bring your vision to life",
+                  "parent_copy": "Have a project brewing? Let’s chat and explore how we can help you bring it to life. Share your ideas and let’s get started.",
+                  "links": [
+                    {
+                      "url": "/contact-us/",
+                      "label": "Let's Talk!",
+                      "target": "_self",
+                      "style": "-primary"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "node_type": "section",
+          "id": "section-4",
+          "section_title": null,
+          "section_class": "-full-lg",
+          "item_box_class": "l-box",
+          "sal": "no-animation",
+          "columns": [
+            {
+              "id": "section-4-column-1",
+              "width_class": "dd-u-1-1 dd-u-sm-1-1 dd-u-md-1-1 dd-u-lg-12-24",
+              "components": [
+                {
+                  "component_type": "rich_text",
+                  "parent_class": null,
+                  "sal": "slide-right",
+                  "parent_copy": "## Our Services\nHaving an intuitive and informative website is essential for all businesses today to help increase brand awareness, generate leads, and help to inform the end user. ldnddev is here to help with your website project needs."
+                }
+              ]
+            },
+            {
+              "id": "section-4-column-2",
+              "width_class": "dd-u-1-1 dd-u-sm-1-1 dd-u-md-1-1 dd-u-lg-12-24",
+              "components": [
+                {
+                  "component_type": "rich_text",
+                  "parent_class": null,
+                  "sal": "slide-left",
+                  "parent_copy": "**Drupal Development**  \nPantheon + PHP + HTML5 + SCSS + JS  \n\n**WordPress Development**  \nPantheon + PHP + HTML5 + SCSS + JS  \n\n**API Development**  \nPHP + JS  \n\n**Intranet Development**  \nDrupal / WordPress  "
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "node_type": "section",
+          "id": "section-5",
+          "section_title": null,
+          "section_class": "-full-full",
+          "item_box_class": "no-box",
+          "padding": "-no-padding",
+          "sal": "no-animation",
+          "columns": [
+            {
+              "id": "section-5-column-1",
+              "width_class": "dd-u-1-1",
+              "components": [
+                {
+                  "component_type": "cta",
+                  "parent_class": "-center-center",
+                  "parent_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790537356/cta-bg-lg.webp",
+                  "parent_image_alt": "Ready to go? Let's talk.",
+                  "sal": "fade",
+                  "parent_title": "Our services",
+                  "parent_subtitle": "From concept to completion",
+                  "parent_copy": "From discovery to deploy, and the continual growth afterwards. We are here to help.",
+                  "links": [
+                    {
+                      "url": "/services/",
+                      "label": "Our Services",
+                      "target": "_self",
+                      "style": "-primary"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "node_type": "section",
+          "id": "section-6",
+          "section_title": null,
+          "section_class": "-full-lg",
+          "item_box_class": "l-box",
+          "sal": "no-animation",
+          "columns": [
+            {
+              "id": "section-6-column-1",
+              "width_class": "dd-u-1-1 dd-u-lg-12-24",
+              "components": [
+                {
+                  "component_type": "rich_text",
+                  "parent_class": null,
+                  "sal": "slide-right",
+                  "parent_copy": "## Our Experience  \nBeing able to anticipate and suggest solutions to roadblocks all while optimizing your website for long-term success doesn’t happen overnight. And it most definitely doesn’t come from an AI prompt. Experience comes from years of successfully and efficiently bringing brand visions to life."
+                }
+              ]
+            },
+            {
+              "id": "section-6-column-2",
+              "width_class": "dd-u-1-1 dd-u-lg-12-24",
+              "components": [
+                {
+                  "component_type": "rich_text",
+                  "parent_class": null,
+                  "sal": "slide-left",
+                  "parent_copy": "**Healthcare**  \nPantheon + Drupal  \n\n**Outreach**  \nPantheon + Drupal / WordPress  \n\n**Lifestyle**  \nPantheon + Drupal / WordPress  \n\n**B2B**  \nPantheon + Drupal / WordPress  "
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "node_type": "section",
+          "id": "section-7",
+          "section_title": null,
+          "section_class": "-full-full",
+          "item_box_class": "no-box",
+          "padding": "-no-padding",
+          "sal": "no-animation",
+          "columns": [
+            {
+              "id": "section-7-column-1",
+              "width_class": "dd-u-1-1",
+              "components": [
+                {
+                  "component_type": "cta",
+                  "parent_class": "-center-center",
+                  "parent_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790537356/cta-bg-lg.webp",
+                  "parent_image_alt": "Ready to go? Let's talk.",
+                  "sal": "slide-up",
+                  "parent_title": "Our Experience",
+                  "parent_subtitle": "Across all service types",
+                  "parent_copy": "Looking for a team that has worked in your industry? We are here to help.",
+                  "links": [
+                    {
+                      "url": "/experience/",
+                      "label": "Our Experience",
+                      "target": "_self",
+                      "style": "-primary"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "page-services",
+      "slug": "services",
+      "slug_locked": true,
+      "head": {
+        "title": "Services",
+        "meta_title": "ldnddev, LLC | Custom Website, Drupal, & WordPress Development Agency",
+        "meta_description": "When you need a strategic partner instead of a project based agency.",
+        "canonical_url": "/services/",
+        "robots": "index, follow",
+        "schema_type": "WebPage",
+        "og_title": "ldnddev, LLC | Custom Website, Drupal, & WordPress Development Agency",
+        "og_description": "When you need a strategic partner instead of a project based agency.",
+        "og_image": "https://res.cloudinary.com/eojrsoca/image/upload/v1790537355/hero-services-lg.webp"
+      },
+      "nodes": [
+        {
+          "node_type": "hero",
+          "parent_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790537355/hero-services-lg.webp",
+          "parent_image_alt": "Services",
+          "parent_class": "-full-full",
+          "sal": "no-animation",
+          "parent_custom_css": null,
+          "parent_title": "5 Seconds, that's all you get.",
+          "parent_subtitle": "",
+          "parent_copy": "Strategic partners in a digital age.",
+          "links": [
+            {
+              "url": "/contact-us/",
+              "label": "Let's Talk!",
+              "target": "_self",
+              "style": "-primary"
+            }
+          ],
+          "parent_image_mobile": null,
+          "parent_image_tablet": null,
+          "parent_image_desktop": null,
+          "parent_image_class": "-full-full",
+          "media": {
+            "kind": "image",
+            "url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790537355/hero-services-lg.webp",
+            "alt": "Services"
+          },
+          "copy_position": "-left",
+          "aria_label": "Introduction"
+        },
+        {
+          "node_type": "section",
+          "id": "section-1",
+          "section_title": "ldnddev is your strategic partner for digital success",
+          "section_class": "-full-lg",
+          "item_box_class": "l-box",
+          "sal": "no-animation",
+          "columns": [
+            {
+              "id": "section-1-column-1",
+              "width_class": "dd-u-1-1",
+              "components": [
+                {
+                  "component_type": "rich_text",
+                  "parent_class": null,
+                  "sal": "slide-up",
+                  "parent_copy": "In a digital world where first impressions are made in seconds, ldnddev is your trusted partner for creating strategic, high-impact web experiences. Our comprehensive services—spanning strategy, hosting, development, DevOps, and quality assurance—empower businesses to build not just websites, but powerful platforms that engage users and drive results. With expertise in custom Drupal and WordPress solutions, we tailor our approach to meet the unique needs of industries like healthcare, outreach, and B2B, ensuring your digital presence is both innovative and reliable.\n\nAt ldnddev, we go beyond code to deliver solutions that grow with your business. From crafting SOC2 and HIPAA-compliant strategies to implementing robust Pantheon hosting and automated DevOps workflows, our team combines technical excellence with a user-focused mindset. We’re here to streamline your processes, enhance performance, and bring your vision to life with precision and care. Ready to transform your digital strategy? Let’s connect and build something extraordinary together."
+                },
+                {
+                  "component_type": "spacer",
+                  "size": "-xl",
+                  "divider": true
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "node_type": "section",
+          "id": "section-2",
+          "section_title": null,
+          "section_class": "-full-lg",
+          "item_box_class": "l-box",
+          "sal": "no-animation",
+          "columns": [
+            {
+              "id": "section-2-column-1",
+              "width_class": "dd-u-1-1",
+              "components": [
+                {
+                  "component_type": "alternating",
+                  "parent_type": "-default",
+                  "parent_class": "-default",
+                  "sal": "fade",
+                  "items": [
+                    {
+                      "child_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790597128/wireframe-isometric.svg",
+                      "child_image_alt": "Strategy",
+                      "child_title": "Strategy",
+                      "child_subtitle": "That build an experience",
+                      "child_copy": "Don’t just build a website, build an experience.\n\n- Site audit and opportunities roadmap\n- SOC2 / HIPAA compliant vendors\n- Emergency preparedness plan\n- Information Architecture roadmap\n- Multi device Q&A and roadmap\n- ADA / WCAG audit and roadmap",
+                      "media": {
+                        "kind": "image",
+                        "url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790597128/wireframe-isometric.svg",
+                        "alt": "Strategy"
+                      }
+                    },
+                    {
+                      "child_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790597128/wireframe-isometric.svg",
+                      "child_image_alt": "Hosting solutions",
+                      "child_title": "Hosting solutions",
+                      "child_subtitle": "For peace of mind",
+                      "child_copy": "Power, security, and speed. All with a peace of mind.\n\n- Hardened Pantheon hosting solution\n- 3 tier development workflow\n- GIT repository pipelines\n- CDN integration\n- Daily backup solution\n- Disaster recovery solution",
+                      "media": {
+                        "kind": "image",
+                        "url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790597128/wireframe-isometric.svg",
+                        "alt": "Hosting solutions"
+                      }
+                    },
+                    {
+                      "child_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790597128/wireframe-isometric.svg",
+                      "child_image_alt": "Development platforms",
+                      "child_title": "Development platforms",
+                      "child_subtitle": "That focus on what matters",
+                      "child_copy": "Streamlining workflows so you can focus on what matters.\n\n- Custom Drupal builds\n- Custom WordPress builds\n- Platform monitoring\n- Site health monitoring\n- 3rd party vendor vetting\n- Coding guidelines & standards",
+                      "media": {
+                        "kind": "image",
+                        "url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790597128/wireframe-isometric.svg",
+                        "alt": "Development platforms"
+                      }
+                    },
+                    {
+                      "child_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790597128/wireframe-isometric.svg",
+                      "child_image_alt": "Development services",
+                      "child_title": "Development services",
+                      "child_subtitle": "With a strategic partner",
+                      "child_copy": "More than just developers, we’re your strategic partner.\n\n- Backend Dev\n- Frontend Dev\n- Mobile first approach\n- Content management\n- Landing & Promo sites\n- Marketing automation\n- Vendor API integrations\n- CustoAm APIs\n- Custom themes\n- Flexible components",
+                      "media": {
+                        "kind": "image",
+                        "url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790597128/wireframe-isometric.svg",
+                        "alt": "Development services"
+                      }
+                    },
+                    {
+                      "child_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790597128/wireframe-isometric.svg",
+                      "child_image_alt": "DevOps services",
+                      "child_title": "SevOps services",
+                      "child_subtitle": "With a collaborative partner",
+                      "child_copy": "Bringing agility, reliability and collaboration to our projects.\n\n- Communication and collaboration\n- Streamline & automated workflow\n- Code management & integrity",
+                      "media": {
+                        "kind": "image",
+                        "url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790597128/wireframe-isometric.svg",
+                        "alt": "DevOps services"
+                      }
+                    },
+                    {
+                      "child_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790597128/wireframe-isometric.svg",
+                      "child_image_alt": "QA services",
+                      "child_title": "QA services",
+                      "child_subtitle": "Helpting to meet standars & requirements",
+                      "child_copy": "Professional development while thinking like users.\n\n- Code standard compliance\n- ADA & WCAG compliance\n- GDPR compliance\n- Performance testing",
+                      "media": {
+                        "kind": "image",
+                        "url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790597128/wireframe-isometric.svg",
+                        "alt": "QA services"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "component_type": "spacer",
+                  "size": "-xl",
+                  "divider": true
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "node_type": "section",
+          "id": "section-3",
+          "section_title": null,
+          "section_class": "-full-lg",
+          "item_box_class": "l-box",
+          "sal": "no-animation",
+          "columns": [
+            {
+              "id": "section-3-column-1",
+              "width_class": "dd-u-1-1",
+              "components": [
+                {
+                  "component_type": "rich_text",
+                  "parent_class": null,
+                  "sal": "slide-up",
+                  "parent_copy": "## Stability & Performance  \n\nA solid tech stack is the foundation for any software project and should not only be strong but also able to grow with a project. Ldnddev continually strived to stay on top of the tools of today and tomorrow."
+                },
+                {
+                  "component_type": "spacer",
+                  "size": "-xl",
+                  "divider": true
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "node_type": "section",
+          "id": "section-4",
+          "section_title": null,
+          "section_class": "-full-full",
+          "item_box_class": "l-box",
+          "sal": "no-animation",
+          "columns": [
+            {
+              "id": "section-4-column-1",
+              "width_class": "dd-u-1-1",
+              "components": [
+                {
+                  "component_type": "filmstrip",
+                  "parent_type": "-default",
+                  "sal": "no-animation",
+                  "items": [
+                    {
+                      "child_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790540392/pantheon-logo.png",
+                      "child_image_alt": "Pantheon",
+                      "child_title": "Pantheon"
+                    },
+                    {
+                      "child_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790540389/acquia-logo.png",
+                      "child_image_alt": "Acquia",
+                      "child_title": "Acquia"
+                    },
+                    {
+                      "child_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790540390/drupal-logo.png",
+                      "child_image_alt": "Drupal",
+                      "child_title": "Drupal"
+                    },
+                    {
+                      "child_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790540393/wordpress-logo.png",
+                      "child_image_alt": "WordPress",
+                      "child_title": "WordPress"
+                    },
+                    {
+                      "child_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790540392/php-logo.png",
+                      "child_image_alt": "PHP",
+                      "child_title": "PHP"
+                    },
+                    {
+                      "child_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790540393/twig-logo.png",
+                      "child_image_alt": "TWIG",
+                      "child_title": "TWIG"
+                    },
+                    {
+                      "child_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790540390/html-logo.png",
+                      "child_image_alt": "HTML",
+                      "child_title": "HTML"
+                    },
+                    {
+                      "child_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790540389/css-logo.png",
+                      "child_image_alt": "CSS",
+                      "child_title": "CSS"
+                    },
+                    {
+                      "child_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790540392/scss-logo.png",
+                      "child_image_alt": "SCSS",
+                      "child_title": "SCSS"
+                    },
+                    {
+                      "child_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790540391/javascript-logo.png",
+                      "child_image_alt": "JavaScript",
+                      "child_title": "JavaScript"
+                    }
+                  ]
+                },
+                {
+                  "component_type": "spacer",
+                  "size": "-xl",
+                  "divider": false
+                },
+                {
+                  "component_type": "filmstrip",
+                  "parent_type": "-reverse",
+                  "sal": "no-animation",
+                  "items": [
+                    {
+                      "child_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790540391/jquery-logo.png",
+                      "child_image_alt": "JQuery",
+                      "child_title": "JQuery"
+                    },
+                    {
+                      "child_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790540390/grunt-logo.png",
+                      "child_image_alt": "Grunt",
+                      "child_title": "Grunt"
+                    },
+                    {
+                      "child_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790540389/deque-logo.png",
+                      "child_image_alt": "Deque",
+                      "child_title": "Deque"
+                    },
+                    {
+                      "child_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790540389/bitbucket-logo.png",
+                      "child_image_alt": "Bitbucket",
+                      "child_title": "Bitbucket"
+                    },
+                    {
+                      "child_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790540391/owasp-zap-logo.png",
+                      "child_image_alt": "ZAP OWASP",
+                      "child_title": "ZAP QWASP"
+                    },
+                    {
+                      "child_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790540392/relicone-logo.png",
+                      "child_image_alt": "Relic One",
+                      "child_title": "Ralic One"
+                    },
+                    {
+                      "child_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790732146/figma-logo.png",
+                      "child_image_alt": "Figma",
+                      "child_title": "Figma"
+                    },
+                    {
+                      "child_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790540391/mailchimp-logo.png",
+                      "child_image_alt": "MailChimp",
+                      "child_title": "MailChimp"
+                    },
+                    {
+                      "child_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790540390/google-webdesigner-logo.png",
+                      "child_image_alt": "Google Webdesigner",
+                      "child_title": "Google Webdesigner"
+                    }
+                  ]
+                },
+                {
+                  "component_type": "spacer",
+                  "size": "-xl",
+                  "divider": false
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "page-experience",
+      "slug": "experience",
+      "slug_locked": false,
+      "head": {
+        "title": "Experience",
+        "meta_title": null,
+        "meta_description": null,
+        "canonical_url": null,
+        "robots": "index, follow",
+        "schema_type": "WebPage",
+        "og_title": null,
+        "og_description": null,
+        "og_image": null
+      },
+      "nodes": [
+        {
+          "node_type": "hero",
+          "parent_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790519765/hero-experience-lg.webp",
+          "parent_image_alt": "Experience that defines your online presence",
+          "parent_class": "-full-full",
+          "sal": "no-animation",
+          "parent_custom_css": null,
+          "parent_title": "Experience That Defines Your Online Presence.",
+          "parent_subtitle": "",
+          "parent_copy": "Development expertise across industries.",
+          "links": [
+            {
+              "url": "/contact-us",
+              "label": "Let's Talk!",
+              "target": "_self",
+              "style": "-primary"
+            }
+          ],
+          "parent_image_mobile": null,
+          "parent_image_tablet": null,
+          "parent_image_desktop": null,
+          "parent_image_class": "-full-full",
+          "media": {
+            "kind": "image",
+            "url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790519765/hero-experience-lg.webp",
+            "alt": "Experience that defines your online presence"
+          },
+          "copy_position": "-left",
+          "aria_label": "Introduction"
+        },
+        {
+          "node_type": "section",
+          "id": "section-1",
+          "section_title": null,
+          "section_class": "-full-lg",
+          "item_box_class": "l-box",
+          "sal": "no-animation",
+          "columns": [
+            {
+              "id": "section-1-column-1",
+              "width_class": "dd-u-1-1",
+              "components": [
+                {
+                  "component_type": "rich_text",
+                  "parent_class": null,
+                  "sal": "slide-up",
+                  "parent_copy": "## ldnddev provides a wide range of web development solutions for all you needs  \nAt ldnddev, we believe that exceptional web development is about more than just code—it’s about crafting digital experiences that resonate with your audience and drive success. Our team brings specialized expertise across industries like healthcare, outreach, lifestyle, and B2B, delivering tailored Drupal and WordPress solutions that enhance productivity, streamline processes, and amplify your brand’s online presence.  \n\nFrom user-friendly designs to secure, compliant infrastructures, we partner with you from concept to completion, ensuring every project is optimized for growth and impact. Whether it’s building HIPAA-compliant healthcare platforms, engaging outreach sites, vibrant lifestyle pages, or robust B2B solutions, ldnddev combines technical precision with a collaborative approach to bring your vision to life. Let’s connect and create something that sets your brand apart!  "
+                },
+                {
+                  "component_type": "spacer",
+                  "size": "-xl",
+                  "divider": true
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "node_type": "section",
+          "id": "section-2",
+          "section_title": null,
+          "section_class": "-full-lg",
+          "item_box_class": "l-box",
+          "sal": "no-animation",
+          "columns": [
+            {
+              "id": "section-2-column-1",
+              "width_class": "dd-u-1-1",
+              "components": [
+                {
+                  "component_type": "alternating",
+                  "parent_type": "-default",
+                  "parent_class": "-default",
+                  "sal": "fade",
+                  "items": [
+                    {
+                      "child_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790597127/data-analysis-isometric.svg",
+                      "child_image_alt": "Health Care",
+                      "child_title": "Health Care",
+                      "child_subtitle": "Services & professional expertise",
+                      "child_copy": "Creating custom Healthcare and Medical enterprise websites solutions that allow for future growth with a strong digital presence.\n\n- User friendly website experience\n- Secure infrastructure and hosting\n- HIPAA compliant techstack\n- ADA & WCAG compliant\n- API integration and development\n- Fully tested and optimized",
+                      "media": {
+                        "kind": "image",
+                        "url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790597127/data-analysis-isometric.svg",
+                        "alt": "Health Care"
+                      }
+                    },
+                    {
+                      "child_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790597127/data-analysis-isometric.svg",
+                      "child_image_alt": "Outreach",
+                      "child_title": "Outreach",
+                      "child_subtitle": "Services and Professional Expertise",
+                      "child_copy": "Creating custom solutions for non-profit and community outreach programs that help in getting your voice and services heard around the world.\n\n- User friendly website experience\n- Secure infrastructure and hosting\n- Custom and secure code for donation and form submissions\n- ADA & WCAG compliant\n- Vigorous QA testing",
+                      "media": {
+                        "kind": "image",
+                        "url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790597127/data-analysis-isometric.svg",
+                        "alt": "Outreach"
+                      }
+                    },
+                    {
+                      "child_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790597127/data-analysis-isometric.svg",
+                      "child_image_alt": "Lifestyle",
+                      "child_title": "Lifestyle",
+                      "child_subtitle": "Services and Professional Expertise",
+                      "child_copy": "Creating custom solutions for lifestyle based websites that give an overview of the products and the culture behind the brands.\n\n- User friendly website experience\n- Fast & Secure hosting infrastructure\n- ADA & WCAG compliant\n- Vigorous QA testing\n- API integrations",
+                      "media": {
+                        "kind": "image",
+                        "url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790597127/data-analysis-isometric.svg",
+                        "alt": "Lifestyle"
+                      }
+                    },
+                    {
+                      "child_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790597127/data-analysis-isometric.svg",
+                      "child_image_alt": "B2B",
+                      "child_title": "B2B",
+                      "child_subtitle": "SubtitleServices and Professional Expertise",
+                      "child_copy": "Creating custom B2B solutions that help to promote products, services and company information while promoting brand awareness.\n\n- User friendly website experience\n- Secure infrastructure and hosting\n- Custom API integrations\n- ADA & WCAG compliant\n- Workflow integrations\n- Optimization and QA",
+                      "media": {
+                        "kind": "image",
+                        "url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790597127/data-analysis-isometric.svg",
+                        "alt": "B2B"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "node_type": "section",
+          "id": "section-3",
+          "section_title": null,
+          "section_class": "-full-full",
+          "item_box_class": "no-box",
+          "padding": "-no-padding",
+          "sal": "no-animation",
+          "columns": [
+            {
+              "id": "section-3-column-1",
+              "width_class": "dd-u-1-1",
+              "components": [
+                {
+                  "component_type": "cta",
+                  "parent_class": "-center-center",
+                  "parent_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790537356/cta-bg-lg.webp",
+                  "parent_image_alt": "Our results",
+                  "sal": "fade",
+                  "parent_title": "Our Results",
+                  "parent_subtitle": "From conception to completion",
+                  "parent_copy": "From discovery to deploy, and the continual growth aftewards. We are here to help.",
+                  "links": [
+                    {
+                      "url": "/results",
+                      "label": "Our Results",
+                      "target": "_self",
+                      "style": "-primary"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "page-experience-copy",
+      "slug": "results",
+      "slug_locked": true,
+      "head": {
+        "title": "Results",
+        "meta_title": "ldnddev, LLC. | Focused on you business goals to deliver the website results you need.",
+        "meta_description": "When out-of-the-box results are not enough, let us help you pull it all together.",
+        "canonical_url": "/results",
+        "robots": "index, follow",
+        "schema_type": "WebPage",
+        "og_title": "Results",
+        "og_description": "When out-of-the-box results are not enough, let us help you pull it all together.",
+        "og_image": "https://res.cloudinary.com/eojrsoca/image/upload/v1790537355/hero-results-lg.webp"
+      },
+      "nodes": [
+        {
+          "node_type": "hero",
+          "parent_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790537355/hero-results-lg.webp",
+          "parent_image_alt": "Focused on Results.",
+          "parent_class": "-full-full",
+          "sal": "no-animation",
+          "parent_custom_css": null,
+          "parent_title": "Focused on Results.",
+          "parent_subtitle": "Driven To Make Your Online Brand Its Best.",
+          "parent_copy": "Development expertise across industries.",
+          "links": [
+            {
+              "url": "/contact-us",
+              "label": "Let's Talk!",
+              "target": "_self",
+              "style": "-primary"
+            }
+          ],
+          "parent_image_mobile": null,
+          "parent_image_tablet": null,
+          "parent_image_desktop": null,
+          "parent_image_class": "-full-full",
+          "media": {
+            "kind": "image",
+            "url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790537355/hero-results-lg.webp",
+            "alt": "Focused on Results."
+          },
+          "copy_position": "-left",
+          "aria_label": "Introduction"
+        },
+        {
+          "node_type": "section",
+          "id": "section-1",
+          "section_title": null,
+          "section_class": "-full-lg",
+          "item_box_class": "l-box",
+          "sal": "no-animation",
+          "columns": [
+            {
+              "id": "section-1-column-1",
+              "width_class": "dd-u-1-1",
+              "components": [
+                {
+                  "component_type": "rich_text",
+                  "parent_class": null,
+                  "sal": "slide-up",
+                  "parent_copy": "## ldnddev never settles for buzzwords and overall AGI. Where’s the fun in that? Or the pride in making something better?  \nAt ldnddev, we’re not just another web development firm churning out cookie-cutter solutions; we’re your dedicated partner, obsessed with making your brand shine online. With a focus on results and a passion for understanding your unique business, we craft custom Drupal and WordPress experiences that break the mold, driving success across industries with creativity and precision.  \n\nOur approach is all about long-term collaboration, treating every project as a chance to grow alongside your team. From the initial discovery to ongoing optimization, we dive deep into your goals, streamlining workflows and delivering solutions that evolve with your brand. Ready to elevate your digital presence? Let’s team up and build something extraordinary that keeps delivering results.  "
+                },
+                {
+                  "component_type": "spacer",
+                  "size": "-xl",
+                  "divider": true
+                }
+              ]
+            },
+            {
+              "id": "section-1-column-2",
+              "width_class": "dd-u-1-1 dd-u-lg-12-24",
+              "components": [
+                {
+                  "component_type": "rich_text",
+                  "parent_class": null,
+                  "sal": "slide-right",
+                  "parent_copy": "We could continue to use the same routine and treat each job as if they were all the same but, clearly, are not. Nor do they all fit nicely into the same mold. Stuffing them into your portfolio just to add a name and move on."
+                }
+              ]
+            },
+            {
+              "id": "section-1-column-3",
+              "width_class": "dd-u-1-1 dd-u-lg-12-24",
+              "components": [
+                {
+                  "component_type": "rich_text",
+                  "parent_class": null,
+                  "sal": "slide-left",
+                  "parent_copy": "Results are continual and here at ldnddev we know that just because the first goal was reached, does not mean that it’s time to hang up our hat and call it a day. We are here for the long term, not just your first goal but all those that follow."
+                }
+              ]
+            },
+            {
+              "id": "section-1-column-4",
+              "width_class": "dd-u-1-1",
+              "components": [
+                {
+                  "component_type": "spacer",
+                  "size": "-xl",
+                  "divider": true
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "node_type": "section",
+          "id": "section-3",
+          "section_title": null,
+          "section_class": "-full-full",
+          "item_box_class": "no-box",
+          "padding": "-no-padding",
+          "sal": "no-animation",
+          "columns": [
+            {
+              "id": "section-3-column-1",
+              "width_class": "dd-u-1-1",
+              "components": [
+                {
+                  "component_type": "cta",
+                  "parent_class": "-center-center",
+                  "parent_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790537356/cta-bg-lg.webp",
+                  "parent_image_alt": "From conceptions to completion",
+                  "sal": "fade",
+                  "parent_title": "From conceptions to completion",
+                  "parent_subtitle": "Our Brands Hit The Mark",
+                  "parent_copy": "From discovery to deploy, and the continual growth aftewards. We are here to help.",
+                  "links": [
+                    {
+                      "url": "/brands",
+                      "label": "Our Brands",
+                      "target": "_self",
+                      "style": "-primary"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "page-results-copy",
+      "slug": "brands",
+      "slug_locked": true,
+      "head": {
+        "title": "Brands",
+        "meta_title": "ldnddev, LLC. | Custom Website, Drupal, & WordPress Development crafted for digital excellence and diverse brands.",
+        "meta_description": "Custom Drupal and WordPress development to help tell your unique story.",
+        "canonical_url": "/brands",
+        "robots": "index, follow",
+        "schema_type": "WebPage",
+        "og_title": "Results",
+        "og_description": "Custom Drupal and WordPress development to help tell your unique story.",
+        "og_image": "https://res.cloudinary.com/eojrsoca/image/upload/v1790537355/hero-brands-lg.webp"
+      },
+      "nodes": [
+        {
+          "node_type": "hero",
+          "parent_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790537355/hero-brands-lg.webp",
+          "parent_image_alt": "Brands",
+          "parent_class": "-full-full",
+          "sal": "no-animation",
+          "parent_custom_css": null,
+          "parent_title": "Brands.",
+          "parent_subtitle": "",
+          "parent_copy": "From B2B to Outreach.",
+          "links": [
+            {
+              "url": "/contact-us",
+              "label": "Let's Talk!",
+              "target": "_self",
+              "style": "-primary"
+            }
+          ],
+          "parent_image_mobile": null,
+          "parent_image_tablet": null,
+          "parent_image_desktop": null,
+          "parent_image_class": "-full-full",
+          "media": {
+            "kind": "image",
+            "url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790537355/hero-brands-lg.webp",
+            "alt": "Brands"
+          },
+          "copy_position": "-left",
+          "aria_label": "Introduction"
+        },
+        {
+          "node_type": "section",
+          "id": "section-1",
+          "section_title": null,
+          "section_class": "-full-lg",
+          "item_box_class": "l-box",
+          "sal": "no-animation",
+          "columns": [
+            {
+              "id": "section-1-column-1",
+              "width_class": "dd-u-1-1",
+              "components": [
+                {
+                  "component_type": "rich_text",
+                  "parent_class": null,
+                  "sal": "slide-up",
+                  "parent_copy": "## ldnddev, crafting digital excellence for diverse brands  \nAt ldnddev, we pride ourselves on partnering with a diverse array of brands, from B2B powerhouses to community-focused outreach programs, each with a unique story to tell. Our extensive experience in Drupal and WordPress development allows us to deliver tailored digital solutions that drive excellence, whether we’re consulting or building from the ground up, ensuring every project reflects our commitment to quality and impact.  \n\nOur client list spans industries as varied as healthcare, education, hospitality, and non-profits, but our mission remains constant: to transform visions into vibrant, results-driven online experiences. From discovery through deployment and beyond, we work as an extension of your team, fostering growth and success with every collaboration. Ready to join our roster of satisfied clients? Let’s connect and bring your brand’s story to life!  "
+                },
+                {
+                  "component_type": "spacer",
+                  "size": "-xl",
+                  "divider": true
+                }
+              ]
+            },
+            {
+              "id": "section-1-column-2",
+              "width_class": "dd-u-1-1",
+              "components": [
+                {
+                  "component_type": "rich_text",
+                  "parent_class": null,
+                  "sal": "slide-right",
+                  "parent_copy": "## Clients  \n**Short List**  \nOur client list may span across many disciplines, but the drive is always the same. Whether we are consulting or building, our Drupal and WordPress experience leads the charge for excellence in each and every project."
+                },
+                {
+                  "component_type": "spacer",
+                  "size": "-xl",
+                  "divider": true
+                }
+              ]
+            },
+            {
+              "id": "section-1-column-3",
+              "width_class": "dd-u-1-1 dd-u-lg-12-24",
+              "components": [
+                {
+                  "component_type": "rich_text",
+                  "parent_class": null,
+                  "sal": "slide-right",
+                  "parent_copy": "- AIGA Birmingham\n- Alabama Recycling\n- Alabama Symphony\n- Alabama Tourism\n- Alagasco/Spire\n- ALFA Insurance\n- American Printing\n- Archery Trade Association\n- Auburn University\n- Baptist Health System\n- Berry Farms\n- Bessemer Glass\n- Bham Ad Fed\n- Brannon’s—A Public House\n- Camana Bay\n- Caribe\n- Civil Rights Institute\n- Constellation Imageworks\n- Cumberland School of Law\n- Cumberland School of Nursing\n- Diy Network\n- Dunn Vineyards"
+                }
+              ]
+            },
+            {
+              "id": "section-1-column-4",
+              "width_class": "dd-u-1-1 dd-u-lg-12-24",
+              "components": [
+                {
+                  "component_type": "rich_text",
+                  "parent_class": null,
+                  "sal": "slide-left",
+                  "parent_copy": "- Erlanger\n- Franklin’s Charge\n- Good People Brewery\n- Graham & CO\n- HGTV\n- Homeplace\n- Iowa\n- Kaiya Beach Resort\n- Knight Abbey\n- March Brown\n- Mastercraft\n- Move 20/59\n- MUSC\n- PARCA Alabama\n- Ruby Tuesday\n- RxBenefits\n- SmithField Meats\n- Stony Brook\n- Supreme Core Brewery\n- The Terraces\n- The Joseph School\n- Tiffin Motorhomes\n- US Postal Service\n- UF&Shands\n- University Hospital\n- UVA Health System\n- UT Southwestern\n- Vanderbilt\n- Wake Forest"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "node_type": "section",
+          "id": "section-3",
+          "section_title": null,
+          "section_class": "-full-full",
+          "item_box_class": "no-box",
+          "padding": "-no-padding",
+          "sal": "no-animation",
+          "columns": [
+            {
+              "id": "section-3-column-1",
+              "width_class": "dd-u-1-1",
+              "components": [
+                {
+                  "component_type": "cta",
+                  "parent_class": "-center-center",
+                  "parent_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790537356/cta-bg-lg.webp",
+                  "parent_image_alt": "From conceptions to completion",
+                  "sal": "fade",
+                  "parent_title": "From conceptions to completion",
+                  "parent_subtitle": "Our Services Have You Covered",
+                  "parent_copy": "From discovery to deploy, and the continual growth aftewards. We are here to help.",
+                  "links": [
+                    {
+                      "url": "/services",
+                      "label": "Our Services",
+                      "target": "_self",
+                      "style": "-primary"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "page-lets-talk",
+      "slug": "contact-us",
+      "slug_locked": true,
+      "head": {
+        "title": "Let's Talk",
+        "meta_title": "ldnddev, LLC. | Ready to build a Drupal or WordPress site to meet your business goals?",
+        "meta_description": "Contact Us when you are ready to tell your unique story.",
+        "canonical_url": "/contact-us",
+        "robots": "index, follow",
+        "schema_type": "WebPage",
+        "og_title": "ldnddev, LLC. | Ready to build a Drupal or WordPress site to meet your business goals?",
+        "og_description": "Contact Us when you are ready to tell your unique story.",
+        "og_image": "https://res.cloudinary.com/eojrsoca/image/upload/v1790537355/hero-contactus-lg.webp"
+      },
+      "nodes": [
+        {
+          "node_type": "hero",
+          "parent_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790537355/hero-contactus-lg.webp",
+          "parent_image_alt": "Use the form below to get in-touch with us.",
+          "parent_class": "-full-full",
+          "sal": "no-animation",
+          "parent_custom_css": null,
+          "parent_title": "Let's Talk",
+          "parent_subtitle": "",
+          "parent_copy": "Use the form below to get in-touch with us.",
+          "parent_image_mobile": null,
+          "parent_image_tablet": null,
+          "parent_image_desktop": null,
+          "parent_image_class": "-full-full",
+          "media": {
+            "kind": "image",
+            "url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790537355/hero-contactus-lg.webp",
+            "alt": "Use the form below to get in-touch with us."
+          },
+          "copy_position": "-left",
+          "aria_label": "Introduction"
+        },
+        {
+          "node_type": "section",
+          "id": "section-1",
+          "section_title": null,
+          "section_class": "-full-contained",
+          "item_box_class": "l-box",
+          "sal": "no-animation",
+          "columns": [
+            {
+              "id": "section-1-column-1",
+              "width_class": "dd-u-1-1",
+              "components": [
+                {
+                  "component_type": "rich_text",
+                  "parent_class": null,
+                  "sal": "no-animation",
+                  "parent_copy": "<script src=\"https://www.cognitoforms.com/f/seamless.js\" data-key=\"nKwDEJz_5k-922Y1-zu0fg\" data-form=\"1\"></script>"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "page-blog",
+      "slug": "blog",
+      "slug_locked": true,
+      "head": {
+        "title": "Blog",
+        "meta_title": "ldnddev, LLC. | From the ldnddev Blog",
+        "meta_description": "ldnddev insights.",
+        "canonical_url": "/blog",
+        "robots": "index, follow",
+        "schema_type": "CollectionPage",
+        "og_title": "ldnddev, LLC. | From the ldnddev Blog",
+        "og_description": "ldnddev insights.",
+        "og_image": "https://res.cloudinary.com/eojrsoca/image/upload/v1790537355/hero-blog-lg.webp"
+      },
+      "nodes": [
+        {
+          "node_type": "hero",
+          "parent_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790537355/hero-blog-lg.webp",
+          "parent_image_alt": "Insight from the ldnddev blog",
+          "parent_class": "-full-full",
+          "sal": "no-animation",
+          "parent_custom_css": null,
+          "parent_title": "Insights From the ldnddev Blog",
+          "parent_subtitle": "",
+          "parent_copy": "Our interest, passions, and talking points.",
+          "links": [
+            {
+              "url": "#blog-content",
+              "label": "TLDR;",
+              "target": "_self",
+              "style": "-primary"
+            }
+          ],
+          "parent_image_mobile": null,
+          "parent_image_tablet": null,
+          "parent_image_desktop": null,
+          "parent_image_class": "-full-full",
+          "media": {
+            "kind": "image",
+            "url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790537355/hero-blog-lg.webp",
+            "alt": "Insight from the ldnddev blog"
+          },
+          "copy_position": "-left",
+          "aria_label": "Introduction"
+        },
+        {
+          "node_type": "section",
+          "id": "section-1",
+          "section_title": null,
+          "section_class": "-full-lg",
+          "item_box_class": "l-box",
+          "sal": "no-animation",
+          "columns": [
+            {
+              "id": "section-1-column-1",
+              "width_class": "dd-u-1-1",
+              "components": [
+                {
+                  "component_type": "rich_text",
+                  "parent_class": null,
+                  "sal": "slide-up",
+                  "parent_copy": "At ldnddev, LLC, we don’t just build custom Drupal and WordPress sites—we live and breathe the tools, workflows, and techniques that make them faster, more secure, and easier to maintain. Our blog is where that expertise lives in written form.  \n\nHere you’ll find practical deep dives on modern development practices: from mastering lightweight Terminal User Interfaces (TUIs) to automating repetitive tasks with custom frameworks, evaluating high-performance editors, and streamlining local environments for real-world projects. Each post is written by developers who ship code daily, not theorists.  \n\nWhether you’re optimizing performance on a high-traffic Drupal site, hardening a WordPress multisite, or hunting for the next tool that will shave hours off your week, these articles deliver actionable advice you can apply immediately.  \n\nBrowse the latest entries below, or subscribe to stay ahead of the curve.  "
+                },
+                {
+                  "component_type": "spacer",
+                  "size": "-xl",
+                  "divider": true
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "node_type": "section",
+          "id": "blog-content",
+          "section_title": null,
+          "section_class": "-full-lg",
+          "item_box_class": "l-box",
+          "sal": "no-animation",
+          "columns": [
+            {
+              "id": "blog-content-column-1",
+              "width_class": "dd-u-1-1",
+              "components": [
+                {
+                  "component_type": "card",
+                  "parent_type": "-default",
+                  "sal": "slide-up",
+                  "parent_width": "dd-u-1-1 dd-u-md-12-24 dd-u-lg-8-24",
+                  "items": [
+                    {
+                      "child_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790859964/tuis-for-the-win-sm.webp",
+                      "child_image_alt": "Top TUIs for Developers",
+                      "child_title": "Top TUIs for Developers",
+                      "child_subtitle": "Were efficiency lives",
+                      "child_copy": "Discover essential Terminal User Interfaces (TUIs) for efficient web development workflows.",
+                      "child_link_url": "/blog/tuis-for-the-win/",
+                      "child_link_target": "_self",
+                      "child_link_label": "Get your TUI on",
+                      "child_link_style": "-primary"
+                    },
+                    {
+                      "child_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790859969/why-we-switched-from-vs-code-to-zed-sm.webp",
+                      "child_image_alt": "Why VS Code to Zed",
+                      "child_title": "Why VS Code to Zed",
+                      "child_subtitle": "Standardizing our workflow",
+                      "child_copy": "Discover why ldnddev switched from VS Code to Zed for faster web development.",
+                      "child_link_url": "/blog/why-we-switched-from-vs-code-to-zed",
+                      "child_link_target": "_self",
+                      "child_link_label": "Lean into speed",
+                      "child_link_style": "-secondary"
+                    },
+                    {
+                      "child_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790859888/building-better-workflows-from-tui-tools-to-custom-frameworks-sm.webp",
+                      "child_image_alt": "From TUI Tools to Custom Frameworks in Web Development",
+                      "child_title": "From TUI Tools to Custom Frameworks in Web Development",
+                      "child_subtitle": "Productivity has always been king",
+                      "child_copy": "Explore the resurgence of TUI apps and custom frameworks.",
+                      "child_link_url": "/blog/building-better-workflows-from-tui-tools-to-custom-frameworks",
+                      "child_link_target": "_self",
+                      "child_link_label": "TUI's & Frameworks",
+                      "child_link_style": "-tertiary"
+                    },
+                    {
+                      "child_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790859878/ai-powered-development-in-2026-sm.webp",
+                      "child_image_alt": "Revolutionizing Linux, TUIs, and Custom Frameworks for Web Devs",
+                      "child_title": "Revolutionizing Linux, TUIs, and Custom Frameworks for Web Devs",
+                      "child_subtitle": "AI-Powered Development",
+                      "child_copy": "Exploring how AI is transforming web development in 2026.",
+                      "child_link_url": "/blog/ai-powered-development-in-2026",
+                      "child_link_target": "_self",
+                      "child_link_label": "AI in 2026",
+                      "child_link_style": "-primary"
+                    },
+                    {
+                      "child_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790859956/navigating-website-hosting-trends-in-2026-sm.webp",
+                      "child_image_alt": "Navigating Website Hosting Trends in 2026",
+                      "child_title": "Navigating Website Hosting Trends in 2026",
+                      "child_subtitle": "Providers to Consider",
+                      "child_copy": "A guide to 2026 hosting trends focusing on performance, security, and sustainability.",
+                      "child_link_url": "/blog/navigating-website-hosting-trends-in-2026",
+                      "child_link_target": "_self",
+                      "child_link_label": "Hosting 2026",
+                      "child_link_style": "-secondary"
+                    },
+                    {
+                      "child_image_url": "https://res.cloudinary.com/eojrsoca/image/upload/v1790859891/building-better-workflows-sm.webp",
+                      "child_image_alt": "Building Better Workflows",
+                      "child_title": "Building Better Workflows",
+                      "child_subtitle": "From TUI Tools to Custom Frameworks",
+                      "child_copy": "Discover how TUI apps, Linux, HTMX, Lando, and custom frameworks enhance developer efficiency.",
+                      "child_link_url": "/blog/building-better-workflows/",
+                      "child_link_target": "_self",
+                      "child_link_label": "Developer Efficiency",
+                      "child_link_style": "-tertiary"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "page-search",
+      "slug": "search",
+      "slug_locked": true,
+      "head": {
+        "title": "Search",
+        "meta_title": "Search | ldnddev",
+        "meta_description": "Search ldnddev.com for services, experience, and insights.",
+        "canonical_url": "https://www.ldnddev.com/search/",
+        "robots": "noindex, follow",
+        "schema_type": "WebPage",
+        "og_title": "Search | ldnddev",
+        "og_description": "Search ldnddev.com for services, experience, and insights."
+      },
+      "nodes": [
+        {
+          "node_type": "section",
+          "id": "search-results",
+          "section_title": null,
+          "section_class": "-full-lg",
+          "item_box_class": "l-box",
+          "sal": "no-animation",
+          "aria_label": "Search",
+          "columns": [
+            {
+              "id": "search-results-column-1",
+              "width_class": "dd-u-1-1",
+              "components": [
+                {
+                  "component_type": "search_results",
+                  "sal": "no-animation"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "export_dir": "web",
+  "base_url": "https://www.ldnddev.com",
+  "lang": "en",
+  "pretty_urls": true
+}

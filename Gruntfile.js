@@ -129,6 +129,11 @@ module.exports = (grunt) => {
         src: 'web/assets/favicon/favicon.ico',
         dest: 'web/favicon.ico',
       },
+      fonts: {
+        nonull: true,
+        src: 'source/fonts',
+        dest: 'web/assets/fonts',
+      },
       axe: {
         nonull: true,
         src: 'node_modules/axe-core/axe.js',
@@ -149,6 +154,9 @@ module.exports = (grunt) => {
       cssjs: [
         'web/assets/css',
         'web/assets/js'
+      ],
+      fonts: [
+        'web/assets/fonts'
       ],
       favicon: [
         'web/assets/favicon',
@@ -212,7 +220,9 @@ module.exports = (grunt) => {
   // Register tasks
   grunt.registerTask('build', [
     'clean:cssjs',
+    'clean:fonts',
     'clean:axe',
+    'copy:fonts',
     'copy:axe',
     'copy:axemin',
     'copy:ddaxe',
@@ -223,8 +233,10 @@ module.exports = (grunt) => {
   ]);
   grunt.registerTask('dev', [
     'clean:cssjs',
+    'clean:fonts',
     'clean:axe',
     'copy:axe',
+    'copy:fonts',
     'copy:axemin',
     'copy:ddaxe',
     'dart-sass:sass',
