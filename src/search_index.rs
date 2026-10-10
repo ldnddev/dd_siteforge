@@ -3,7 +3,6 @@ use std::fs;
 use std::path::Path;
 
 use anyhow::Context;
-use pulldown_cmark::{Event, Options, Parser, TagEnd};
 use serde::Serialize;
 
 use crate::model::{
@@ -158,6 +157,9 @@ fn collect_component(
         | SectionComponent::HeaderMenu(_)
         | SectionComponent::Spacer(_)
         | SectionComponent::SearchResults(_) => {}
+        SectionComponent::Headline(v) => {
+            push_heading(headings, parts, &v.text);
+        }
     }
 }
 
@@ -339,29 +341,7 @@ fn push_media(parts: &mut Vec<String>, media: &Media) {
 }
 
 fn markdown_to_plain(input: &str) -> String {
-    let mut options = Options::empty();
-    options.insert(Options::ENABLE_STRIKETHROUGH);
-    options.insert(Options::ENABLE_TABLES);
-    options.insert(Options::ENABLE_TASKLISTS);
-    let mut out = String::new();
-    for event in Parser::new_ext(input, options) {
-        match event {
-            Event::Text(t) | Event::Code(t) => out.push_str(&t),
-            Event::SoftBreak | Event::HardBreak => out.push(' '),
-            Event::End(
-                TagEnd::Paragraph
-                | TagEnd::Heading(_)
-                | TagEnd::Item
-                | TagEnd::CodeBlock
-                | TagEnd::Table
-                | TagEnd::TableHead
-                | TagEnd::TableRow
-                | TagEnd::BlockQuote(_),
-            ) => out.push(' '),
-            _ => {}
-        }
-    }
-    collapse_ws(&out)
+    crate::markdown::to_plain(input)
 }
 
 fn collapse_ws(s: &str) -> String {
@@ -383,7 +363,8 @@ fn truncate_chars(s: &str, max: usize) -> String {
 mod tests {
     use super::*;
     use crate::model::{
-        DdHead, DdRichText, PageTemplate, RobotsDirective, SalAnimation, SchemaType, Site,
+        DdHead, DdHeadline, DdRichText, HeadingLevel, PageNode, PageTemplate, RobotsDirective,
+        SalAnimation, SchemaType, SectionComponent, Site,
     };
 
     #[test]
@@ -408,6 +389,28 @@ mod tests {
         );
         assert!(page.body.contains("Get Started"));
         assert!(page.image.is_none());
+    }
+
+    #[test]
+    fn headline_text_is_indexed_as_a_heading() {
+        let mut site = Site::starter();
+        let PageNode::Section(section) = &mut site.pages[0].nodes[1] else {
+            panic!("starter node 1 expected to be a section");
+        };
+        section.columns[0]
+            .components
+            .push(SectionComponent::Headline(DdHeadline {
+                text: "Five seconds".to_string(),
+                heading_level: HeadingLevel::H2,
+                custom_css: None,
+                sal: SalAnimation::NoAnimation,
+                sal_duration: None,
+                sal_delay: None,
+            }));
+        let index = build_search_index(&site);
+        let page = &index.pages[0];
+        assert!(page.headings.iter().any(|h| h == "Five seconds"));
+        assert!(page.body.contains("Five seconds"));
     }
 
     #[test]

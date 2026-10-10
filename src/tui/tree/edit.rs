@@ -616,7 +616,7 @@ impl App {
             kind,
             ComponentKind::HeaderSearch | ComponentKind::HeaderMenu
         );
-        let page_only = matches!(kind, ComponentKind::SearchResults);
+        let page_only = matches!(kind, ComponentKind::SearchResults | ComponentKind::Headline);
         match self.selected_region {
             SelectedRegion::Site => {
                 self.push_toast(ToastLevel::Warning, "Cannot paste on Site settings.");

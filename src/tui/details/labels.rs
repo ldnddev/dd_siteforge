@@ -100,6 +100,7 @@ pub(in crate::tui) fn component_label(component: &crate::model::SectionComponent
         crate::model::SectionComponent::Timeline(_) => "dd-timeline",
         crate::model::SectionComponent::DataTable(_) => "dd-data-table",
         crate::model::SectionComponent::SearchResults(_) => "dd-search-results",
+        crate::model::SectionComponent::Headline(_) => "dd-headline",
     }
 }
 
@@ -192,6 +193,14 @@ pub(in crate::tui) fn component_blueprint_label(
                 "dd-data-table".to_string()
             } else {
                 format!("dd-data-table | {caption}")
+            }
+        }
+        crate::model::SectionComponent::Headline(v) => {
+            let text = v.text.trim();
+            if text.is_empty() {
+                "dd-headline".to_string()
+            } else {
+                format!("dd-headline | {text}")
             }
         }
         _ => component_label(component).to_string(),

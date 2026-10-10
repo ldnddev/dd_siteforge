@@ -1661,6 +1661,31 @@ fn data_table_add_remove_rows_allows_empty() {
 }
 
 #[test]
+fn tier_c_headline_form_edit_round_trip() {
+    let mut app = app_with_component(ComponentKind::Headline);
+    open_form_edit_on_page_component(&mut app);
+    send_key(&mut app, KeyCode::Char('Z'), KeyModifiers::NONE);
+    send_key(&mut app, KeyCode::Tab, KeyModifiers::NONE);
+    send_key(&mut app, KeyCode::Right, KeyModifiers::NONE);
+    send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
+    assert!(app.modal.is_none());
+    match &app.site.pages[0].nodes[1] {
+        PageNode::Section(s) => match &s.columns[0].components[0] {
+            crate::model::SectionComponent::Headline(h) => {
+                assert_eq!(h.text, "HeadlineZ");
+                assert_eq!(h.heading_level, crate::model::HeadingLevel::H3);
+                assert!(h.custom_css.is_none());
+                assert_eq!(h.sal, crate::model::SalAnimation::NoAnimation);
+                assert!(h.sal_duration.is_none());
+                assert!(h.sal_delay.is_none());
+            }
+            _ => panic!("expected Headline"),
+        },
+        _ => panic!("expected Section"),
+    }
+}
+
+#[test]
 fn tier_c_spacer_form_edit_round_trip() {
     let mut app = app_with_component(ComponentKind::Spacer);
     open_form_edit_on_page_component(&mut app);
@@ -1960,7 +1985,7 @@ fn tier_d_navigation_drill_round_trip() {
 }
 
 #[test]
-fn tier_d_navigation_button_hides_link_fields() {
+fn tier_d_navigation_button_keeps_url_and_target() {
     let mut app = app_with_component(ComponentKind::Navigation);
     open_form_edit_on_page_component(&mut app);
     tab_to_items_field(&mut app);
@@ -1970,13 +1995,52 @@ fn tier_d_navigation_button_hides_link_fields() {
     send_key(&mut app, KeyCode::Right, KeyModifiers::NONE);
     assert_eq!(form_value(&app, "child_kind"), "button");
 
-    // The visible-field count should drop by 2 (child_link_url and child_link_target).
-    let visible_count = match app.modal.as_ref() {
-        Some(Modal::FormEdit { state, .. }) => state.visible_field_indices().len(),
+    let visible_ids: Vec<&str> = match app.modal.as_ref() {
+        Some(Modal::FormEdit { state, .. }) => state
+            .visible_field_indices()
+            .into_iter()
+            .map(|idx| state.form.fields[idx].id)
+            .collect(),
         _ => panic!("expected FormEdit"),
     };
-    // Template has 6 fields; button hides 2 → 4 visible.
-    assert_eq!(visible_count, 4);
+    // Button is still an anchor, so URL and target stay in the 6-field form.
+    assert_eq!(visible_ids.len(), 6);
+    assert!(visible_ids.contains(&"child_link_url"));
+    assert!(visible_ids.contains(&"child_link_target"));
+}
+
+#[test]
+fn tier_d_navigation_button_saves_url() {
+    let mut app = app_with_component(ComponentKind::Navigation);
+    open_form_edit_on_page_component(&mut app);
+    tab_to_items_field(&mut app);
+    send_key(&mut app, KeyCode::Enter, KeyModifiers::NONE);
+    send_key(&mut app, KeyCode::Right, KeyModifiers::NONE);
+    assert_eq!(form_value(&app, "child_kind"), "button");
+    tab_to_field(&mut app, "child_link_url");
+    send_key(&mut app, KeyCode::Char('a'), KeyModifiers::CONTROL);
+    send_paste(&mut app, "/contact-us");
+    assert_eq!(form_value(&app, "child_link_url"), "/contact-us");
+    // Return to the navigation form, then commit.
+    send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
+    send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
+    match &app.site.pages[0].nodes[1] {
+        PageNode::Section(s) => match &s.columns[0].components[0] {
+            crate::model::SectionComponent::Navigation(nav) => {
+                assert_eq!(
+                    nav.items[0].child_kind,
+                    crate::model::NavigationKind::Button
+                );
+                assert_eq!(nav.items[0].child_link_url.as_deref(), Some("/contact-us"));
+                assert_eq!(
+                    nav.items[0].child_link_target,
+                    Some(crate::model::CardLinkTarget::SelfTarget)
+                );
+            }
+            _ => panic!("expected Navigation"),
+        },
+        _ => panic!("expected Section"),
+    }
 }
 
 #[test]
@@ -5938,6 +6002,7 @@ fn insert_picker_allowed_kinds_match_focused_region() {
     assert!(page.contains(&ComponentKind::Hero));
     assert!(page.contains(&ComponentKind::Section));
     assert!(page.contains(&ComponentKind::SearchResults));
+    assert!(page.contains(&ComponentKind::Headline));
     assert!(!page.contains(&ComponentKind::HeaderSearch));
     assert!(!page.contains(&ComponentKind::HeaderMenu));
 
@@ -5945,6 +6010,7 @@ fn insert_picker_allowed_kinds_match_focused_region() {
     let header = app.filtered_component_kinds("");
     assert!(!header.contains(&ComponentKind::Hero));
     assert!(!header.contains(&ComponentKind::SearchResults));
+    assert!(!header.contains(&ComponentKind::Headline));
     assert!(header.contains(&ComponentKind::Section));
     assert!(header.contains(&ComponentKind::HeaderSearch));
     assert!(header.contains(&ComponentKind::HeaderMenu));
@@ -5954,6 +6020,7 @@ fn insert_picker_allowed_kinds_match_focused_region() {
     let footer = app.filtered_component_kinds("");
     assert!(!footer.contains(&ComponentKind::Hero));
     assert!(!footer.contains(&ComponentKind::SearchResults));
+    assert!(!footer.contains(&ComponentKind::Headline));
     assert!(footer.contains(&ComponentKind::Section));
     assert!(!footer.contains(&ComponentKind::HeaderSearch));
     assert!(!footer.contains(&ComponentKind::HeaderMenu));

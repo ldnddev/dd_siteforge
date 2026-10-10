@@ -544,6 +544,14 @@ fn validate_section_component(
         | SectionComponent::HeaderMenu(_)
         | SectionComponent::Spacer(_)
         | SectionComponent::SearchResults(_) => {}
+        SectionComponent::Headline(headline) => {
+            if headline.text.trim().is_empty() {
+                errors.push(format!(
+                    "Page '{}' section '{}' dd-headline is missing text.",
+                    page_id, section_id
+                ));
+            }
+        }
         SectionComponent::DataTable(table) => {
             if table.caption.trim().is_empty() {
                 errors.push(format!(
@@ -675,39 +683,23 @@ fn validate_navigation_item(
             page_id, section_id, path
         ));
     }
-    match item.child_kind {
-        NavigationKind::Link => {
-            let url = item.child_link_url.as_deref().unwrap_or("");
-            if url.trim().is_empty() {
-                errors.push(format!(
-                    "Page '{}' section '{}' dd-navigation item {} kind=link requires child_link_url.",
-                    page_id, section_id, path
-                ));
-            } else if !is_valid_url(url) {
-                errors.push(format!(
-                    "Page '{}' section '{}' dd-navigation item {} child_link_url is invalid.",
-                    page_id, section_id, path
-                ));
-            }
-        }
-        NavigationKind::Button => {
-            if item
-                .child_link_url
-                .as_deref()
-                .is_some_and(|v| !v.trim().is_empty())
-            {
-                errors.push(format!(
-                    "Page '{}' section '{}' dd-navigation item {} kind=button must not provide child_link_url.",
-                    page_id, section_id, path
-                ));
-            }
-            if item.child_link_target.is_some() {
-                errors.push(format!(
-                    "Page '{}' section '{}' dd-navigation item {} kind=button must not provide child_link_target.",
-                    page_id, section_id, path
-                ));
-            }
-        }
+    // Both kinds render an anchor. A button only adds `<span class="dd-button">`
+    // around the label, so it needs a URL the same way a link does.
+    let kind = match item.child_kind {
+        NavigationKind::Link => "link",
+        NavigationKind::Button => "button",
+    };
+    let url = item.child_link_url.as_deref().unwrap_or("");
+    if url.trim().is_empty() {
+        errors.push(format!(
+            "Page '{}' section '{}' dd-navigation item {} kind={kind} requires child_link_url.",
+            page_id, section_id, path
+        ));
+    } else if !is_valid_url(url) {
+        errors.push(format!(
+            "Page '{}' section '{}' dd-navigation item {} child_link_url is invalid.",
+            page_id, section_id, path
+        ));
     }
     for (idx, child) in item.items.iter().enumerate() {
         validate_navigation_item(
@@ -832,6 +824,7 @@ fn component_sal(component: &SectionComponent) -> Option<(SalAnimation, Option<u
         SectionComponent::Tabs(c) => Some((c.sal, c.sal_duration, c.sal_delay)),
         SectionComponent::Timeline(c) => Some((c.sal, c.sal_duration, c.sal_delay)),
         SectionComponent::SearchResults(c) => Some((c.sal, c.sal_duration, c.sal_delay)),
+        SectionComponent::Headline(c) => Some((c.sal, c.sal_duration, c.sal_delay)),
         SectionComponent::Slider(_)
         | SectionComponent::Modal(_)
         | SectionComponent::Spacer(_)
@@ -1040,6 +1033,7 @@ fn section_component_type_name(component: &SectionComponent) -> &'static str {
         SectionComponent::Timeline(_) => "dd-timeline",
         SectionComponent::DataTable(_) => "dd-data-table",
         SectionComponent::SearchResults(_) => "dd-search-results",
+        SectionComponent::Headline(_) => "dd-headline",
     }
 }
 
@@ -1399,6 +1393,110 @@ mod tests {
         assert!(
             errors.iter().any(|e| e.contains("unsafe slug")),
             "slug ending in index should fail, got {errors:?}"
+        );
+    }
+
+    fn site_with_nav_item(item: crate::model::NavigationItem) -> Site {
+        use crate::model::{
+            DdNavigation, NavigationClass, NavigationType, SalAnimation, SectionComponent,
+        };
+        let mut site = Site::starter();
+        let PageNode::Section(section) = &mut site.pages[0].nodes[1] else {
+            panic!("starter node 1 expected to be a section");
+        };
+        section.columns[0].components = vec![SectionComponent::Navigation(DdNavigation {
+            parent_type: NavigationType::HeaderNav,
+            parent_class: NavigationClass::MainMenu,
+            sal: SalAnimation::NoAnimation,
+            sal_duration: None,
+            sal_delay: None,
+            items: vec![item],
+        })];
+        site
+    }
+
+    fn nav_button(url: Option<&str>) -> crate::model::NavigationItem {
+        crate::model::NavigationItem {
+            child_kind: crate::model::NavigationKind::Button,
+            child_link_label: "Let's talk".to_string(),
+            child_link_url: url.map(str::to_string),
+            child_link_target: Some(crate::model::CardLinkTarget::SelfTarget),
+            child_link_css: None,
+            items: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn navigation_button_requires_url_like_a_link() {
+        let ok = validate_site(&site_with_nav_item(nav_button(Some("/contact-us"))));
+        assert!(
+            ok.iter().all(|e| !e.contains("dd-navigation item")),
+            "button with a URL should pass, got {ok:?}"
+        );
+
+        let missing = validate_site(&site_with_nav_item(nav_button(None)));
+        assert!(
+            missing
+                .iter()
+                .any(|e| e.contains("kind=button requires child_link_url")),
+            "expected missing URL error, got {missing:?}"
+        );
+        assert!(
+            missing
+                .iter()
+                .all(|e| !e.contains("must not provide child_link")),
+            "button may carry a URL and target, got {missing:?}"
+        );
+    }
+
+    #[test]
+    fn headline_requires_text_and_stays_off_header() {
+        use crate::model::{DdHeadline, HeadingLevel, SalAnimation, SectionComponent};
+        let headline = |text: &str| {
+            SectionComponent::Headline(DdHeadline {
+                text: text.to_string(),
+                heading_level: HeadingLevel::H2,
+                custom_css: None,
+                sal: SalAnimation::NoAnimation,
+                sal_duration: None,
+                sal_delay: None,
+            })
+        };
+
+        let mut blank = Site::starter();
+        let PageNode::Section(section) = &mut blank.pages[0].nodes[1] else {
+            panic!("starter node 1 expected to be a section");
+        };
+        section.columns[0].components.push(headline("  "));
+        let errors = validate_site(&blank);
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.contains("dd-headline") && e.contains("text")),
+            "blank headline text should fail, got {errors:?}"
+        );
+
+        let mut page = Site::starter();
+        let PageNode::Section(section) = &mut page.pages[0].nodes[1] else {
+            panic!("starter node 1 expected to be a section");
+        };
+        section.columns[0].components.push(headline("Services"));
+        let errors = validate_site(&page);
+        assert!(
+            errors.iter().all(|e| !e.contains("dd-headline")),
+            "a filled page headline should pass, got {errors:?}"
+        );
+
+        let mut header = Site::starter();
+        header.header.sections[0].columns[0]
+            .components
+            .push(headline("Services"));
+        let errors = validate_site(&header);
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.contains("disallowed") && e.contains("dd-headline")),
+            "header should reject dd-headline, got {errors:?}"
         );
     }
 

@@ -2,15 +2,14 @@ use std::fs;
 use std::path::Path;
 
 use anyhow::Context;
-use pulldown_cmark::{Options, Parser, html};
 use serde_json::{Value, json};
 
 use crate::model::{
     ButtonStyle, DATA_TABLE_MAX_COLUMNS, DataTableAlign, DataTableBadge, DataTableCellType,
     DdAccordion, DdAlert, DdAlternating, DdBanner, DdBlockquote, DdCard, DdCta, DdDataTable,
-    DdFilmstrip, DdFooter, DdHead, DdHeader, DdHero, DdLink, DdMilestones, DdModal,
+    DdFilmstrip, DdFooter, DdHead, DdHeader, DdHeadline, DdHero, DdLink, DdMilestones, DdModal,
     DdSearchResults, DdSection, DdSlider, DdSpacer, DdTabs, DdTimeline, Media, OembedProvider,
-    Page, PageNode, SectionComponent, Site, parse_oembed_url,
+    Page, PageNode, SectionComponent, Site, html_id_from_text, parse_oembed_url, uniquify_id,
 };
 use crate::templates::Renderer;
 
@@ -53,11 +52,14 @@ pub fn render_page_html_with_chrome(
     footer_html: &str,
     site: &Site,
 ) -> anyhow::Result<String> {
+    let mut used_ids = reserved_html_ids(site, page);
     let mut content = String::new();
     for node in &page.nodes {
         match node {
             PageNode::Hero(hero) => content.push_str(&render_hero(r, hero)?),
-            PageNode::Section(section) => content.push_str(&render_section(r, section)?),
+            PageNode::Section(section) => {
+                content.push_str(&render_section(r, section, &mut used_ids)?)
+            }
         }
         content.push('\n');
     }
@@ -180,9 +182,13 @@ pub(crate) fn render_header(r: &Renderer, header: &DdHeader) -> anyhow::Result<S
     } else {
         String::new()
     };
+    let mut used_ids = std::collections::HashSet::new();
+    for section in &header.sections {
+        reserve_section_ids(section, &mut used_ids);
+    }
     let mut sections_html = String::new();
     for section in &header.sections {
-        sections_html.push_str(&render_section(r, section)?);
+        sections_html.push_str(&render_section(r, section, &mut used_ids)?);
         sections_html.push('\n');
     }
     let cta_url = header
@@ -226,9 +232,13 @@ pub(crate) fn render_footer(
         .filter(|v| !v.is_empty())
         .map(|v| format!(" {}", v))
         .unwrap_or_default();
+    let mut used_ids = std::collections::HashSet::new();
+    for section in &footer.sections {
+        reserve_section_ids(section, &mut used_ids);
+    }
     let mut sections_html = String::new();
     for section in &footer.sections {
-        sections_html.push_str(&render_section(r, section)?);
+        sections_html.push_str(&render_section(r, section, &mut used_ids)?);
         sections_html.push('\n');
     }
     let blurb = footer
@@ -332,7 +342,11 @@ fn render_hero(r: &Renderer, hero: &DdHero) -> anyhow::Result<String> {
     r.render("dd-hero", &hero_to_json(hero))
 }
 
-fn render_section(r: &Renderer, section: &DdSection) -> anyhow::Result<String> {
+fn render_section(
+    r: &Renderer,
+    section: &DdSection,
+    used_ids: &mut std::collections::HashSet<String>,
+) -> anyhow::Result<String> {
     let mut columns_html = String::new();
     let item_box_class = section
         .item_box_class
@@ -365,6 +379,7 @@ fn render_section(r: &Renderer, section: &DdSection) -> anyhow::Result<String> {
                 SectionComponent::Timeline(v) => render_timeline(r, v)?,
                 SectionComponent::DataTable(v) => render_data_table(r, v)?,
                 SectionComponent::SearchResults(v) => render_search_results(r, v)?,
+                SectionComponent::Headline(v) => render_headline(r, v, used_ids)?,
             };
             inner.push_str(&html);
             inner.push('\n');
@@ -1084,6 +1099,103 @@ fn render_header_menu(r: &Renderer, menu: &crate::model::DdHeaderMenu) -> anyhow
     r.render("dd-header-menu", &data)
 }
 
+fn render_headline(
+    r: &Renderer,
+    headline: &DdHeadline,
+    used_ids: &mut std::collections::HashSet<String>,
+) -> anyhow::Result<String> {
+    let id = uniquify_id(&html_id_from_text(&headline.text), used_ids);
+    used_ids.insert(id.clone());
+    let custom_css = headline
+        .custom_css
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    r.render(
+        "dd-headline",
+        &json!({
+            "id": id,
+            "heading_tag": headline.heading_level.tag(),
+            "text": headline.text,
+            "custom_css": custom_css,
+            "sal_attr": sal_html_attrs(headline.sal, headline.sal_duration, headline.sal_delay),
+        }),
+    )
+}
+
+/// Ids already emitted on the page (and in header/footer chrome) so a headline
+/// anchor does not reuse a section, column, hero, tab, or modal id.
+fn reserved_html_ids(site: &Site, page: &Page) -> std::collections::HashSet<String> {
+    let mut used = std::collections::HashSet::new();
+    for section in site
+        .header
+        .sections
+        .iter()
+        .chain(site.footer.sections.iter())
+    {
+        reserve_section_ids(section, &mut used);
+    }
+    for node in &page.nodes {
+        match node {
+            PageNode::Hero(hero) => {
+                if let Some(id) = hero.id.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+                    used.insert(id.to_string());
+                }
+            }
+            PageNode::Section(section) => reserve_section_ids(section, &mut used),
+        }
+    }
+    used
+}
+
+fn reserve_section_ids(section: &DdSection, used: &mut std::collections::HashSet<String>) {
+    let id = section.id.trim();
+    if !id.is_empty() {
+        used.insert(id.to_string());
+    }
+    for column in &section.columns {
+        let id = column.id.trim();
+        if !id.is_empty() {
+            used.insert(id.to_string());
+        }
+        for component in &column.components {
+            reserve_component_ids(component, used);
+        }
+    }
+}
+
+fn reserve_component_ids(
+    component: &SectionComponent,
+    used: &mut std::collections::HashSet<String>,
+) {
+    match component {
+        SectionComponent::Tabs(tabs) => {
+            let parent_id = {
+                let id = tabs.parent_id.trim();
+                if id.is_empty() {
+                    stable_uid_from_title(
+                        tabs.items
+                            .first()
+                            .map(|item| item.child_title.as_str())
+                            .unwrap_or("tabs"),
+                    )
+                } else {
+                    id.to_string()
+                }
+            };
+            for (i, _) in tabs.items.iter().enumerate() {
+                let n = i + 1;
+                used.insert(format!("{parent_id}-tab-{n}"));
+                used.insert(format!("{parent_id}-panel-{n}"));
+            }
+        }
+        SectionComponent::Modal(modal) => {
+            used.insert(html_id_safe_from_title(&modal.parent_title, "modal"));
+        }
+        _ => {}
+    }
+}
+
 fn render_search_results(r: &Renderer, search: &DdSearchResults) -> anyhow::Result<String> {
     let data = json!({
         "sal_attr": sal_html_attrs(search.sal, search.sal_duration, search.sal_delay),
@@ -1482,14 +1594,7 @@ fn resolve_head_asset_url(stored: &str, site: &Site, page: &Page) -> String {
 }
 
 fn markdown_to_html(input: &str) -> String {
-    let mut options = Options::empty();
-    options.insert(Options::ENABLE_STRIKETHROUGH);
-    options.insert(Options::ENABLE_TABLES);
-    options.insert(Options::ENABLE_TASKLISTS);
-    let parser = Parser::new_ext(input, options);
-    let mut out = String::new();
-    html::push_html(&mut out, parser);
-    out
+    crate::markdown::to_html(input)
 }
 
 fn inject_item_copy_html(items: &mut [Value]) {
@@ -1675,6 +1780,86 @@ mod tests {
         assert!(html.contains("role=\"search\""), "{html}");
         assert!(html.contains("dd-search-page__results"), "{html}");
         assert!(!html.contains("data-sal="), "{html}");
+    }
+
+    #[test]
+    fn headline_renders_chosen_level_class_and_escapes_text() {
+        use crate::model::*;
+        let html = render_page_html(&page_with_component(SectionComponent::Headline(
+            DdHeadline {
+                text: "A & B".to_string(),
+                heading_level: HeadingLevel::H3,
+                custom_css: Some("-center".to_string()),
+                sal: SalAnimation::NoAnimation,
+                sal_duration: None,
+                sal_delay: None,
+            },
+        )))
+        .expect("headline");
+        assert!(
+            html.contains("<h3 id=\"a-b\" class=\"dd-headline -center\">A &amp; B</h3>"),
+            "{html}"
+        );
+        assert!(!html.contains("data-sal="), "{html}");
+        assert!(!html.contains("<h1"), "{html}");
+    }
+
+    #[test]
+    fn headline_renders_sal_on_the_heading() {
+        use crate::model::*;
+        let html = render_page_html(&page_with_component(SectionComponent::Headline(
+            DdHeadline {
+                text: "Hello".to_string(),
+                heading_level: HeadingLevel::H2,
+                custom_css: Some("  ".to_string()),
+                sal: SalAnimation::Fade,
+                sal_duration: Some(500),
+                sal_delay: None,
+            },
+        )))
+        .expect("headline sal");
+        assert!(
+            html.contains(
+                "<h2 id=\"hello\" class=\"dd-headline\" data-sal=\"fade\" data-sal-duration=\"500\">Hello</h2>"
+            ),
+            "{html}"
+        );
+    }
+
+    #[test]
+    fn headline_id_matches_text_and_avoids_ids_already_on_the_page() {
+        use crate::model::*;
+        let headline = |text: &str| {
+            SectionComponent::Headline(DdHeadline {
+                text: text.to_string(),
+                heading_level: HeadingLevel::H2,
+                custom_css: None,
+                sal: SalAnimation::NoAnimation,
+                sal_duration: None,
+                sal_delay: None,
+            })
+        };
+        let mut page = page_with_component(headline("Services"));
+        let PageNode::Section(section) = &mut page.nodes[0] else {
+            panic!("expected section");
+        };
+        section.id = "services".to_string();
+        section.columns[0].components.push(headline("Services"));
+        section.columns[0].components.push(headline("A & B"));
+        let html = render_page_html(&page).expect("headline ids");
+        assert!(
+            html.contains(r#"<h2 id="services-2" class="dd-headline">Services</h2>"#),
+            "{html}"
+        );
+        assert!(
+            html.contains(r#"<h2 id="services-3" class="dd-headline">Services</h2>"#),
+            "{html}"
+        );
+        assert!(
+            html.contains(r#"<h2 id="a-b" class="dd-headline">A &amp; B</h2>"#),
+            "{html}"
+        );
+        assert!(html.contains(r#"id="services" aria-label="#), "{html}");
     }
 
     #[test]
@@ -2606,13 +2791,14 @@ mod tests {
 
     fn nav_button(
         label: &str,
+        url: &str,
         children: Vec<crate::model::NavigationItem>,
     ) -> crate::model::NavigationItem {
         crate::model::NavigationItem {
             child_kind: crate::model::NavigationKind::Button,
             child_link_label: label.to_string(),
-            child_link_url: None,
-            child_link_target: None,
+            child_link_url: Some(url.to_string()),
+            child_link_target: Some(crate::model::CardLinkTarget::SelfTarget),
             child_link_css: None,
             items: children,
         }
@@ -2632,13 +2818,30 @@ mod tests {
     fn navigation_renders_nested_button_and_escapes_label() {
         let html = render_page_html(&page_with_navigation(vec![nav_button(
             "More & Extra",
+            "/more",
             vec![nav_link("About", "/about.html", vec![])],
         )]))
         .expect("nested nav should render");
         assert!(html.contains(r#"<li class="menu-item -has-children">"#));
-        assert!(html.contains(r#"<span class="" role="presentation">More &amp; Extra</span>"#));
+        assert!(html.contains(
+            r#"<a href="/more" target="_self" class=""><span class="dd-button" role="presentation">More &amp; Extra</span></a>"#
+        ));
         assert!(html.contains(r#"<ul class="sub-menu">"#));
         assert!(html.contains(r#"<a href="/about.html" target="_self" class="">About</a>"#));
+    }
+
+    #[test]
+    fn markdown_image_attribute_sets_class() {
+        let html = super::markdown_to_html(
+            "![Sample estimate table listing the agency fee by role with an amount for each](/assets/images/projectscope/reading-your-estimate/reading-your-estimate-01-fee-by-role.png){.dd-img}",
+        );
+        assert!(
+            html.contains(
+                r#"<img src="/assets/images/projectscope/reading-your-estimate/reading-your-estimate-01-fee-by-role.png" alt="Sample estimate table listing the agency fee by role with an amount for each" class="dd-img" />"#
+            ),
+            "{html}"
+        );
+        assert!(!html.contains("{.dd-img}"), "{html}");
     }
 
     #[test]

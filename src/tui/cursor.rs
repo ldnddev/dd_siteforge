@@ -19,13 +19,13 @@ use crate::model::{
     DATA_TABLE_MAX_COLUMNS, DataTableAlign, DataTableBadge, DataTableCell, DataTableCellType,
     DataTableColumn, DataTableRow, DdAccordion, DdAlert, DdAlternating, DdBanner, DdBlockquote,
     DdCard, DdCta, DdDataTable, DdFilmstrip, DdFooter, DdHead, DdHeader, DdHeaderMenu,
-    DdHeaderSearch, DdHero, DdImage, DdLink, DdMilestones, DdModal, DdNavigation, DdRichText,
-    DdSearchResults, DdSection, DdSlider, DdSpacer, DdTabs, DdTimeline, FilmstripItem,
-    FilmstripType, HeroCopyPosition, HeroImageClass, HeroOverlay, Media, MilestonesItem,
-    NavigationClass, NavigationItem, NavigationKind, NavigationType, PageNode, SalAnimation,
-    SectionBg, SectionClass, SectionColumn, SectionComponent, SectionItemBoxClass, SectionPadding,
-    Site, SliderItem, SpacerSize, TabsItem, TabsOrientation, TimelineItem, column_id_local_part,
-    rehome_column_id, uniquify_id,
+    DdHeaderSearch, DdHeadline, DdHero, DdImage, DdLink, DdMilestones, DdModal, DdNavigation,
+    DdRichText, DdSearchResults, DdSection, DdSlider, DdSpacer, DdTabs, DdTimeline, FilmstripItem,
+    FilmstripType, HeadingLevel, HeroCopyPosition, HeroImageClass, HeroOverlay, Media,
+    MilestonesItem, NavigationClass, NavigationItem, NavigationKind, NavigationType, PageNode,
+    SalAnimation, SectionBg, SectionClass, SectionColumn, SectionComponent, SectionItemBoxClass,
+    SectionPadding, Site, SliderItem, SpacerSize, TabsItem, TabsOrientation, TimelineItem,
+    column_id_local_part, rehome_column_id, uniquify_id,
 };
 use crate::tui::editform::{self, EditFormState, FieldKind};
 
@@ -291,6 +291,7 @@ pub fn apply_edit_form_to_component(
             SectionComponent::Timeline(t) => apply_timeline_values(t, state),
             SectionComponent::DataTable(t) => apply_data_table_values(t, state),
             SectionComponent::SearchResults(s) => apply_search_results_values(s, state),
+            SectionComponent::Headline(h) => apply_headline_values(h, state),
         },
         CursorRef::Hero(hero) => apply_hero_values(hero, state),
         CursorRef::Section(section) => apply_section_values(section, state),
@@ -345,6 +346,7 @@ pub fn component_to_form_state(component: &SectionComponent) -> Option<EditFormS
         SectionComponent::Timeline(t) => Some(timeline_to_form_state(t)),
         SectionComponent::DataTable(t) => Some(data_table_to_form_state(t)),
         SectionComponent::SearchResults(s) => Some(search_results_to_form_state(s)),
+        SectionComponent::Headline(h) => Some(headline_to_form_state(h)),
     }
 }
 
@@ -465,6 +467,28 @@ fn apply_search_results_values(s: &mut DdSearchResults, state: &EditFormState) -
     s.sal = sal;
     s.sal_duration = sal_duration;
     s.sal_delay = sal_delay;
+    Ok(())
+}
+
+pub fn headline_to_form_state(h: &DdHeadline) -> EditFormState {
+    let mut s = EditFormState::new(&editform::HEADLINE_FORM);
+    s.set("text", h.text.clone());
+    s.set("heading_level", enum_serde_str(h.heading_level));
+    s.set("custom_css", h.custom_css.clone().unwrap_or_default());
+    set_sal_fields(&mut s, h.sal, h.sal_duration, h.sal_delay);
+    s
+}
+
+fn apply_headline_values(h: &mut DdHeadline, state: &EditFormState) -> Result<()> {
+    h.text = state.get("text").trim().to_string();
+    h.heading_level =
+        parse_enum::<HeadingLevel>(state.get("heading_level")).context("invalid heading_level")?;
+    let css = state.get("custom_css").trim().to_string();
+    h.custom_css = if css.is_empty() { None } else { Some(css) };
+    let (sal, sal_duration, sal_delay) = apply_sal_fields(state)?;
+    h.sal = sal;
+    h.sal_duration = sal_duration;
+    h.sal_delay = sal_delay;
     Ok(())
 }
 
@@ -1537,17 +1561,13 @@ fn apply_nav_item(state: &EditFormState) -> Result<NavigationItem> {
     let target = state.get("child_link_target").to_string();
     let css = state.get("child_link_css").trim().to_string();
 
-    let (child_link_url, child_link_target) = match kind {
-        NavigationKind::Link => {
-            let url_opt = if url.is_empty() { None } else { Some(url) };
-            let target_opt = if url_opt.is_some() {
-                Some(parse_enum::<CardLinkTarget>(&target)?)
-            } else {
-                None
-            };
-            (url_opt, target_opt)
-        }
-        NavigationKind::Button => (None, None),
+    // Link and button both render `<a href>`. Button only wraps the label
+    // in `<span class="dd-button">`, so the URL and target are kept.
+    let child_link_url = if url.is_empty() { None } else { Some(url) };
+    let child_link_target = if child_link_url.is_some() {
+        Some(parse_enum::<CardLinkTarget>(&target)?)
+    } else {
+        None
     };
 
     let mut nested = Vec::new();

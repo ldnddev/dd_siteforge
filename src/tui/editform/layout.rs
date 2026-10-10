@@ -564,10 +564,9 @@ pub static NAV_ITEM_FORM: EditForm = EditForm {
             label: "URL",
             kind: FieldKind::Url { default: "" },
             required: false,
-            visible_when: Some(FieldPredicate::FieldEquals {
-                other_id: "child_kind",
-                value: "link",
-            }),
+            // Button items are still anchors (`<a href>` wrapping
+            // `<span class="dd-button">`), so URL stays editable.
+            visible_when: None,
         },
         FormField {
             id: "child_link_target",
@@ -577,10 +576,7 @@ pub static NAV_ITEM_FORM: EditForm = EditForm {
                 default: "_self",
             },
             required: false,
-            visible_when: Some(FieldPredicate::FieldEquals {
-                other_id: "child_kind",
-                value: "link",
-            }),
+            visible_when: None,
         },
         FormField {
             id: "child_link_css",

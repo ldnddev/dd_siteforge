@@ -126,7 +126,9 @@ fn collect_markdown_headings(copy: &str, outline: &mut Vec<(u8, String)>) {
         if (1..=6).contains(&n) {
             let rest = t.get(n..).unwrap_or("").trim_start();
             if rest.starts_with(' ') || t.chars().nth(n) == Some(' ') {
-                let title = rest.trim().to_string();
+                let title = crate::markdown::without_trailing_attrs(rest.trim())
+                    .trim()
+                    .to_string();
                 if !title.is_empty() {
                     outline.push((n as u8, title));
                 }
@@ -136,6 +138,13 @@ fn collect_markdown_headings(copy: &str, outline: &mut Vec<(u8, String)>) {
 }
 
 fn collect_component_headings(comp: &SectionComponent, outline: &mut Vec<(u8, String)>) {
+    if let SectionComponent::Headline(headline) = comp {
+        let title = headline.text.trim();
+        if !title.is_empty() {
+            outline.push((headline.heading_level.level(), title.to_string()));
+        }
+        return;
+    }
     if let Ok(value) = serde_json::to_value(comp) {
         walk_strings(&value, &mut |s| collect_markdown_headings(s, outline));
     }
@@ -273,6 +282,31 @@ mod tests {
                 .iter()
                 .any(|i| !i.ok && i.message.contains("Meta title")),
             "{items:?}"
+        );
+    }
+
+    #[test]
+    fn headline_text_is_an_outline_heading() {
+        let comp = SectionComponent::Headline(crate::model::DdHeadline {
+            text: " Services ".to_string(),
+            heading_level: crate::model::HeadingLevel::H3,
+            custom_css: None,
+            sal: crate::model::SalAnimation::NoAnimation,
+            sal_duration: None,
+            sal_delay: None,
+        });
+        let mut outline = Vec::new();
+        collect_component_headings(&comp, &mut outline);
+        assert_eq!(outline, vec![(3, "Services".to_string())]);
+    }
+
+    #[test]
+    fn markdown_heading_attribute_is_not_part_of_the_outline() {
+        let mut outline = Vec::new();
+        collect_markdown_headings("# Fee table {.dd-title}\n\n# Plain", &mut outline);
+        assert_eq!(
+            outline,
+            vec![(1, "Fee table".to_string()), (1, "Plain".to_string())]
         );
     }
 

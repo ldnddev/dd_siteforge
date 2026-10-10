@@ -517,7 +517,7 @@ impl App {
         }
         if matches!(
             self.component_kind,
-            ComponentKind::Hero | ComponentKind::SearchResults
+            ComponentKind::Hero | ComponentKind::SearchResults | ComponentKind::Headline
         ) && self.selected_region != SelectedRegion::Page
         {
             self.push_toast(
@@ -767,12 +767,12 @@ impl App {
             return Vec::new();
         }
         let all = ComponentKind::all();
-        // Hero and SearchResults are page-only; HeaderSearch/HeaderMenu are header-only.
+        // Hero, SearchResults, and Headline are page-only; HeaderSearch/HeaderMenu are header-only.
         let allowed: Vec<ComponentKind> = all
             .iter()
             .copied()
             .filter(|k| match k {
-                ComponentKind::Hero | ComponentKind::SearchResults => {
+                ComponentKind::Hero | ComponentKind::SearchResults | ComponentKind::Headline => {
                     self.selected_region == SelectedRegion::Page
                 }
                 ComponentKind::HeaderSearch | ComponentKind::HeaderMenu => {

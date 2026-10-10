@@ -170,6 +170,7 @@ pub enum SectionComponent {
     Timeline(DdTimeline),
     DataTable(DdDataTable),
     SearchResults(DdSearchResults),
+    Headline(DdHeadline),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -706,6 +707,59 @@ pub struct DdHeaderMenu {
     pub sal_delay: Option<u16>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum HeadingLevel {
+    #[default]
+    #[serde(rename = "h2")]
+    H2,
+    #[serde(rename = "h3")]
+    H3,
+    #[serde(rename = "h4")]
+    H4,
+    #[serde(rename = "h5")]
+    H5,
+    #[serde(rename = "h6")]
+    H6,
+}
+
+impl HeadingLevel {
+    pub fn tag(self) -> &'static str {
+        match self {
+            Self::H2 => "h2",
+            Self::H3 => "h3",
+            Self::H4 => "h4",
+            Self::H5 => "h5",
+            Self::H6 => "h6",
+        }
+    }
+
+    pub fn level(self) -> u8 {
+        match self {
+            Self::H2 => 2,
+            Self::H3 => 3,
+            Self::H4 => 4,
+            Self::H5 => 5,
+            Self::H6 => 6,
+        }
+    }
+}
+
+/// Page-section heading. The heading element is the root; text is plain.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DdHeadline {
+    pub text: String,
+    #[serde(default)]
+    pub heading_level: HeadingLevel,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub custom_css: Option<String>,
+    #[serde(default = "default_headline_sal", alias = "parent_data_aos")]
+    pub sal: SalAnimation,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sal_duration: Option<u16>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sal_delay: Option<u16>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DdSearchResults {
     #[serde(default = "default_search_results_sal", alias = "parent_data_aos")]
@@ -925,6 +979,10 @@ fn default_header_menu_sal() -> SalAnimation {
 }
 
 fn default_search_results_sal() -> SalAnimation {
+    SalAnimation::NoAnimation
+}
+
+fn default_headline_sal() -> SalAnimation {
     SalAnimation::NoAnimation
 }
 
@@ -1825,6 +1883,18 @@ impl Page {
     }
 }
 
+/// Single-segment HTML id derived from heading text.
+/// `Five Seconds` becomes `five-seconds`. Punctuation drops out.
+/// An empty result (text that is only punctuation) is `headline`.
+pub fn html_id_from_text(text: &str) -> String {
+    let slug = slugify_segment(&text.replace('/', " "));
+    if slug.is_empty() {
+        "headline".to_string()
+    } else {
+        slug
+    }
+}
+
 /// Convert a human title to a filesystem/URL-safe kebab-case slug.
 /// ASCII-only, lowercase, alphanumerics and hyphens preserved,
 /// whitespace collapsed to single `-`, everything else stripped.
@@ -2227,6 +2297,23 @@ mod tests {
         assert_eq!(head.title, "Home");
         assert!(head.meta_title.is_none());
         assert_eq!(head.html_title(), "Home");
+    }
+
+    #[test]
+    fn html_id_from_text_is_a_single_slug() {
+        assert_eq!(html_id_from_text("Services"), "services");
+        assert_eq!(
+            html_id_from_text("Five Seconds, that's all"),
+            "five-seconds-thats-all"
+        );
+        assert_eq!(html_id_from_text("A & B"), "a-b");
+        assert_eq!(html_id_from_text("Blog/My Entry"), "blog-my-entry");
+        assert_eq!(
+            html_id_from_text("already-hyphenated"),
+            "already-hyphenated"
+        );
+        assert_eq!(html_id_from_text("!!!"), "headline");
+        assert_eq!(html_id_from_text("   "), "headline");
     }
 
     #[test]
@@ -2704,6 +2791,32 @@ mod tests {
                 assert_eq!(alt, "x");
             }
             other => panic!("expected image, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn headline_parses_level_and_defaults_sal() {
+        let c: SectionComponent = serde_json::from_str(
+            r#"{"component_type":"headline","text":"Hello","heading_level":"h4"}"#,
+        )
+        .expect("headline JSON should parse");
+        match c {
+            SectionComponent::Headline(h) => {
+                assert_eq!(h.text, "Hello");
+                assert_eq!(h.heading_level, HeadingLevel::H4);
+                assert!(h.custom_css.is_none());
+                assert_eq!(h.sal, SalAnimation::NoAnimation);
+                assert!(h.sal_duration.is_none());
+                assert!(h.sal_delay.is_none());
+            }
+            other => panic!("expected Headline, got {other:?}"),
+        }
+        let missing: SectionComponent =
+            serde_json::from_str(r#"{"component_type":"headline","text":"Hello"}"#)
+                .expect("headline without level should parse");
+        match missing {
+            SectionComponent::Headline(h) => assert_eq!(h.heading_level, HeadingLevel::H2),
+            other => panic!("expected Headline, got {other:?}"),
         }
     }
 

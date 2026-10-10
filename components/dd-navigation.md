@@ -64,9 +64,9 @@ fields:
 
   # ---------------------------
   # child items[] fields (recursive tree)
-  # each item is either a "link" (clickable, has url) or a "button" (non-clickable
-  # grouping header used to hold child items). Any item may itself carry a nested
-  # items[] of the same shape to build sub-menus at arbitrary depth.
+  # each item is a link. child_kind "button" is the same anchor with the label
+  # wrapped in <span class="dd-button" role="presentation">. Any item may itself
+  # carry a nested items[] of the same shape to build sub-menus at arbitrary depth.
   # ---------------------------
   - id: items
     required: true
@@ -78,22 +78,20 @@ fields:
         type: enum
         options: ["link", "button"]
         default: "link"
-        maps_to: "render mode: <a> for link, <span> for button"
+        maps_to: "render mode: plain <a> for link; <a> wrapping <span class=\"dd-button\"> for button"
 
       - id: child_link_label
         required: true
         type: string
-        maps_to: ".menu-item label text (a or span inner text)"
+        maps_to: ".menu-item label text (a text, or span.dd-button inner text)"
 
       - id: child_link_url
-        required_when: "child_kind == 'link'"
-        forbidden_when: "child_kind == 'button'"
+        required: true
         type: string
         maps_to: ".menu-item a[href]"
 
       - id: child_link_target
         required: false
-        forbidden_when: "child_kind == 'button'"
         type: enum
         options: ["_self", "_blank"]
         default: "_self"
@@ -102,7 +100,7 @@ fields:
       - id: child_link_css
         required: false
         type: string
-        maps_to: ".menu-item a/span class attribute"
+        maps_to: ".menu-item a class attribute"
 
       - id: items
         required: false
@@ -156,7 +154,7 @@ edit_ui:
       - child_link_target
       - child_link_css
     scope_rule: "editing an items[] row hides parent fields; editing parent row hides item fields"
-    kind_rule: "when child_kind == 'button', child_link_url and child_link_target are hidden in the modal"
+    kind_rule: "child_link_url and child_link_target stay visible for link and button; a button is still an anchor"
 
 blueprint:
   label: "dd-navigation"
@@ -171,9 +169,10 @@ blueprint:
 
 Rendered as a recursive tree. Export uses `templates/dd-navigation.hbs` for
 the shell and `templates/dd-navigation-item.hbs` as a recursive partial for
-each `<!-- block: menu-item -->`. At every depth, an item renders either an
-`<a>` (link) or a `<span>` (button), followed by a `<ul class="sub-menu">`
-if and only if the item carries a non-empty nested `items[]`.
+each `<!-- block: menu-item -->`. At every depth, an item renders an `<a>`.
+A button wraps the label in `<span class="dd-button" role="presentation">`.
+A `<ul class="sub-menu">` follows the anchor if and only if the item carries
+a non-empty nested `items[]`.
 
 ```html
 <div class="dd-navigation [parent_class] -y-center">
@@ -186,7 +185,7 @@ if and only if the item carries a non-empty nested `items[]`.
         <!-- if child_kind == 'link' -->
         <a href="[child_link_url]" target="[child_link_target]" class="[child_link_css]">[child_link_label]</a>
         <!-- elif child_kind == 'button' -->
-        <span class="[child_link_css]" role="presentation">[child_link_label]</span>
+        <a href="[child_link_url]" target="[child_link_target]" class="[child_link_css]"><span class="dd-button" role="presentation">[child_link_label]</span></a>
         <!-- endif -->
 
         <!-- if has_children -->
@@ -203,8 +202,8 @@ if and only if the item carries a non-empty nested `items[]`.
 
 ## Conditional Markup
 
-- `<a>` renders only when `child_kind == "link"`; `<span>` renders only when `child_kind == "button"`
-- when `child_link_target` is empty for a link, default to `_self`
+- every item renders an `<a href>`; `child_kind == "button"` wraps the label in `<span class="dd-button" role="presentation">`
+- when `child_link_target` is empty, default to `_self`
 - `<ul class="sub-menu">` renders only when the item's nested `items[]` is non-empty
 - `-has-children` modifier on `<li class="menu-item">` is applied only when nested `items[]` is non-empty
 - recursion depth is unbounded by spec; the renderer may cap at a sane depth (suggest 4) to prevent runaway templates
@@ -213,7 +212,6 @@ if and only if the item carries a non-empty nested `items[]`.
 
 - root `items[]` requires at least 1 item; nested `items[]` may be empty
 - every item: `child_kind` required; `child_link_label` required and non-empty
-- `child_kind == "link"`: `child_link_url` required and must pass URL check (`/`, `#`, `http://`, `https://`); `child_link_target` optional (defaults to `_self`)
-- `child_kind == "button"`: `child_link_url` must be empty; `child_link_target` must be empty; buttons exist solely to group child items under a non-navigable header
+- `child_kind == "link"` and `child_kind == "button"`: `child_link_url` required and must pass URL check (`/`, `#`, `http://`, `https://`); `child_link_target` optional (defaults to `_self`)
 - `child_link_css` optional at every depth
 - recursion applies the same rules at every depth

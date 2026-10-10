@@ -4,7 +4,7 @@ resolver = "3"
 
 [package]
 name = "dd_siteforge"
-version = "1.24.0"
+version = "1.25.0"
 edition = "2024"
 license = "MIT"
 
@@ -22,6 +22,7 @@ clap = { version = "4.5", features = ["derive"] }
 crossterm = "0.29"
 handlebars = "6.3"
 pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
+pulldown-cmark-escape = "0.11"
 ratatui = { version = "0.30", default-features = false, features = ["crossterm", "layout-cache"] }
 rust-embed = { version = "8", features = ["include-exclude"] }
 serde = { version = "1.0", features = ["derive"] }

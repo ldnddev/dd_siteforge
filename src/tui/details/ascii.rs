@@ -371,7 +371,8 @@ fn component_blueprint_lines(
 /// chrome (SAL, ids, CSS, media URLs, targets) stays out of the blueprint.
 fn content_field_label(field_id: &str) -> Option<&'static str> {
     Some(match field_id {
-        "parent_title" | "child_title" | "section_title" => "title",
+        "parent_title" | "child_title" | "section_title" | "text" => "title",
+        "heading_level" => "level",
         "parent_subtitle" | "child_subtitle" => "subtitle",
         "parent_copy" | "child_copy" => "copy",
         "parent_name" => "name",
@@ -775,8 +776,9 @@ impl ResponsiveBp {
 mod tests {
     use super::*;
     use crate::model::{
-        ButtonStyle, CardLinkTarget, CtaClass, DdCta, DdSection, DdSpacer, SalAnimation,
-        SectionClass, SectionColumn, SectionComponent, SectionItemBoxClass, SpacerSize,
+        ButtonStyle, CardLinkTarget, CtaClass, DdCta, DdHeadline, DdSection, DdSpacer,
+        HeadingLevel, SalAnimation, SectionClass, SectionColumn, SectionComponent,
+        SectionItemBoxClass, SpacerSize,
     };
 
     fn test_section(columns: Vec<SectionColumn>) -> DdSection {
@@ -863,6 +865,29 @@ mod tests {
         assert!(!blob.contains("Background"), "{blob}");
         assert!(!blob.contains("Padding"), "{blob}");
         assert!(!blob.contains("Animation"), "{blob}");
+    }
+
+    #[test]
+    fn headline_blueprint_lists_title_and_level() {
+        let section = test_section(vec![SectionColumn {
+            id: "column-1".to_string(),
+            width_class: "dd-u-1-1".to_string(),
+            components: vec![SectionComponent::Headline(DdHeadline {
+                text: "Services".to_string(),
+                heading_level: HeadingLevel::H3,
+                custom_css: Some("-center".to_string()),
+                sal: SalAnimation::Fade,
+                sal_duration: Some(500),
+                sal_delay: None,
+            })],
+        }]);
+        let blob = section_ascii_map(&section, 0, 80).lines.join("\n");
+        assert!(blob.contains("- dd-headline"), "{blob}");
+        assert!(blob.contains("title: Services"), "{blob}");
+        assert!(blob.contains("level: h3"), "{blob}");
+        assert!(!blob.contains("-center"), "{blob}");
+        assert!(!blob.contains("Animation"), "{blob}");
+        assert!(!blob.contains("fade"), "{blob}");
     }
 
     #[test]

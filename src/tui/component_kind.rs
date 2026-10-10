@@ -24,6 +24,7 @@ pub(super) enum ComponentKind {
     Timeline,
     DataTable,
     SearchResults,
+    Headline,
 }
 
 impl ComponentKind {
@@ -52,6 +53,7 @@ impl ComponentKind {
             Self::Timeline,
             Self::DataTable,
             Self::SearchResults,
+            Self::Headline,
         ]
     }
 
@@ -80,6 +82,7 @@ impl ComponentKind {
             ComponentKind::Timeline => "dd-timeline",
             ComponentKind::DataTable => "dd-data-table",
             ComponentKind::SearchResults => "dd-search-results",
+            ComponentKind::Headline => "dd-headline",
         }
     }
 
@@ -106,6 +109,7 @@ impl ComponentKind {
             crate::model::SectionComponent::Timeline(_) => Self::Timeline,
             crate::model::SectionComponent::DataTable(_) => Self::DataTable,
             crate::model::SectionComponent::SearchResults(_) => Self::SearchResults,
+            crate::model::SectionComponent::Headline(_) => Self::Headline,
         }
     }
 
@@ -363,6 +367,16 @@ impl ComponentKind {
             }
             ComponentKind::SearchResults => {
                 crate::model::SectionComponent::SearchResults(crate::model::DdSearchResults {
+                    sal: crate::model::SalAnimation::NoAnimation,
+                    sal_duration: None,
+                    sal_delay: None,
+                })
+            }
+            ComponentKind::Headline => {
+                crate::model::SectionComponent::Headline(crate::model::DdHeadline {
+                    text: "Headline".to_string(),
+                    heading_level: crate::model::HeadingLevel::H2,
+                    custom_css: None,
                     sal: crate::model::SalAnimation::NoAnimation,
                     sal_duration: None,
                     sal_delay: None,

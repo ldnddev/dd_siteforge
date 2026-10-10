@@ -1,6 +1,7 @@
 mod asset_build;
 mod export;
 mod health;
+mod markdown;
 mod model;
 mod renderer;
 mod scaffold;

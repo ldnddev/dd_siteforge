@@ -181,6 +181,43 @@ pub static SEARCH_RESULTS_FORM: EditForm = EditForm {
     fields: &[SAL_STYLE_FIELD, SAL_DURATION_FIELD, SAL_DELAY_FIELD],
 };
 
+const HEADLINE_LEVEL_OPTIONS: &[&str] = &["h2", "h3", "h4", "h5", "h6"];
+
+pub static HEADLINE_FORM: EditForm = EditForm {
+    title: "dd-headline",
+    fields: &[
+        FormField {
+            id: "text",
+            label: "Text",
+            kind: FieldKind::Text {
+                default: "Headline",
+            },
+            required: true,
+            visible_when: None,
+        },
+        FormField {
+            id: "heading_level",
+            label: "Heading level",
+            kind: FieldKind::Enum {
+                options: HEADLINE_LEVEL_OPTIONS,
+                default: "h2",
+            },
+            required: true,
+            visible_when: None,
+        },
+        FormField {
+            id: "custom_css",
+            label: "CSS Class (optional)",
+            kind: FieldKind::Text { default: "" },
+            required: false,
+            visible_when: None,
+        },
+        SAL_STYLE_FIELD,
+        SAL_DURATION_FIELD,
+        SAL_DELAY_FIELD,
+    ],
+};
+
 pub static RICH_TEXT_FORM: EditForm = EditForm {
     title: "dd-rich_text",
     fields: &[

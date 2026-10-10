@@ -359,7 +359,7 @@ dependencies = [
 
 [[package]]
 name = "dd_siteforge"
-version = "1.24.0"
+version = "1.25.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -367,6 +367,7 @@ dependencies = [
  "handlebars",
  "ldnddev_theme",
  "pulldown-cmark",
+ "pulldown-cmark-escape",
  "ratatui",
  "rust-embed",
  "serde",
