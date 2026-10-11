@@ -52,7 +52,7 @@ pub static CTA_FORM: EditForm = EditForm {
             id: "parent_subtitle",
             label: "Subtitle",
             kind: FieldKind::Text { default: "" },
-            required: true,
+            required: false,
             visible_when: None,
         },
         FormField {
@@ -62,7 +62,7 @@ pub static CTA_FORM: EditForm = EditForm {
                 rows: 5,
                 default: "",
             },
-            required: true,
+            required: false,
             visible_when: None,
         },
         FormField {

@@ -544,15 +544,25 @@ fn render_banner(r: &Renderer, banner: &DdBanner) -> anyhow::Result<String> {
 fn render_cta(r: &Renderer, cta: &DdCta) -> anyhow::Result<String> {
     let resolved = cta.resolved_links();
     let (has_links, links) = links_payload(&resolved);
+    let subtitle = cta.parent_subtitle.trim();
+    let parent_copy_html = if cta.parent_copy.trim().is_empty() {
+        None
+    } else {
+        let html = markdown_to_html(&cta.parent_copy);
+        if html.trim().is_empty() {
+            None
+        } else {
+            Some(html)
+        }
+    };
     let data = json!({
         "parent_class": serde_json::to_value(cta.parent_class).map(|raw| stringify_json(&raw)).unwrap_or_else(|_| "-top-left".to_string()),
         "parent_image_url": cta.parent_image_url,
         "parent_image_alt": cta.parent_image_alt,
         "sal_attr": sal_html_attrs(cta.sal, cta.sal_duration, cta.sal_delay),
         "parent_title": cta.parent_title,
-        "parent_subtitle": cta.parent_subtitle,
-        "parent_copy": cta.parent_copy,
-        "parent_copy_html": markdown_to_html(&cta.parent_copy),
+        "parent_subtitle": if subtitle.is_empty() { None } else { Some(cta.parent_subtitle.clone()) },
+        "parent_copy_html": parent_copy_html,
         "has_links": has_links,
         "links": links
     });
@@ -2107,6 +2117,40 @@ mod tests {
         assert!(html.contains(">One<"), "{html}");
         assert!(html.contains(">Two<"), "{html}");
         assert!(html.contains("target=\"_blank\""), "{html}");
+    }
+
+    #[test]
+    fn cta_omits_empty_subtitle_and_copy() {
+        use crate::model::{CtaClass, DdCta, SalAnimation, SectionComponent};
+        let mut cta = DdCta {
+            parent_class: CtaClass::TopLeft,
+            parent_image_url: "/c.jpg".to_string(),
+            parent_image_alt: "alt".to_string(),
+            sal: SalAnimation::Fade,
+            sal_duration: None,
+            sal_delay: None,
+            parent_title: "Talk to us".to_string(),
+            parent_subtitle: "   ".to_string(),
+            parent_copy: "\n".to_string(),
+            links: Vec::new(),
+            parent_link_url: None,
+            parent_link_target: None,
+            parent_link_label: None,
+        };
+        let html = render_page_html(&page_with_component(SectionComponent::Cta(cta.clone())))
+            .expect("cta page should render");
+        assert!(html.contains("<h2>Talk to us</h2>"), "{html}");
+        assert!(!html.contains("dd-cta__subtitle"), "{html}");
+        assert!(!html.contains("<strong>"), "{html}");
+        assert!(!html.contains("<p>"), "{html}");
+
+        cta.parent_subtitle = "A short line".to_string();
+        cta.parent_copy = "Hello there".to_string();
+        let html = render_page_html(&page_with_component(SectionComponent::Cta(cta)))
+            .expect("cta page should render");
+        assert!(html.contains("<div class=\"dd-cta__subtitle\">"), "{html}");
+        assert!(html.contains("<strong>A short line</strong>"), "{html}");
+        assert!(html.contains("<p>Hello there</p>"), "{html}");
     }
 
     #[test]

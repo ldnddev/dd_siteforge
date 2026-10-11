@@ -250,6 +250,10 @@ pub(super) struct App {
     textarea_scrollbar_track: std::cell::RefCell<ScrollbarTrack>,
     /// Last text-field mutation in the open FormEdit, for Ctrl+Z.
     form_text_undo: Option<FormTextUndo>,
+    /// Required field ids that failed the last Ctrl+S. Their input borders
+    /// use the theme error color until focus leaves a filled field, or until
+    /// the next Ctrl+S replaces the set.
+    form_invalid_field_ids: Vec<String>,
     /// True while the pointer is dragging a text selection inside FormEdit.
     form_text_drag: bool,
     /// Draw-time hit targets for `[Expand]` on textarea field labels.
@@ -345,6 +349,7 @@ impl App {
             form_textarea_view_field: std::cell::Cell::new(None),
             textarea_scrollbar_track: std::cell::RefCell::new(ScrollbarTrack::default()),
             form_text_undo: None,
+            form_invalid_field_ids: Vec::new(),
             form_text_drag: false,
             form_expand_hits: std::cell::RefCell::new(Vec::new()),
             form_browse_hits: std::cell::RefCell::new(Vec::new()),

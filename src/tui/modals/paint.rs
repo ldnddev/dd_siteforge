@@ -3,6 +3,24 @@ use super::super::*;
 use ratatui::layout::Alignment;
 use ratatui::text::{Line, Span};
 
+/// `Label:` plus a bold asterisk when the field is required.
+/// The mark keeps `required_fg` (theme error) so it stays distinct from the label color.
+pub(super) fn form_field_label_line(
+    label: &str,
+    required: bool,
+    label_style: Style,
+    required_fg: Color,
+) -> Line<'static> {
+    let mut spans = vec![Span::styled(format!("{label}:"), label_style)];
+    if required {
+        spans.push(Span::styled(
+            " *",
+            label_style.fg(required_fg).add_modifier(Modifier::BOLD),
+        ));
+    }
+    Line::from(spans)
+}
+
 impl App {
     /// Check if any modal is currently open
     #[allow(dead_code)]
@@ -150,15 +168,26 @@ impl App {
         } else {
             "Tab: fields | Ctrl+S: save | Ctrl+Z: undo | Esc: cancel"
         };
-        frame.render_widget(
-            Paragraph::new(help_text).style(
-                Style::default()
-                    .fg(self.theme.modal_labels)
-                    .bg(self.theme.modal_background)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            help_rect,
-        );
+        let help_style = Style::default()
+            .fg(self.theme.modal_labels)
+            .bg(self.theme.modal_background)
+            .add_modifier(Modifier::BOLD);
+        let show_required_legend = state
+            .form
+            .fields
+            .iter()
+            .any(|field| field.required && state.field_visible(field));
+        let legend = "* required";
+        let help_width = help_rect.width as usize;
+        let help_len = help_text.chars().count();
+        let mut help_spans = vec![Span::styled(help_text, help_style)];
+        if show_required_legend && help_width > help_len + legend.chars().count() + 2 {
+            let gap = help_width - help_len - legend.chars().count();
+            help_spans.push(Span::styled(" ".repeat(gap), help_style));
+            help_spans.push(Span::styled("*", help_style.fg(self.theme.error)));
+            help_spans.push(Span::styled(" required", help_style));
+        }
+        frame.render_widget(Paragraph::new(Line::from(help_spans)), help_rect);
 
         // Content area begins 2 rows below (help + spacer). Reserve 1 col for scrollbar.
         if inner.height < 4 {
@@ -255,19 +284,23 @@ impl App {
                 let is_textarea = matches!(field.kind, editform::FieldKind::Textarea { .. });
                 let expand = "[Expand]";
                 let expand_len = expand.len() as u16;
-                let label = format!("{}:", field.label);
+                let label_style = Style::default()
+                    .fg(label_color)
+                    .bg(self.theme.modal_background)
+                    .add_modifier(label_mod);
+                let label_line = form_field_label_line(
+                    field.label,
+                    field.required,
+                    label_style,
+                    self.theme.error,
+                );
                 if is_textarea && content_rect.width > expand_len + 2 {
                     let expand_x = content_rect
                         .x
                         .saturating_add(content_rect.width.saturating_sub(expand_len));
                     let label_width = content_rect.width.saturating_sub(expand_len + 1);
                     frame.render_widget(
-                        Paragraph::new(label).style(
-                            Style::default()
-                                .fg(label_color)
-                                .bg(self.theme.modal_background)
-                                .add_modifier(label_mod),
-                        ),
+                        Paragraph::new(label_line.clone()),
                         Rect {
                             width: label_width,
                             ..label_rect
@@ -297,22 +330,16 @@ impl App {
                         },
                     ));
                 } else {
-                    frame.render_widget(
-                        Paragraph::new(label).style(
-                            Style::default()
-                                .fg(label_color)
-                                .bg(self.theme.modal_background)
-                                .add_modifier(label_mod),
-                        ),
-                        label_rect,
-                    );
+                    frame.render_widget(Paragraph::new(label_line), label_rect);
                 }
             }
 
             // Input box. Textareas may be taller than the current viewport, so
             // clamp the drawn box instead of dropping it entirely.
             if box_top_screen >= 0 && box_top_screen < content_height as i32 {
-                let border_color = if focused {
+                let border_color = if self.form_invalid_field_ids.iter().any(|id| id == field.id) {
+                    self.theme.error
+                } else if focused {
                     self.theme.input_border_focus
                 } else {
                     self.theme.input_border_default
@@ -423,15 +450,19 @@ impl App {
         };
         let area = centered_rect(94, 90, frame.area());
         frame.render_widget(Clear, area);
+        let title_style = Style::default()
+            .fg(self.theme.modal_labels)
+            .add_modifier(Modifier::BOLD);
+        let label_line =
+            form_field_label_line(field.label, field.required, title_style, self.theme.error);
+        let mut title_spans = vec![Span::styled(" ", title_style)];
+        title_spans.extend(label_line.spans);
+        title_spans.push(Span::styled(" -- expanded ", title_style));
         let outer = Block::default()
-            .title(format!(" {} -- expanded ", field.label))
+            .title(Line::from(title_spans))
             .borders(Borders::ALL)
             .border_style(Style::default().fg(self.theme.modal_labels))
-            .title_style(
-                Style::default()
-                    .fg(self.theme.modal_labels)
-                    .add_modifier(Modifier::BOLD),
-            )
+            .title_style(title_style)
             .style(Style::default().bg(self.theme.modal_background));
         let inner = outer.inner(area);
         frame.render_widget(outer, area);
@@ -462,11 +493,16 @@ impl App {
         if box_rect.height < 3 {
             return;
         }
+        let border_fg = if self.form_invalid_field_ids.iter().any(|id| id == field.id) {
+            self.theme.error
+        } else {
+            self.theme.input_border_focus
+        };
         let field_block = Block::default()
             .borders(Borders::ALL)
             .border_style(
                 Style::default()
-                    .fg(self.theme.input_border_focus)
+                    .fg(border_fg)
                     .bg(self.theme.modal_background),
             )
             .style(Style::default().bg(self.theme.modal_background));

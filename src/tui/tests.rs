@@ -2684,6 +2684,12 @@ fn pages_panel_add_ctrl_s_without_title_keeps_form_open() {
     pick_new_page_template(&mut app, 0);
     send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
     assert!(matches!(app.modal, Some(Modal::FormEdit { .. })));
+    assert_eq!(form_focused_field_id(&app), Some("title"));
+    assert_eq!(
+        app.toasts.last().map(|toast| toast.message.as_str()),
+        Some("Title is required.")
+    );
+    assert!(app.form_invalid_field_ids.iter().any(|id| id == "title"));
     assert_eq!(app.site.pages.len(), initial_len + 1);
     assert!(app.creating_page_idx.is_some());
 }
@@ -6612,4 +6618,492 @@ fn palette_filters_preview() {
     );
     let items = app.palette_item_labels("prev");
     assert!(items.iter().any(|s| s.contains("Preview")), "{items:?}");
+}
+
+fn buffer_rows(buf: &ratatui::buffer::Buffer) -> Vec<String> {
+    (0..buf.area.height)
+        .map(|y| {
+            (0..buf.area.width)
+                .map(|x| buf[(x, y)].symbol().chars().next().unwrap_or(' '))
+                .collect()
+        })
+        .collect()
+}
+
+fn col_of(row: &str, needle: &str) -> u16 {
+    let byte = row.find(needle).unwrap_or_else(|| {
+        panic!("missing {needle:?} in {row:?}");
+    });
+    row[..byte].chars().count() as u16
+}
+
+#[test]
+fn required_form_fields_show_error_colored_asterisk() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    let state = editform::EditFormState::new(&editform::PAGE_HEAD_FORM);
+    let backend = ratatui::backend::TestBackend::new(120, 40);
+    let mut terminal = ratatui::Terminal::new(backend).expect("test terminal");
+    terminal
+        .draw(|frame| app.render_form_edit_modal(frame, &state, 0, None, 0))
+        .expect("draw form");
+    let buf = terminal.backend().buffer().clone();
+    let rows = buffer_rows(&buf);
+
+    let title_y = rows
+        .iter()
+        .position(|row| row.contains("Title:"))
+        .expect("title label");
+    assert!(
+        rows[title_y].contains("Title: *"),
+        "required title label: {:?}",
+        rows[title_y].trim()
+    );
+    let star_x = col_of(&rows[title_y], "Title: *") + "Title: ".chars().count() as u16;
+    let star = &buf[(star_x, title_y as u16)];
+    assert_eq!(star.symbol(), "*");
+    assert_eq!(star.fg, app.theme.error);
+    assert!(star.modifier.contains(Modifier::BOLD));
+    let label_x = col_of(&rows[title_y], "Title:");
+    assert_ne!(
+        buf[(label_x, title_y as u16)].fg,
+        app.theme.error,
+        "the asterisk color should differ from the label"
+    );
+
+    let slug_y = rows
+        .iter()
+        .position(|row| row.contains("Slug / path:"))
+        .expect("slug label");
+    assert!(
+        !rows[slug_y].contains('*'),
+        "optional slug label: {:?}",
+        rows[slug_y].trim()
+    );
+
+    let help = rows
+        .iter()
+        .find(|row| row.contains("Ctrl+S"))
+        .expect("form help row");
+    assert!(
+        help.contains("* required"),
+        "help legend: {:?}",
+        help.trim()
+    );
+    let help_y = rows
+        .iter()
+        .position(|row| row.contains("* required"))
+        .unwrap();
+    let help_star_x = col_of(&rows[help_y], "* required");
+    assert_eq!(buf[(help_star_x, help_y as u16)].fg, app.theme.error);
+
+    let mut quote = editform::EditFormState::new(&editform::BLOCKQUOTE_FORM);
+    quote.focused_field = quote
+        .form
+        .fields
+        .iter()
+        .position(|field| field.id == "parent_copy")
+        .expect("quote field");
+    app.form_textarea_expanded = true;
+    terminal
+        .draw(|frame| app.render_form_edit_modal(frame, &quote, 0, None, 0))
+        .expect("draw expanded quote");
+    let expanded_buf = terminal.backend().buffer().clone();
+    let expanded = buffer_rows(&expanded_buf);
+    let title_y = expanded
+        .iter()
+        .position(|row| row.contains("expanded"))
+        .expect("expanded title");
+    let title = &expanded[title_y];
+    assert!(
+        title.contains("Quote (Markdown): *"),
+        "expanded required title: {:?}",
+        title.trim()
+    );
+    let expanded_star_x =
+        col_of(title, "Quote (Markdown): *") + "Quote (Markdown): ".chars().count() as u16;
+    assert_eq!(
+        expanded_buf[(expanded_star_x, title_y as u16)].fg,
+        app.theme.error
+    );
+
+    terminal
+        .draw(|frame| app.render_rename_page_prompt(frame, "About", 0))
+        .expect("draw rename prompt");
+    let prompt_buf = terminal.backend().buffer().clone();
+    let prompt_rows = buffer_rows(&prompt_buf);
+    let prompt_y = prompt_rows
+        .iter()
+        .position(|row| row.contains("Title: *"))
+        .expect("rename title label");
+    let prompt_star_x =
+        col_of(&prompt_rows[prompt_y], "Title: *") + "Title: ".chars().count() as u16;
+    assert_eq!(
+        prompt_buf[(prompt_star_x, prompt_y as u16)].fg,
+        app.theme.error
+    );
+}
+
+fn row_has_error_border(
+    buf: &ratatui::buffer::Buffer,
+    row: u16,
+    error: ratatui::style::Color,
+) -> bool {
+    (0..buf.area.width).any(|x| {
+        let cell = &buf[(x, row)];
+        matches!(cell.symbol(), "─" | "┌" | "┐" | "│" | "└" | "┘") && cell.fg == error
+    })
+}
+
+#[test]
+fn ctrl_s_on_empty_required_field_stays_outlines_and_clears_on_leave() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    let original_title = app.site.pages[0].head.title.clone();
+    open_page_head_form(&mut app);
+    let slug_idx = match &app.modal {
+        Some(Modal::FormEdit { state, .. }) => state
+            .form
+            .fields
+            .iter()
+            .position(|field| field.id == "slug")
+            .expect("slug field"),
+        _ => panic!("expected FormEdit"),
+    };
+    if let Some(Modal::FormEdit { state, .. }) = &mut app.modal {
+        state.set("title", "   ");
+        state.focused_field = slug_idx;
+    }
+    send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
+
+    assert!(matches!(app.modal, Some(Modal::FormEdit { .. })));
+    assert_eq!(form_focused_field_id(&app), Some("title"));
+    assert_eq!(app.form_invalid_field_ids, vec!["title".to_string()]);
+    assert_eq!(
+        app.toasts.last().map(|toast| toast.message.as_str()),
+        Some("Title is required.")
+    );
+    assert_eq!(app.site.pages[0].head.title, original_title);
+
+    let (state, cursor_pos, scroll) = match &app.modal {
+        Some(Modal::FormEdit {
+            state,
+            cursor_pos,
+            scroll_offset,
+            ..
+        }) => (state.clone(), *cursor_pos, *scroll_offset),
+        _ => panic!("expected FormEdit"),
+    };
+    let backend = ratatui::backend::TestBackend::new(120, 40);
+    let mut terminal = ratatui::Terminal::new(backend).expect("test terminal");
+    terminal
+        .draw(|frame| app.render_form_edit_modal(frame, &state, cursor_pos, None, scroll))
+        .expect("draw form");
+    let buf = terminal.backend().buffer().clone();
+    let rows = buffer_rows(&buf);
+    let title_y = rows
+        .iter()
+        .position(|row| row.contains("Title:"))
+        .expect("title label") as u16;
+    assert!(
+        row_has_error_border(&buf, title_y + 1, app.theme.error),
+        "empty required title should use the error border"
+    );
+    let slug_y = rows
+        .iter()
+        .position(|row| row.contains("Slug / path:"))
+        .expect("slug label") as u16;
+    assert!(
+        !row_has_error_border(&buf, slug_y + 1, app.theme.error),
+        "a filled optional field keeps its normal border"
+    );
+
+    send_key(&mut app, KeyCode::Char('A'), KeyModifiers::NONE);
+    assert_eq!(app.form_invalid_field_ids, vec!["title".to_string()]);
+    send_key(&mut app, KeyCode::Tab, KeyModifiers::NONE);
+    assert!(
+        app.form_invalid_field_ids.is_empty(),
+        "leaving a filled field clears its outline"
+    );
+    assert_eq!(form_focused_field_id(&app), Some("slug"));
+
+    send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
+    assert!(
+        app.modal.is_none(),
+        "a later Ctrl+S saves once required fields are filled"
+    );
+    assert!(app.form_invalid_field_ids.is_empty());
+    assert!(app.site.pages[0].head.title.contains('A'));
+}
+
+#[test]
+fn ctrl_s_names_the_first_empty_required_field_and_outlines_the_rest() {
+    let mut app = app_with_cta();
+    open_form_edit_on_selected_cta(&mut app);
+    let image_before = selected_cta(&app).parent_image_url.clone();
+    if let Some(Modal::FormEdit {
+        state, cursor_pos, ..
+    }) = &mut app.modal
+    {
+        state.set("parent_image_url", " ");
+        state.set("parent_title", "");
+        let title_idx = state
+            .form
+            .fields
+            .iter()
+            .position(|field| field.id == "parent_title")
+            .expect("title");
+        state.focused_field = title_idx;
+        *cursor_pos = 0;
+    }
+    send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
+    assert_eq!(form_focused_field_id(&app), Some("parent_image_url"));
+    assert_eq!(
+        app.form_invalid_field_ids,
+        vec!["parent_image_url".to_string(), "parent_title".to_string()]
+    );
+    assert_eq!(
+        app.toasts.last().map(|toast| toast.message.as_str()),
+        Some("Image URL is required.")
+    );
+    assert_eq!(selected_cta(&app).parent_image_url, image_before);
+
+    for c in "https://example.com/a.jpg".chars() {
+        send_key(&mut app, KeyCode::Char(c), KeyModifiers::NONE);
+    }
+    send_key(&mut app, KeyCode::Tab, KeyModifiers::NONE);
+    assert_eq!(app.form_invalid_field_ids, vec!["parent_title".to_string()]);
+
+    send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
+    assert_eq!(form_focused_field_id(&app), Some("parent_title"));
+    assert_eq!(app.form_invalid_field_ids, vec!["parent_title".to_string()]);
+    assert_eq!(
+        app.toasts.last().map(|toast| toast.message.as_str()),
+        Some("Title is required.")
+    );
+    assert!(matches!(app.modal, Some(Modal::FormEdit { .. })));
+}
+
+#[test]
+fn ctrl_s_on_expanded_textarea_stays_expanded_when_that_field_is_empty() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    let mut state = editform::EditFormState::new(&editform::BLOCKQUOTE_FORM);
+    state.set("parent_image_url", "https://example.com/a.jpg");
+    state.set("parent_image_alt", "alt");
+    state.set("parent_name", "Ada");
+    state.set("parent_role", "Author");
+    state.set("parent_copy", "  ");
+    state.focused_field = state
+        .form
+        .fields
+        .iter()
+        .position(|field| field.id == "parent_copy")
+        .expect("quote");
+    app.form_textarea_expanded = true;
+    app.modal = Some(Modal::FormEdit {
+        state,
+        cursor: cursor::Cursor::PageComponent {
+            page: 0,
+            node: 1,
+            col: 0,
+            comp: 0,
+            items: Vec::new(),
+        },
+        cursor_pos: 2,
+        selection_anchor: None,
+        drill_stack: Vec::new(),
+        scroll_offset: 0,
+    });
+    send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
+    assert!(app.form_textarea_expanded);
+    assert_eq!(form_focused_field_id(&app), Some("parent_copy"));
+    assert_eq!(
+        app.toasts.last().map(|toast| toast.message.as_str()),
+        Some("Quote (Markdown) is required.")
+    );
+    let (state, cursor_pos) = match &app.modal {
+        Some(Modal::FormEdit {
+            state, cursor_pos, ..
+        }) => (state.clone(), *cursor_pos),
+        _ => panic!("expected FormEdit"),
+    };
+    let backend = ratatui::backend::TestBackend::new(120, 40);
+    let mut terminal = ratatui::Terminal::new(backend).expect("test terminal");
+    terminal
+        .draw(|frame| app.render_form_edit_modal(frame, &state, cursor_pos, None, 0))
+        .expect("draw expanded quote");
+    let buf = terminal.backend().buffer().clone();
+    assert!(
+        (0..buf.area.height).any(|y| row_has_error_border(&buf, y, app.theme.error)),
+        "expanded empty textarea uses the error border"
+    );
+
+    if let Some(Modal::FormEdit { state, .. }) = &mut app.modal {
+        state.set("parent_copy", "A quote");
+        state.set("parent_name", "");
+    }
+    send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
+    assert!(!app.form_textarea_expanded);
+    assert_eq!(form_focused_field_id(&app), Some("parent_name"));
+    assert_eq!(
+        app.toasts.last().map(|toast| toast.message.as_str()),
+        Some("Name is required.")
+    );
+}
+
+#[test]
+fn ctrl_s_on_drilled_item_does_not_write_back_until_required_fields_are_filled() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    let mut parent = editform::EditFormState::new(&editform::CARD_FORM);
+    let mut kept = editform::EditFormState::new(&editform::CARD_ITEM_FORM);
+    kept.set("child_image_url", "https://example.com/a.jpg");
+    kept.set("child_image_alt", "alt");
+    kept.set("child_title", "Kept");
+    kept.set("child_subtitle", "sub");
+    kept.set("child_copy", "copy");
+    let mut editing = kept.clone();
+    editing.set("child_title", "");
+    parent.sub_state.insert("items".to_string(), vec![kept]);
+    app.modal = Some(Modal::FormEdit {
+        state: editing,
+        cursor: cursor::Cursor::PageComponent {
+            page: 0,
+            node: 1,
+            col: 0,
+            comp: 0,
+            items: Vec::new(),
+        },
+        cursor_pos: 0,
+        selection_anchor: None,
+        drill_stack: vec![DrillFrame {
+            parent_state: parent,
+            parent_cursor_pos: 0,
+            parent_scroll_offset: 0,
+            subform_field_id: "items".to_string(),
+            item_idx: 0,
+        }],
+        scroll_offset: 0,
+    });
+    send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
+    match &app.modal {
+        Some(Modal::FormEdit {
+            state, drill_stack, ..
+        }) => {
+            assert_eq!(drill_stack.len(), 1);
+            assert_eq!(state.get("child_title"), "");
+            assert_eq!(
+                drill_stack[0].parent_state.sub_state["items"][0].get("child_title"),
+                "Kept"
+            );
+        }
+        _ => panic!("expected FormEdit"),
+    }
+    assert_eq!(form_focused_field_id(&app), Some("child_title"));
+    assert_eq!(
+        app.toasts.last().map(|toast| toast.message.as_str()),
+        Some("Title is required.")
+    );
+
+    if let Some(Modal::FormEdit { state, .. }) = &mut app.modal {
+        state.set("child_title", "Saved");
+    }
+    send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
+    match &app.modal {
+        Some(Modal::FormEdit {
+            state, drill_stack, ..
+        }) => {
+            assert!(drill_stack.is_empty());
+            assert_eq!(state.form.title, "dd-card");
+            assert_eq!(state.sub_state["items"][0].get("child_title"), "Saved");
+        }
+        _ => panic!("expected parent FormEdit"),
+    }
+    assert!(app.form_invalid_field_ids.is_empty());
+}
+
+#[test]
+fn mouse_leave_clears_a_filled_required_outline_and_keeps_an_empty_one() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    open_page_head_form(&mut app);
+    let (title_idx, slug_idx) = match &app.modal {
+        Some(Modal::FormEdit { state, .. }) => (
+            state
+                .form
+                .fields
+                .iter()
+                .position(|field| field.id == "title")
+                .expect("title"),
+            state
+                .form
+                .fields
+                .iter()
+                .position(|field| field.id == "slug")
+                .expect("slug"),
+        ),
+        _ => panic!("expected FormEdit"),
+    };
+    if let Some(Modal::FormEdit { state, .. }) = &mut app.modal {
+        state.set("title", "Hello");
+        state.focused_field = title_idx;
+    }
+    app.form_invalid_field_ids = vec!["title".to_string()];
+    app.modal_field_areas.borrow_mut().clear();
+    app.modal_field_areas.borrow_mut().push((
+        title_idx,
+        Rect {
+            x: 0,
+            y: 0,
+            width: 20,
+            height: 3,
+        },
+    ));
+    app.modal_field_areas.borrow_mut().push((
+        slug_idx,
+        Rect {
+            x: 0,
+            y: 5,
+            width: 20,
+            height: 3,
+        },
+    ));
+    send_mouse(&mut app, MouseEventKind::Down(MouseButton::Left), 2, 6);
+    assert_eq!(form_focused_field_id(&app), Some("slug"));
+    assert!(app.form_invalid_field_ids.is_empty());
+
+    if let Some(Modal::FormEdit { state, .. }) = &mut app.modal {
+        state.set("title", "  ");
+        state.focused_field = title_idx;
+    }
+    app.form_invalid_field_ids = vec!["title".to_string()];
+    send_mouse(&mut app, MouseEventKind::Down(MouseButton::Left), 2, 6);
+    assert_eq!(form_focused_field_id(&app), Some("slug"));
+    assert_eq!(app.form_invalid_field_ids, vec!["title".to_string()]);
 }

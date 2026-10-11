@@ -39,11 +39,11 @@ impl App {
         }
 
         // Ctrl+S: drilled-down form returns to its parent; top-level form
-        // commits to the model.
+        // commits to the model. Empty required fields stay in the form.
         if matches!(key.code, KeyCode::Char('s')) && key.modifiers.contains(KeyModifiers::CONTROL) {
             let taken = self.modal.take();
             if let Some(Modal::FormEdit {
-                state,
+                mut state,
                 cursor,
                 cursor_pos,
                 selection_anchor: _,
@@ -51,6 +51,17 @@ impl App {
                 scroll_offset: _,
             }) = taken
             {
+                if let Some((cursor_pos, scroll_offset)) = self.refuse_empty_required(&mut state) {
+                    self.modal = Some(Modal::FormEdit {
+                        state,
+                        cursor,
+                        cursor_pos,
+                        selection_anchor: None,
+                        drill_stack,
+                        scroll_offset,
+                    });
+                    return Some(ModalResult::Continue);
+                }
                 if let Some(frame) = drill_stack.pop() {
                     // Returning from a drilled-in item — write current state back
                     // into the parent's sub_state and make the parent the active form.
@@ -65,6 +76,7 @@ impl App {
                         items.push(state);
                     }
                     self.push_toast(ToastLevel::Success, "Item saved — editing parent.");
+                    self.start_form_edit();
                     self.modal = Some(Modal::FormEdit {
                         state: parent,
                         cursor,
@@ -76,21 +88,9 @@ impl App {
                     return Some(ModalResult::Continue);
                 }
                 // Top-level save: commit to the model.
-                if self.creating_page_idx.is_some() && state.get("title").trim().is_empty() {
-                    self.push_toast(ToastLevel::Warning, "Title required.");
-                    self.modal = Some(Modal::FormEdit {
-                        state,
-                        cursor,
-                        cursor_pos,
-                        selection_anchor: None,
-                        drill_stack,
-                        scroll_offset: 0,
-                    });
-                    return Some(ModalResult::Continue);
-                }
                 match cursor::apply_edit_form_to_component(&mut self.site, &cursor, &state) {
                     Ok(()) => {
-                        self.form_textarea_expanded = false;
+                        self.start_form_edit();
                         self.form_text_undo = None;
                         if let Some(idx) = self.creating_page_idx.take() {
                             self.finalize_creating_page_identity(idx);
@@ -143,6 +143,7 @@ impl App {
             {
                 if let Some(frame) = drill_stack.pop() {
                     self.push_toast(ToastLevel::Info, "Item edit cancelled.");
+                    self.start_form_edit();
                     self.modal = Some(Modal::FormEdit {
                         state: frame.parent_state,
                         cursor,
@@ -154,7 +155,7 @@ impl App {
                     return Some(ModalResult::Continue);
                 }
             }
-            self.form_textarea_expanded = false;
+            self.start_form_edit();
             self.form_text_undo = None;
             self.modal = None;
             if self.creating_page_idx.is_some() {
@@ -254,12 +255,11 @@ impl App {
                 KeyCode::Up | KeyCode::Char('k') => {
                     let selected = state.selected_sub_item.get(field_id).copied().unwrap_or(0);
                     let items_len = state.sub_state.get(field_id).map(|v| v.len()).unwrap_or(0);
-                    if items_len == 0 {
-                        state.focus_prev();
-                        *scroll_offset = auto_scroll_for_focus(state, *scroll_offset);
-                        *cursor_pos =
-                            text_end(state.get(state.form.fields[state.focused_field].id));
-                    } else if selected == 0 {
+                    if items_len == 0 || selected == 0 {
+                        state.clear_invalid_on_leave(
+                            state.focused_field,
+                            &mut self.form_invalid_field_ids,
+                        );
                         state.focus_prev();
                         *scroll_offset = auto_scroll_for_focus(state, *scroll_offset);
                         *cursor_pos =
@@ -279,6 +279,10 @@ impl App {
                             .selected_sub_item
                             .insert(field_id.to_string(), selected + 1);
                     } else {
+                        state.clear_invalid_on_leave(
+                            state.focused_field,
+                            &mut self.form_invalid_field_ids,
+                        );
                         state.focus_next();
                         *scroll_offset = auto_scroll_for_focus(state, *scroll_offset);
                         *cursor_pos =
@@ -321,6 +325,7 @@ impl App {
                                 subform_field_id: field_id.to_string(),
                                 item_idx: selected,
                             });
+                            self.start_form_edit();
                             self.modal = Some(Modal::FormEdit {
                                 state: item_state,
                                 cursor,
@@ -356,12 +361,14 @@ impl App {
 
         match key.code {
             KeyCode::Tab if !expanded => {
+                state.clear_invalid_on_leave(state.focused_field, &mut self.form_invalid_field_ids);
                 state.focus_next();
                 *scroll_offset = auto_scroll_for_focus(state, *scroll_offset);
                 *cursor_pos = text_end(state.get(state.form.fields[state.focused_field].id));
                 *selection_anchor = None;
             }
             KeyCode::BackTab if !expanded => {
+                state.clear_invalid_on_leave(state.focused_field, &mut self.form_invalid_field_ids);
                 state.focus_prev();
                 *scroll_offset = auto_scroll_for_focus(state, *scroll_offset);
                 *cursor_pos = text_end(state.get(state.form.fields[state.focused_field].id));
@@ -432,6 +439,10 @@ impl App {
                     begin_shift_selection(selection_anchor, *cursor_pos);
                     *cursor_pos = 0;
                 } else {
+                    state.clear_invalid_on_leave(
+                        state.focused_field,
+                        &mut self.form_invalid_field_ids,
+                    );
                     state.focus_prev();
                     *scroll_offset = auto_scroll_for_focus(state, *scroll_offset);
                     *cursor_pos = text_end(state.get(state.form.fields[state.focused_field].id));
@@ -455,6 +466,10 @@ impl App {
                     begin_shift_selection(selection_anchor, *cursor_pos);
                     *cursor_pos = text_end(state.get(field_id));
                 } else {
+                    state.clear_invalid_on_leave(
+                        state.focused_field,
+                        &mut self.form_invalid_field_ids,
+                    );
                     state.focus_next();
                     *scroll_offset = auto_scroll_for_focus(state, *scroll_offset);
                     *cursor_pos = text_end(state.get(state.form.fields[state.focused_field].id));
@@ -620,6 +635,10 @@ impl App {
                         "\n",
                     );
                 } else {
+                    state.clear_invalid_on_leave(
+                        state.focused_field,
+                        &mut self.form_invalid_field_ids,
+                    );
                     state.focus_next();
                     *scroll_offset = auto_scroll_for_focus(state, *scroll_offset);
                     *cursor_pos = text_end(state.get(state.form.fields[state.focused_field].id));
@@ -634,6 +653,59 @@ impl App {
         }
 
         Some(ModalResult::Continue)
+    }
+
+    /// Forget required-field outlines when a different form becomes active.
+    pub(in crate::tui) fn start_form_edit(&mut self) {
+        self.form_invalid_field_ids.clear();
+        self.form_textarea_expanded = false;
+    }
+
+    /// Block Ctrl+S when a visible required field is empty. Focus and scroll
+    /// to the first one, outline every empty required field, and name the
+    /// first in a toast. Returns the caret and scroll to restore.
+    fn refuse_empty_required(
+        &mut self,
+        state: &mut editform::EditFormState,
+    ) -> Option<(usize, u16)> {
+        let missing = state.empty_required_fields();
+        let &(first_idx, first_id, first_label) = missing.first()?;
+        self.form_invalid_field_ids = missing.iter().map(|(_, id, _)| (*id).to_string()).collect();
+        state.focused_field = first_idx;
+        let scroll_offset = auto_scroll_for_focus(state, 0);
+        let cursor_pos = text_end(state.get(first_id));
+        let keep_expanded = self.form_textarea_expanded
+            && matches!(
+                state.form.fields.get(first_idx).map(|field| &field.kind),
+                Some(editform::FieldKind::Textarea { .. })
+            );
+        if !keep_expanded {
+            self.form_textarea_expanded = false;
+        }
+        self.push_toast(ToastLevel::Warning, format!("{first_label} is required."));
+        Some((cursor_pos, scroll_offset))
+    }
+
+    /// Clear the outline on the field being left when it now has a value.
+    pub(in crate::tui) fn clear_invalid_if_leaving_focus(&mut self, new_idx: usize) {
+        let clear_id = match self.modal.as_ref() {
+            Some(Modal::FormEdit { state, .. }) if state.focused_field != new_idx => state
+                .form
+                .fields
+                .get(state.focused_field)
+                .and_then(|field| {
+                    if state.field_value_empty(field) {
+                        None
+                    } else {
+                        Some(field.id.to_string())
+                    }
+                }),
+            _ => None,
+        };
+        if let Some(id) = clear_id {
+            self.form_invalid_field_ids
+                .retain(|existing| existing != &id);
+        }
     }
 
     pub(in crate::tui) fn paste_into_form(&mut self, raw: &str) {
@@ -693,6 +765,9 @@ impl App {
             return;
         };
         if let Some(idx) = state.form.fields.iter().position(|f| f.id == undo.field_id) {
+            if idx != state.focused_field {
+                state.clear_invalid_on_leave(state.focused_field, &mut self.form_invalid_field_ids);
+            }
             state.focused_field = idx;
             *scroll_offset = auto_scroll_for_focus(state, *scroll_offset);
         }

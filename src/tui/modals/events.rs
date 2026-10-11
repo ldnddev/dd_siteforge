@@ -212,6 +212,7 @@ impl App {
                     .find(|(_, r)| contains(*r, col, row))
                     .map(|(idx, _)| *idx);
                 if let Some(idx) = expand_hit {
+                    self.clear_invalid_if_leaving_focus(idx);
                     if let Some(Modal::FormEdit {
                         state,
                         cursor_pos,
@@ -238,6 +239,7 @@ impl App {
                     .find(|(_, r)| contains(*r, col, row))
                     .map(|(idx, _)| *idx);
                 if let Some(idx) = browse_hit {
+                    self.clear_invalid_if_leaving_focus(idx);
                     if let Some(Modal::FormEdit {
                         state,
                         cursor_pos,
@@ -275,6 +277,7 @@ impl App {
                         false
                     };
                     self.last_mouse_click = Some((col, row, now));
+                    self.clear_invalid_if_leaving_focus(idx);
                     if let Some(Modal::FormEdit {
                         state,
                         cursor_pos,
@@ -323,6 +326,7 @@ impl App {
                     })
                     .map(|(idx, _)| *idx);
                 if let Some(idx) = hit {
+                    self.clear_invalid_if_leaving_focus(idx);
                     if let Some(modal) = self.modal.as_mut() {
                         match modal {
                             Modal::FormEdit {
@@ -511,6 +515,7 @@ impl App {
             .min(state.form.fields.len().saturating_sub(1));
         let cursor_pos = text_end(state.get(state.form.fields[focused].id));
         self.creating_page_idx = Some(page_idx);
+        self.start_form_edit();
         self.modal = Some(Modal::FormEdit {
             state,
             cursor: cursor::Cursor::PageHead { page: page_idx },

@@ -9,10 +9,14 @@
       <div class="dd-cta__title">
         <h2>{{parent_title}}</h2>
       </div>
+      {{#if parent_subtitle}}
       <div class="dd-cta__subtitle">
         <strong>{{parent_subtitle}}</strong>
       </div>
+      {{/if}}
+      {{#if parent_copy_html}}
       {{{parent_copy_html}}}
+      {{/if}}
       {{#if has_links}}
       <div class="dd-cta__links dd-g -x-center">
         {{#each links}}

@@ -35,7 +35,6 @@ pub struct FormField {
     pub id: &'static str,
     pub label: &'static str,
     pub kind: FieldKind,
-    #[allow(dead_code)]
     pub required: bool,
     pub visible_when: Option<FieldPredicate>,
 }
@@ -232,6 +231,56 @@ impl EditFormState {
 
     pub fn focused(&self) -> Option<&FormField> {
         self.form.fields.get(self.focused_field)
+    }
+
+    /// True when a visible required field has nothing an author can save.
+    /// Text, URL, textarea, and enum values are empty after trim. A required
+    /// subform is empty when it has fewer items than `min_items` (at least one).
+    pub fn field_value_empty(&self, field: &FormField) -> bool {
+        match field.kind {
+            FieldKind::Text { .. }
+            | FieldKind::Url { .. }
+            | FieldKind::Textarea { .. }
+            | FieldKind::Enum { .. } => self.get(field.id).trim().is_empty(),
+            FieldKind::OptionalLinkTriple {
+                url_id, label_id, ..
+            } => self.get(url_id).trim().is_empty() || self.get(label_id).trim().is_empty(),
+            FieldKind::SubForm { min_items, .. } => {
+                let count = self
+                    .sub_state
+                    .get(field.id)
+                    .map(|items| items.len())
+                    .unwrap_or(0);
+                count < min_items.max(1)
+            }
+        }
+    }
+
+    /// Visible required fields that cannot be saved, in tab order.
+    /// `(field index, id, label)`.
+    pub fn empty_required_fields(&self) -> Vec<(usize, &'static str, &'static str)> {
+        self.form
+            .fields
+            .iter()
+            .enumerate()
+            .filter(|(_, field)| {
+                field.required && self.field_visible(field) && self.field_value_empty(field)
+            })
+            .map(|(idx, field)| (idx, field.id, field.label))
+            .collect()
+    }
+
+    /// Drop `leaving_idx` from the invalid set when that field now has a value.
+    /// An empty field stays outlined. Call this before focus moves away.
+    pub fn clear_invalid_on_leave(&self, leaving_idx: usize, invalid: &mut Vec<String>) {
+        let Some(field) = self.form.fields.get(leaving_idx) else {
+            return;
+        };
+        if self.field_value_empty(field) {
+            return;
+        }
+        let id = field.id;
+        invalid.retain(|existing| existing != id);
     }
 
     /// Cycle the focused enum field forward (`forward = true`) or backward.
@@ -555,6 +604,47 @@ mod tests {
         assert!(!visible(&state, "media_image_url"));
         assert!(!visible(&state, "media_oembed_url"));
         assert!(!visible(&state, "media_lg_mp4"));
+    }
+
+    #[test]
+    fn empty_required_fields_name_visible_blanks_only() {
+        let mut cta = EditFormState::new(&CTA_FORM);
+        cta.set("parent_image_url", "  ");
+        cta.set("parent_image_alt", "");
+        cta.set("parent_title", "Title");
+        cta.set("parent_subtitle", "");
+        cta.set("parent_copy", " ");
+        let ids: Vec<_> = cta
+            .empty_required_fields()
+            .into_iter()
+            .map(|(_, id, label)| (id, label))
+            .collect();
+        assert_eq!(
+            ids,
+            vec![
+                ("parent_image_url", "Image URL"),
+                ("parent_image_alt", "Image Alt"),
+            ]
+        );
+
+        let mut hero = EditFormState::new(&HERO_FORM);
+        hero.set("parent_subtitle", "Sub");
+        hero.set("media_kind", "none");
+        hero.set("parent_image_class", "");
+        let ids: Vec<_> = hero
+            .empty_required_fields()
+            .into_iter()
+            .map(|(_, id, _)| id)
+            .collect();
+        assert_eq!(ids, vec!["parent_title"]);
+
+        let card = EditFormState::new(&CARD_FORM);
+        let ids: Vec<_> = card
+            .empty_required_fields()
+            .into_iter()
+            .map(|(_, id, _)| id)
+            .collect();
+        assert_eq!(ids, vec!["items"]);
     }
 
     #[test]

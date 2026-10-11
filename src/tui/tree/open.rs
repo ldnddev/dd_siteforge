@@ -38,6 +38,7 @@ impl App {
         // Hero and Section tree rows get the unified form too.
         if let Some((state, new_cursor, title)) = self.try_open_hero_or_section(row) {
             let cursor_pos = text_end(state.get(state.form.fields[state.focused_field].id));
+            self.start_form_edit();
             self.modal = Some(Modal::FormEdit {
                 state,
                 cursor: new_cursor,
@@ -53,6 +54,7 @@ impl App {
         // Roots like page-head, header-root, footer use the unified form too.
         if let Some((state, new_cursor, title)) = self.try_open_root(row) {
             let cursor_pos = text_end(state.get(state.form.fields[state.focused_field].id));
+            self.start_form_edit();
             self.modal = Some(Modal::FormEdit {
                 state,
                 cursor: new_cursor,
@@ -151,6 +153,7 @@ impl App {
         };
         let title = state.form.title;
         let cursor_pos = text_end(state.get(state.form.fields[state.focused_field].id));
+        self.start_form_edit();
         self.modal = Some(Modal::FormEdit {
             state,
             cursor: new_cursor,
@@ -291,6 +294,7 @@ impl App {
         });
 
         let title = item_state.form.title;
+        self.start_form_edit();
         self.modal = Some(Modal::FormEdit {
             state: item_state,
             cursor: cursor::Cursor::PageComponent {
@@ -406,6 +410,7 @@ impl App {
         });
 
         let _title = col_state.form.title;
+        self.start_form_edit();
         self.modal = Some(Modal::FormEdit {
             state: col_state,
             cursor: base_cursor,

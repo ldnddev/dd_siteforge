@@ -1,5 +1,7 @@
 //! Single-input, confirm, and validation modal painting.
 use super::super::*;
+use super::paint::form_field_label_line;
+use ratatui::text::Line;
 
 impl App {
     pub(in crate::tui) fn render_save_prompt_unified(
@@ -29,12 +31,16 @@ impl App {
         frame.render_widget(modal_block.clone(), area);
         let inner = modal_block.inner(area);
 
-        let content = format!("Save file path:\n{}\n\n{}", path, config.footer_text);
-        let prompt = Paragraph::new(content).style(
-            Style::default()
-                .fg(self.theme.text_primary)
-                .bg(self.theme.modal_background),
-        );
+        let body_style = Style::default()
+            .fg(self.theme.text_primary)
+            .bg(self.theme.modal_background);
+        let content = vec![
+            form_field_label_line("Save file path", true, body_style, self.theme.error),
+            Line::styled(path.to_string(), body_style),
+            Line::styled(String::new(), body_style),
+            Line::styled(config.footer_text, body_style),
+        ];
+        let prompt = Paragraph::new(content).style(body_style);
 
         frame.render_widget(prompt, inner);
     }
@@ -153,12 +159,16 @@ impl App {
             height: 1,
         };
         // Single-input modal has exactly one field always focused, so label
-        // uses the text_active_focus token.
-        let label_para = Paragraph::new(format!("{}:", label)).style(
-            Style::default()
-                .fg(self.theme.text_active_focus)
-                .bg(self.theme.modal_background),
-        );
+        // uses the text_active_focus token. These prompts all reject an empty value.
+        let label_style = Style::default()
+            .fg(self.theme.text_active_focus)
+            .bg(self.theme.modal_background);
+        let label_para = Paragraph::new(form_field_label_line(
+            label,
+            true,
+            label_style,
+            self.theme.error,
+        ));
         frame.render_widget(label_para, label_area);
 
         // Bordered input box (3 rows tall: border + content + border)

@@ -11,7 +11,7 @@ use crate::model::{
 use crate::renderer::render_site_to_dir;
 use crate::search_index::write_search_index;
 
-const GRUNT_ASSET_DIRS: &[&str] = &["css", "js", "webfonts", "favicon", "vendors"];
+const GRUNT_ASSET_DIRS: &[&str] = &["css", "js", "fonts", "favicon", "vendors"];
 
 pub struct ExportReport {
     pub pages: usize,
@@ -37,10 +37,12 @@ pub fn export_site(
     })
 }
 
-/// Copy Grunt output (`<site>/web/assets/{css,js,webfonts,favicon,vendors}`)
+/// Copy Grunt output (`<site>/web/assets/{css,js,fonts,favicon,vendors}`)
 /// into the export dir. When exporting *to* `web/`, skip that copy so a
-/// local `grunt build` is not overwritten. Then fill missing webfonts /
-/// favicon from `source/`.
+/// local `grunt build` is not overwritten. Then fill missing fonts and
+/// favicon from `source/fonts` and `source/favicon`. `grunt build` copies
+/// the font files; `grunt favicon` rebuilds `web/assets/favicon/` from
+/// `source/favicon/favicon.png`.
 fn copy_built_assets(site_root: Option<&Path>, output_dir: &Path) -> anyhow::Result<()> {
     let Some(root) = site_root else {
         return Ok(());
@@ -60,7 +62,7 @@ fn copy_built_assets(site_root: Option<&Path>, output_dir: &Path) -> anyhow::Res
     }
 
     let source = root.join("source");
-    fill_dir_if_empty(&source.join("webfonts"), &dest_assets.join("webfonts"))?;
+    fill_dir_if_empty(&source.join("fonts"), &dest_assets.join("fonts"))?;
     fill_dir_if_empty(&source.join("favicon"), &dest_assets.join("favicon"))?;
     Ok(())
 }
@@ -289,13 +291,9 @@ mod tests {
     }
 
     #[test]
-    fn export_copies_source_webfonts_and_favicon_when_present() {
+    fn export_copies_source_fonts_and_favicon_when_present() {
         let root = tmp_dir("dd_export_fonts_root");
-        copy_dir_recursive(
-            &crate_source().join("webfonts"),
-            &root.join("source/webfonts"),
-        )
-        .unwrap();
+        copy_dir_recursive(&crate_source().join("fonts"), &root.join("source/fonts")).unwrap();
         copy_dir_recursive(
             &crate_source().join("favicon"),
             &root.join("source/favicon"),
@@ -303,8 +301,17 @@ mod tests {
         .unwrap();
         let out = root.join("out");
         export_site(&Site::starter(), &out, Some(&root)).expect("export");
-        assert!(out.join("assets/webfonts/fa-regular-400.woff2").exists());
+        assert!(
+            out.join("assets/fonts/Lato-Regular.woff2").exists(),
+            "Lato files in source/fonts fill assets/fonts"
+        );
+        assert!(!out.join("assets/webfonts").exists());
         assert!(out.join("assets/favicon/favicon.png").exists());
+        assert!(
+            out.join("assets/favicon/favicon.svg").exists(),
+            "source/favicon is the icon set the head template links"
+        );
+        assert!(out.join("assets/favicon/favicon.ico").exists());
         std::fs::remove_dir_all(&root).ok();
     }
 
