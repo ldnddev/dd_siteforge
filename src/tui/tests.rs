@@ -6003,14 +6003,16 @@ fn insert_picker_allowed_kinds_match_focused_region() {
     assert!(page.contains(&ComponentKind::Section));
     assert!(page.contains(&ComponentKind::SearchResults));
     assert!(page.contains(&ComponentKind::Headline));
+    assert!(page.contains(&ComponentKind::Spacer));
     assert!(!page.contains(&ComponentKind::HeaderSearch));
     assert!(!page.contains(&ComponentKind::HeaderMenu));
 
     app.selected_region = SelectedRegion::Header;
     let header = app.filtered_component_kinds("");
     assert!(!header.contains(&ComponentKind::Hero));
-    assert!(!header.contains(&ComponentKind::SearchResults));
-    assert!(!header.contains(&ComponentKind::Headline));
+    assert!(header.contains(&ComponentKind::SearchResults));
+    assert!(header.contains(&ComponentKind::Headline));
+    assert!(header.contains(&ComponentKind::Spacer));
     assert!(header.contains(&ComponentKind::Section));
     assert!(header.contains(&ComponentKind::HeaderSearch));
     assert!(header.contains(&ComponentKind::HeaderMenu));
@@ -6019,12 +6021,13 @@ fn insert_picker_allowed_kinds_match_focused_region() {
     app.selected_region = SelectedRegion::Footer;
     let footer = app.filtered_component_kinds("");
     assert!(!footer.contains(&ComponentKind::Hero));
-    assert!(!footer.contains(&ComponentKind::SearchResults));
-    assert!(!footer.contains(&ComponentKind::Headline));
+    assert!(footer.contains(&ComponentKind::SearchResults));
+    assert!(footer.contains(&ComponentKind::Headline));
+    assert!(footer.contains(&ComponentKind::Spacer));
     assert!(footer.contains(&ComponentKind::Section));
-    assert!(!footer.contains(&ComponentKind::HeaderSearch));
-    assert!(!footer.contains(&ComponentKind::HeaderMenu));
-    assert!(!footer.contains(&ComponentKind::Alert));
+    assert!(footer.contains(&ComponentKind::HeaderSearch));
+    assert!(footer.contains(&ComponentKind::HeaderMenu));
+    assert!(footer.contains(&ComponentKind::Alert));
 
     // Details focus is not a new insert target; kinds follow selected_region.
     app.selected_sidebar_section = SidebarSection::Details;

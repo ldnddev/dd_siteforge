@@ -598,41 +598,29 @@ impl App {
                     };
                     return self.place_header_alert(alert);
                 }
-                SelectedRegion::Footer => {
-                    self.push_toast(
-                        ToastLevel::Warning,
-                        "dd-alert cannot be pasted in the footer.",
-                    );
-                    return false;
-                }
+                SelectedRegion::Footer | SelectedRegion::Page => {}
                 SelectedRegion::Site => {
                     self.push_toast(ToastLevel::Warning, "Cannot paste on Site settings.");
                     return false;
                 }
-                SelectedRegion::Page => {}
             }
         }
-        let header_only = matches!(
+        let chrome_only = matches!(
             kind,
             ComponentKind::HeaderSearch | ComponentKind::HeaderMenu
         );
-        let page_only = matches!(kind, ComponentKind::SearchResults | ComponentKind::Headline);
         match self.selected_region {
             SelectedRegion::Site => {
                 self.push_toast(ToastLevel::Warning, "Cannot paste on Site settings.");
                 false
             }
-            SelectedRegion::Footer | SelectedRegion::Page if header_only => {
+            SelectedRegion::Page if chrome_only => {
                 self.push_toast(
                     ToastLevel::Warning,
-                    format!("{} can only be pasted in the header.", kind.label()),
-                );
-                false
-            }
-            SelectedRegion::Header | SelectedRegion::Footer if page_only => {
-                self.push_toast(
-                    ToastLevel::Warning,
-                    format!("{} can only be pasted on a page.", kind.label()),
+                    format!(
+                        "{} can only be pasted in the header or footer.",
+                        kind.label()
+                    ),
                 );
                 false
             }

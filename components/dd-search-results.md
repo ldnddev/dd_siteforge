@@ -1,7 +1,7 @@
 ---
 component: dd-search-results
 version: 1
-node_scope: section_item   # page-only; cannot be used in header or footer
+node_scope: section_item
 
 insert:
   defaults:
@@ -77,4 +77,4 @@ blueprint:
 ## Validation Rules
 
 - `sal` required; must be one of the enum options
-- this component is only valid inside a page-level `dd-section` column; placing it in the header or footer must fail validation
+- valid in page, header, and footer section columns

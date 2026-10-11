@@ -87,7 +87,7 @@ is `no-animation`. Heading level `h3`–`h6` replaces the `h2` tag.
 
 ## Validation Rules
 
-- page sections only; header and footer reject `dd-headline`
+- valid in page, header, and footer section columns
 - `text` required and non-empty
 - `heading_level` is `h2`–`h6`, default `h2`
 - `custom_css` optional

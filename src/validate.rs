@@ -910,18 +910,7 @@ fn validate_header(header: &crate::model::DdHeader, errors: &mut Vec<String>) {
                 ));
             }
         }
-        validate_section_context(
-            section,
-            "header",
-            &[
-                "dd-image",
-                "dd-rich_text",
-                "dd-navigation",
-                "dd-header-search",
-                "dd-header-menu",
-            ],
-            errors,
-        );
+        validate_section_context(section, "header", errors);
     }
 }
 
@@ -966,21 +955,11 @@ fn validate_footer(footer: &crate::model::DdFooter, errors: &mut Vec<String>) {
                 ));
             }
         }
-        validate_section_context(
-            section,
-            "footer",
-            &["dd-image", "dd-rich_text", "dd-navigation"],
-            errors,
-        );
+        validate_section_context(section, "footer", errors);
     }
 }
 
-fn validate_section_context(
-    section: &DdSection,
-    scope: &str,
-    allowed_types: &[&str],
-    errors: &mut Vec<String>,
-) {
+fn validate_section_context(section: &DdSection, scope: &str, errors: &mut Vec<String>) {
     validate_sal_fields(
         section.sal,
         section.sal_duration,
@@ -990,13 +969,6 @@ fn validate_section_context(
     );
     for column in &section.columns {
         for component in &column.components {
-            let ty = section_component_type_name(component);
-            if !allowed_types.contains(&ty) {
-                errors.push(format!(
-                    "site.{} section '{}' column '{}' contains disallowed component type '{}'; allowed: {:?}",
-                    scope, section.id, column.id, ty, allowed_types
-                ));
-            }
             if let Some((sal, duration, delay)) = component_sal(component) {
                 validate_sal_fields(
                     sal,
@@ -1007,33 +979,6 @@ fn validate_section_context(
                 );
             }
         }
-    }
-}
-
-fn section_component_type_name(component: &SectionComponent) -> &'static str {
-    match component {
-        SectionComponent::Alternating(_) => "dd-alternating",
-        SectionComponent::Card(_) => "dd-card",
-        SectionComponent::Cta(_) => "dd-cta",
-        SectionComponent::Filmstrip(_) => "dd-filmstrip",
-        SectionComponent::Milestones(_) => "dd-milestones",
-        SectionComponent::Slider(_) => "dd-slider",
-        SectionComponent::Modal(_) => "dd-modal",
-        SectionComponent::Banner(_) => "dd-banner",
-        SectionComponent::Accordion(_) => "dd-accordion",
-        SectionComponent::Blockquote(_) => "dd-blockquote",
-        SectionComponent::Alert(_) => "dd-alert",
-        SectionComponent::Image(_) => "dd-image",
-        SectionComponent::RichText(_) => "dd-rich_text",
-        SectionComponent::Navigation(_) => "dd-navigation",
-        SectionComponent::HeaderSearch(_) => "dd-header-search",
-        SectionComponent::HeaderMenu(_) => "dd-header-menu",
-        SectionComponent::Spacer(_) => "dd-spacer",
-        SectionComponent::Tabs(_) => "dd-tabs",
-        SectionComponent::Timeline(_) => "dd-timeline",
-        SectionComponent::DataTable(_) => "dd-data-table",
-        SectionComponent::SearchResults(_) => "dd-search-results",
-        SectionComponent::Headline(_) => "dd-headline",
     }
 }
 
@@ -1450,7 +1395,7 @@ mod tests {
     }
 
     #[test]
-    fn headline_requires_text_and_stays_off_header() {
+    fn headline_requires_text_and_is_allowed_in_header_and_footer() {
         use crate::model::{DdHeadline, HeadingLevel, SalAnimation, SectionComponent};
         let headline = |text: &str| {
             SectionComponent::Headline(DdHeadline {
@@ -1491,12 +1436,32 @@ mod tests {
         header.header.sections[0].columns[0]
             .components
             .push(headline("Services"));
+        header.footer.sections[0].columns[0]
+            .components
+            .push(headline("Services"));
         let errors = validate_site(&header);
         assert!(
-            errors
-                .iter()
-                .any(|e| e.contains("disallowed") && e.contains("dd-headline")),
-            "header should reject dd-headline, got {errors:?}"
+            errors.iter().all(|e| !e.contains("disallowed")),
+            "header and footer sections accept dd-headline, got {errors:?}"
+        );
+    }
+
+    #[test]
+    fn header_and_footer_sections_allow_spacer() {
+        use crate::model::{DdSpacer, SectionComponent, SpacerSize};
+        let spacer = SectionComponent::Spacer(DdSpacer {
+            size: SpacerSize::Md,
+            divider: false,
+        });
+        let mut site = Site::starter();
+        site.header.sections[0].columns[0]
+            .components
+            .push(spacer.clone());
+        site.footer.sections[0].columns[0].components.push(spacer);
+        let errors = validate_site(&site);
+        assert!(
+            errors.iter().all(|e| !e.contains("disallowed")),
+            "spacer is allowed in header and footer sections, got {errors:?}"
         );
     }
 

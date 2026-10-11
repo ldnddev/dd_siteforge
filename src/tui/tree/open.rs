@@ -515,10 +515,8 @@ impl App {
             );
             return;
         }
-        if matches!(
-            self.component_kind,
-            ComponentKind::Hero | ComponentKind::SearchResults | ComponentKind::Headline
-        ) && self.selected_region != SelectedRegion::Page
+        if matches!(self.component_kind, ComponentKind::Hero)
+            && self.selected_region != SelectedRegion::Page
         {
             self.push_toast(
                 ToastLevel::Warning,
@@ -526,15 +524,6 @@ impl App {
                     "{} can only be inserted on a page.",
                     self.component_kind.label()
                 ),
-            );
-            return;
-        }
-        if matches!(self.component_kind, ComponentKind::Alert)
-            && self.selected_region == SelectedRegion::Footer
-        {
-            self.push_toast(
-                ToastLevel::Warning,
-                "dd-alert cannot be inserted in the footer.",
             );
             return;
         }
@@ -721,13 +710,6 @@ impl App {
                 .saturating_sub(1),
         );
         let kind = self.component_kind;
-        if matches!(kind, ComponentKind::Alert) {
-            self.push_toast(
-                ToastLevel::Warning,
-                "dd-alert cannot be inserted in the footer.",
-            );
-            return;
-        }
         let component = kind.default_component();
         let col = &mut self.site.footer.sections[section_idx].columns[col_idx];
         let insert_at = if col.components.is_empty() {
@@ -767,20 +749,16 @@ impl App {
             return Vec::new();
         }
         let all = ComponentKind::all();
-        // Hero, SearchResults, and Headline are page-only; HeaderSearch/HeaderMenu are header-only.
+        // Hero is a page node. Header search and menu stay off page sections.
+        // Header and footer sections accept every other component.
         let allowed: Vec<ComponentKind> = all
             .iter()
             .copied()
             .filter(|k| match k {
-                ComponentKind::Hero | ComponentKind::SearchResults | ComponentKind::Headline => {
-                    self.selected_region == SelectedRegion::Page
-                }
-                ComponentKind::HeaderSearch | ComponentKind::HeaderMenu => {
-                    self.selected_region == SelectedRegion::Header
-                }
-                ComponentKind::Alert => matches!(
+                ComponentKind::Hero => self.selected_region == SelectedRegion::Page,
+                ComponentKind::HeaderSearch | ComponentKind::HeaderMenu => matches!(
                     self.selected_region,
-                    SelectedRegion::Page | SelectedRegion::Header
+                    SelectedRegion::Header | SelectedRegion::Footer
                 ),
                 _ => true,
             })

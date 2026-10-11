@@ -67,8 +67,7 @@ fields:
     type: array
     min_items: 1
     shape: "dd-section"
-    allowed_column_component_types: ["dd-image", "dd-rich_text", "dd-navigation"]
-    maps_to: "ordered list of dd-section children; each section uses the standard dd-section shape but its columns are restricted to the allowed_column_component_types above"
+    maps_to: "ordered list of dd-section children; each section's columns accept every section component"
 
 edit_ui:
   tab_order:
@@ -131,16 +130,11 @@ standard `dd-section` markup. No alert zone and no search chrome in footer
 Footer content is bounded by these rules (enforced by the validator and the TUI insert finder):
 
 - `sections[]`: unlimited `dd-section` children
-- inside each footer `dd-section`'s columns, only the following component types may be placed:
-  - `dd-image`
-  - `dd-rich_text`
-  - `dd-navigation`
-
-Header-scope-only components (`dd-header-search`, `dd-header-menu`) are not allowed in the footer. Other component types (like `dd-card`, `dd-cta`, `dd-banner`, `dd-accordion`, `dd-alert`, etc.) are valid only in page-level sections, never in footer sections.
+- inside each footer `dd-section`'s columns, every section component may be placed, including `dd-spacer`, `dd-headline`, `dd-search-results`, `dd-alert`, `dd-header-search`, and `dd-header-menu`
 
 ## Validation Rules
 
 - `id` required and non-empty
 - `custom_css` optional; free-form string when provided
 - `sections[]` required with at least 1 section; each section must pass standard `dd-section` validation
-- every component inside a footer section's columns must be one of the `allowed_column_component_types` (`dd-image`, `dd-rich_text`, `dd-navigation`)
+- footer section columns accept every section component

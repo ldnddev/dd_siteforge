@@ -71,8 +71,7 @@ fields:
     type: array
     min_items: 1
     shape: "dd-section"
-    allowed_column_component_types: ["dd-image", "dd-rich_text", "dd-navigation", "dd-header-search", "dd-header-menu"]
-    maps_to: "ordered list of dd-section children; each section uses the standard dd-section shape but its columns are restricted to the allowed_column_component_types above"
+    maps_to: "ordered list of dd-section children; each section's columns accept every section component"
 
 edit_ui:
   tab_order:
@@ -161,14 +160,7 @@ Header content is bounded by these rules (enforced by the validator and the TUI 
 
 - `alert`: at most 1 `dd-alert` (single slot, optional)
 - `sections[]`: unlimited `dd-section` children
-- inside each header `dd-section`'s columns, only the following component types may be placed:
-  - `dd-image`
-  - `dd-rich_text`
-  - `dd-navigation`
-  - `dd-header-search`
-  - `dd-header-menu`
-
-Other component types (like `dd-card`, `dd-cta`, `dd-banner`, `dd-accordion`, etc.) are valid only in page-level sections, never in header sections.
+- inside each header `dd-section`'s columns, every section component may be placed, including `dd-spacer`, `dd-headline`, `dd-search-results`, `dd-header-search`, and `dd-header-menu`
 
 ## Validation Rules
 
@@ -176,5 +168,6 @@ Other component types (like `dd-card`, `dd-cta`, `dd-banner`, `dd-accordion`, et
 - `custom_css` optional; free-form string when provided
 - `alert` optional; when non-null, must be a valid `dd-alert` object (fails if it fails dd-alert validation)
 - `sections[]` required with at least 1 section; each section must pass standard `dd-section` validation
-- every component inside a header section's columns must be one of the `allowed_column_component_types`
-- header-scope-only components (`dd-header-search`, `dd-header-menu`) are valid only inside a header `dd-section` column; they must fail validation when placed in page-level sections or in the footer
+- header section columns accept every section component
+- `dd-header-search` and `dd-header-menu` stay off page sections; they are valid in header and footer columns
+- the optional header `alert` slot is separate from a `dd-alert` placed inside a section column
