@@ -14,16 +14,7 @@ pub fn validate_site(site: &Site) -> Vec<String> {
 
     validate_header(&site.header, &mut errors);
     validate_footer(&site.footer, &mut errors);
-    validate_gtm_snippet(
-        site.header_gtm_tag.as_deref(),
-        "header GTM snippet",
-        &mut errors,
-    );
-    validate_gtm_snippet(
-        site.body_gtm_tag.as_deref(),
-        "body GTM snippet",
-        &mut errors,
-    );
+    validate_ga_measurement_id(site.ga_measurement_id.as_deref(), &mut errors);
 
     for page in &site.pages {
         if page.head.title.trim().is_empty() {
@@ -832,14 +823,15 @@ fn component_sal(component: &SectionComponent) -> Option<(SalAnimation, Option<u
     }
 }
 
-fn validate_gtm_snippet(snippet: Option<&str>, label: &str, errors: &mut Vec<String>) {
-    let Some(raw) = snippet.map(str::trim).filter(|s| !s.is_empty()) else {
+fn validate_ga_measurement_id(raw: Option<&str>, errors: &mut Vec<String>) {
+    let Some(raw) = raw.map(str::trim).filter(|s| !s.is_empty()) else {
         return;
     };
-    if crate::model::extract_gtm_id(raw).is_none() {
-        errors.push(format!(
-            "site.{label} must include a GTM-XXXX container id (only googletagmanager.com is exported)."
-        ));
+    if crate::model::normalize_ga_measurement_id(raw).is_none() {
+        errors.push(
+            "site.ga_measurement_id must be a GA4 measurement id (G- followed by letters and digits)."
+                .to_string(),
+        );
     }
 }
 
@@ -1200,13 +1192,19 @@ mod tests {
     }
 
     #[test]
-    fn gtm_snippet_without_container_id_is_invalid() {
+    fn ga_measurement_id_rejects_a_pasted_script() {
         let mut site = Site::starter();
-        site.header_gtm_tag = Some("<script>alert(1)</script>".to_string());
+        site.ga_measurement_id = Some("<script>alert(1)</script>".to_string());
         let errors = validate_site(&site);
         assert!(
-            errors.iter().any(|e| e.contains("GTM-XXXX")),
-            "expected GTM id error, got {errors:?}"
+            errors.iter().any(|e| e.contains("GA4 measurement id")),
+            "expected measurement id error, got {errors:?}"
+        );
+        site.ga_measurement_id = Some("G-ABC123".to_string());
+        let errors = validate_site(&site);
+        assert!(
+            errors.iter().all(|e| !e.contains("GA4 measurement id")),
+            "valid id should pass, got {errors:?}"
         );
     }
 

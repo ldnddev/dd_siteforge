@@ -9,6 +9,7 @@
   color: variables.$c_text_primary;
   background-color: variables.$c_ui_neutral_300;
   border: 1px solid variables.$c_primary_action_default_border;
+  display: none;
   @include mixins.pref_dark {
     color: variables.$c_text_primary--dark;
     background-color: variables.$c_ui_neutral_300--dark;

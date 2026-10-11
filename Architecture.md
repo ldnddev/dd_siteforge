@@ -2,7 +2,7 @@
 
 Terminal-UI CMS for authoring framework-native static pages. Built in Rust on `ratatui` (rendering), `crossterm` (terminal events), `serde`/`serde_json` (state persistence), and `handlebars` (HTML export). Single-binary, no server, no database.
 
-Living product spec: `docs/SPEC.md`. Visual contract: `LDNDDEV_TUI_VISUAL_STANDARD.md`. Component fields: `components/dd-*.md`.
+Living product spec: `docs/SPEC.md`. Visual contract: `LDNDDEV_TUI_VISUAL_STANDARD.md`.
 
 ## Crate Layout
 
@@ -62,7 +62,7 @@ Site
 
 **Header / Footer slots:** every section component, including `dd-header-search` and `dd-header-menu`. Those two stay off page sections. `dd-hero` stays a page node.
 
-Each component spec lives in `components/dd-*.md` (single source of truth for fields, render rules, validation).
+Fields live in `src/model.rs`, edit forms in `src/tui/editform/`, HTML in `templates/dd-*.hbs`, and checks in `src/validate.rs`.
 
 ## Renderer
 
@@ -85,7 +85,7 @@ Each component spec lives in `components/dd-*.md` (single source of truth for fi
 - Data table: required caption, optional `-dense`, optional scroll label (default `"{caption}, scrollable"`), optional empty message, 1–5 columns (label / align / sortable), rows of text or `dd-badge` cells. First cell is `<th scope="row">`. No SAL. `sort_key` is derived from the column label slug. JS owns overflow `tabindex`/`role`/`aria-label`.
 - Search results: SAL component (`dd-search-results`) that renders the `.dd-search-page` form, status, and results list. Title, placeholder, and form action stay in the template. Kit JS fills results from `search-index.json`. Valid in page, header, and footer sections. Search-index export skips its copy; the page still indexes from `head.title`.
 - Headline: plain-text heading (`dd-headline`). The heading element is the root (`h2`–`h6`, default `h2`); there is no wrapper and no `h1`. Optional custom class and SAL sit on that element. The `id` is the kebab-case text (`Five Seconds` → `five-seconds`) so a table of contents can target it; duplicates and ids already used on the page get `-2`, `-3`, …. Kit `h2`–`h6` styles apply; no new stylesheet. Valid in page, header, and footer sections. Page health and the search index record the text as a heading.
-- Site options: header CTA + banner on `DdHeader`; footer blurb / copyright / socials on `DdFooter`; GTM snippets on `Site`. GTM export extracts `GTM-XXXX` and emits canonical googletagmanager.com markup.
+- Site options: header CTA + banner on `DdHeader`; footer blurb / copyright / socials on `DdFooter`; optional GA4 measurement id (`G-` plus letters and digits) on `Site`. Export prints that id inside the Consent Mode block in `_head.hbs` and omits the block when the id is empty or invalid.
 - Static export: `crate::export::export_site(&site, &out, site_root)`. Writes page HTML (see slug rules above), copies Grunt `web/assets/{css,js,webfonts,favicon,vendors}` when the dest is not already `web/` (does not clobber a local `grunt build`), fills missing webfonts/favicon from `source/`, copies `<site_dir>/source/images/` → `<out>/assets/images/`, plus `sitemap.xml`, `search-index.json`, `robots.txt`, and `404.html` when no author 404 page exists.
 - `search-index.json` is a flattened per-page index for client-side JS search (`v`, `pages[]` with `url`, `path`, `title`, `description`, `body`, `headings`, optional `image`). Same noindex skip as sitemap. Header/footer copy is omitted. `url` is `page_href`; `path` is the display path (`/` for home, `/{slug}/` pretty, `/{slug}.html` otherwise). Description is meta, then og, then a ~160-character body excerpt. Body is identifying copy with markdown stripped, whitespace collapsed, capped at 12k characters. Pages stamp `data-search-index="search-index.json"` on `<html>`; nested pages prefix that attribute with `../`.
 - Asset and page hrefs are relative to the export root (`assets/css/style.min.css`, `contact.html` or `contact/index.html`). Nested pages prepend `../`. `Shift+P` / `serve` start a local HTTP server so those paths resolve; a directory URL serves `index.html`.

@@ -305,7 +305,7 @@ mod tests {
         let html = r
             .render("_page", &json!({"lang":"en","head_html":"","header_html":"","footer_html":"","content":"hi"}))
             .unwrap();
-        assert!(html.contains("<main>"));
+        assert!(html.contains("<main id=\"main-content\""));
         assert!(html.contains("hi"));
     }
 

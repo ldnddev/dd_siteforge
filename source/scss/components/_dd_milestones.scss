@@ -21,7 +21,7 @@
     @include mixins.font_size(32px);
   }
   &__title {
-    @include mixins.font_headline();
+    @include mixins.font_headline(bold);
     @include mixins.font_size(18px);
   }
   &__subtitle {

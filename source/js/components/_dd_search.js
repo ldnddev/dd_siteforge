@@ -298,13 +298,14 @@ function dd_search_open() {
   if (!overlay.open) {
     overlay.showModal();
   }
-  document.body.classList.add('-active-search');
+  document.body.classList.add('-active');
   if (toggle) {
     toggle.classList.add('-active');
     toggle.setAttribute('aria-expanded', 'true');
   }
   if (menu_toggle) {
     menu_toggle.classList.remove('-active');
+    menu_toggle.setAttribute('aria-expanded', 'false');
   }
   if (menu) {
     menu.classList.remove('-active');
@@ -318,6 +319,8 @@ function dd_search_open() {
 
 function dd_search_close() {
   const overlay = dd_search_overlay_el();
+  // Toggle the -active class on the body
+  document.body.classList.remove('-active');
   if (overlay && overlay.open) {
     overlay.close();
   }

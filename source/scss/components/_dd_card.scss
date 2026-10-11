@@ -30,6 +30,7 @@
   &__copy {
     height: calc(100% - 200px);
     flex-direction: column;
+    display: flex;
   }
   &__title {
     //todo

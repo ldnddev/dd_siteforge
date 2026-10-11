@@ -1,42 +1,29 @@
+// dd cookie consent + Google Consent Mode v2.
+// Accept grants analytics_storage ONLY; ad_storage, ad_user_data and ad_personalization are always 'denied'.
+// Defaults (analytics 'denied', or 'granted' for a stored 'accept') are set inline in <head> (templates/_head.hbs)
+// before gtag.js loads. This file only shows the banner and sends consent updates.
+function dd_consent_update(state) {
+  if (typeof window.gtag !== 'function') return;
+  window.gtag('consent', 'update', {
+    analytics_storage: state,
+    ad_storage: 'denied',
+    ad_user_data: 'denied',
+    ad_personalization: 'denied'
+  });
+}
 function dd_cookie_consent() {
-  console.log('checking for cookie consent');
-  // Check if consent is already stored
-  const consent = localStorage.getItem('dd_cookie_consent');
-  if (!consent) {
-    // Show popup if no consent is stored
-    const popup = document.getElementById('cookie-consent');
-    popup.style.display = 'block';
-  }
-  else if (consent === 'accept') {
-    // If consent is 'accept', add script tags
-    addConsentScripts();
-  }
+  let consent = null;
+  try { consent = localStorage.getItem('dd_cookie_consent'); } catch (e) {}
+  const popup = document.getElementById('cookie-consent');
+  if (!popup) return;
+  // Show the banner only when no choice has been stored yet.
+  popup.style.display = consent ? 'none' : 'block';
 }
 function handleCookieConsent(choice) {
-  // Save choice to localStorage
-  localStorage.setItem('dd_cookie_consent', choice);
-  // Close the popup
+  try { localStorage.setItem('dd_cookie_consent', choice); } catch (e) {}
   const popup = document.getElementById('cookie-consent');
-  popup.style.display = 'none';
-  // If choice is 'accept', add script tags
-  if (choice === 'accept') {
-    addConsentScripts();
-  }
-}
-function addConsentScripts() {
-  // Add Google Tag Manager script for head
-  const headScript = document.createElement('script');
-  headScript.textContent = `(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
-        new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
-        j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
-        'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
-      })(window,document,'script','dataLayer','GTM-T6QJCMC');`;
-  document.head.appendChild(headScript);
-  // Add Google Tag Manager noscript to body
-  const noscript = document.createElement('noscript');
-  noscript.innerHTML = `<iframe src="https://www.googletagmanager.com/ns.html?id=GTM-T6QJCMC"
-    height="0" width="0" style="display:none;visibility:hidden"></iframe>`;
-  document.body.insertBefore(noscript, document.body.firstChild);
+  if (popup) popup.style.display = 'none';
+  dd_consent_update(choice === 'accept' ? 'granted' : 'denied');
 }
 
 // Initialize on initial page load

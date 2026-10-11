@@ -6,7 +6,6 @@ Companion docs:
 
 - `Architecture.md` — crate map, render/validation rules, key bindings
 - `LDNDDEV_TUI_VISUAL_STANDARD.md` — portable TUI theme + shell contract (copy into any new ldnddev TUI)
-- `components/dd-*.md` — per-component fields, render rules, validation
 - `README.md` — install pointer
 - `docs/index.html` — setup + TUI walkthrough with screenshots ([GitHub Pages](https://ldnddev.github.io/dd_siteforge/))
 
@@ -54,7 +53,7 @@ Section visual options: `section_class` (width), optional `bg` (`-bg-muted`), `p
 
 Hero overlay / copy position: optional overlay (`-overlay-light` / `-overlay-dark`, omitted when none), copy position (`-left` / `-center` / `-right`) as a separate field from width `parent_class`. Optional HTML-safe `id` unique among heroes and sections on the page (emitted only when set). ARIA label defaults to `"Introduction"`. Missing JSON overlay/id/aria stay omitted; missing copy position becomes `-left` on next save.
 
-Site options: header root has CTA label/URL (empty URL hides the button; default label `"Contact"`) and a plain-text alert banner (`.dd-header__banner`, separate from the optional header `dd-alert`). Footer root has blurb, copyright override (empty falls back to `© {year} {site.name}`), and LinkedIn / X / GitHub URLs. Site settings holds header and body GTM snippets; export extracts a `GTM-XXXX` id and emits canonical googletagmanager.com script/noscript. Unrecognized snippets are omitted from HTML and fail validation.
+Site options: header root has CTA label/URL (empty URL hides the button; default label `"Contact"`) and a plain-text alert banner (`.dd-header__banner`, separate from the optional header `dd-alert`). Footer root has blurb, copyright override (empty falls back to `© {year} {site.name}`), and LinkedIn / X / GitHub URLs. Site settings holds one optional GA4 measurement id. Export prints it in the Consent Mode `gtag('config')` call and the `gtag.js` URL in `_head.hbs`. An empty id omits that block. A value that is not `G-` plus letters and digits is omitted from HTML and fails validation.
 
 Spacer, tabs, timeline, data table, and search results are section components. Spacer is size (`-sm`…`-xxxl`) plus optional divider; no SAL; `aria-hidden="true"`. Tabs have a slug `parent_id`, orientation (`-horizontal` / `-vertical`), ARIA label (default `"Content tabs"`), SAL on the root, and items of label + markdown panel (min 1). Timeline has ARIA label (default `"Timeline"`), SAL stagger on events, and items of year, optional datetime, title, heading level 2–6 (default 3), markdown copy, and optional image. Datetime is required when year is not YYYY / YYYY-MM / YYYY-MM-DD. Data table has a required caption, optional dense spacing, optional scroll label (default `"{caption}, scrollable"`), optional empty message, 1–5 columns (label, align `start`/`center`/`end`, sortable), and rows of cells (`text` or `badge` with `-critical`/`-warning`/`-info`/`-pass`). First column/cell is the row header. No SAL. Sort keys are derived from column labels. Scroll `tabindex`/`role`/`aria-label` are JS-owned. Search results (`dd-search-results`) is SAL chrome for the `.dd-search-page` UI (hardcoded heading, form `action="/search/"`, status, results list). Kit JS fills results from `search-index.json`. Headline (`dd-headline`) is a plain-text heading. The heading element is the root (`h2`–`h6`, default `h2`); there is no wrapper and no `h1`. Optional custom class and SAL sit on that element. Its `id` is the kebab-case text (`Five Seconds` → `five-seconds`) for table-of-contents links; a repeated slug, or one already used on the page, becomes `five-seconds-2`. Page health and the search index record the text as a heading. Header and footer section columns accept every section component. `dd-header-search` and `dd-header-menu` stay off page sections. `dd-hero` stays a page node.
 
@@ -112,11 +111,10 @@ Feature work on `feat/<short-name>` off `master`. Commits use plain prefixes: `t
 
 ### New component
 
-1. Spec in `components/dd-*.md` (copy a `components/*-template.md` scaffold)
-2. Types in `src/model.rs`
-3. Renderer in `src/renderer.rs` + `templates/dd-*.hbs`
-4. FormEdit in `src/tui/editform/`
-5. Route in `src/tui/cursor.rs`
+1. Types in `src/model.rs`
+2. Renderer in `src/renderer.rs` + `templates/dd-*.hbs`
+3. FormEdit in `src/tui/editform/`
+4. Route in `src/tui/cursor.rs`
 
 ### New modal
 

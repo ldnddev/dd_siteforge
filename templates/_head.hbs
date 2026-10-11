@@ -1,6 +1,28 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  {{#if ga_measurement_id}}
+  <!-- ga4: Consent Mode v2 defaults MUST run before gtag.js loads -->
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){ dataLayer.push(arguments); }
+    (function () {
+      var stored = null;
+      try { stored = window.localStorage.getItem('dd_cookie_consent'); } catch (e) {}
+      var state = stored === 'accept' ? 'granted' : 'denied';
+      gtag('consent', 'default', {
+        analytics_storage: state,
+        ad_storage: 'denied',
+        ad_user_data: 'denied',
+        ad_personalization: 'denied'
+      });
+    })();
+    gtag('set', 'ads_data_redaction', true);
+    gtag('js', new Date());
+    gtag('config', '{{ga_measurement_id}}');
+  </script>
+  <script async src="https://www.googletagmanager.com/gtag/js?id={{ga_measurement_id}}"></script>
+  {{/if}}
   <title>{{title}}</title>
   {{#if meta_description}}<meta name="description" content="{{meta_description}}" />{{/if}}
   {{#if canonical_url}}<link rel="canonical" href="{{canonical_url}}">{{/if}}
@@ -19,5 +41,4 @@
   <meta name="theme-color" content="#ffffff" />
   <link rel="stylesheet" href="assets/css/style.min.css" />
   <script type="application/ld+json">{{{schema_json}}}</script>
-  {{#if header_gtm}}{{{header_gtm}}}{{/if}}
 </head>

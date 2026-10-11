@@ -14,7 +14,7 @@
     max-width: variables.$width_xl;
   }
   &__title {
-    @include mixins.font_headline(bold);
+    @include mixins.font_headline(black);
     @include mixins.font_size(22px);
   }
   &.-no-padding {

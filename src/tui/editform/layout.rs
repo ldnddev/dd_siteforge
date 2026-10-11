@@ -514,22 +514,9 @@ pub static SITE_FORM: EditForm = EditForm {
             visible_when: None,
         },
         FormField {
-            id: "header_gtm_tag",
-            label: "Header GTM snippet",
-            kind: FieldKind::Textarea {
-                rows: 6,
-                default: "",
-            },
-            required: false,
-            visible_when: None,
-        },
-        FormField {
-            id: "body_gtm_tag",
-            label: "Body GTM snippet",
-            kind: FieldKind::Textarea {
-                rows: 6,
-                default: "",
-            },
+            id: "ga_measurement_id",
+            label: "GA4 measurement ID",
+            kind: FieldKind::Text { default: "" },
             required: false,
             visible_when: None,
         },

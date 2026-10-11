@@ -2,37 +2,17 @@
 @use "variables";
 
 /* ---------------------------------------- @mixins ---------------------------------------- */
-@mixin font_headline($weight: medium) {
-  @if ($weight =="thin") {
-    $weight: 100;
-  }
-  @if ($weight =="extralight") {
-    $weight: 200;
-  }
-  @if ($weight =="light") {
-    $weight: 300;
-  }
+@mixin font_headline($weight: black) {
   @if ($weight =="regular") {
-    $weight: 400;
-  }
-  @if ($weight =="medium") {
-    $weight: 500;
-  }
-  @if ($weight =="semibold") {
-    $weight: 600;
+    font-family: 'LatoWeb', sans-serif !important;
   }
   @if ($weight =="bold") {
-    $weight: 700;
-  }
-  @if ($weight =="extrabold") {
-    $weight: 800;
+    font-family: 'LatoWebBold', sans-serif !important;
   }
   @if ($weight =="black") {
-    $weight: 900;
+    font-family: 'LatoWebBlack', sans-serif !important;
   }
-
-  font-family: 'Lato', sans-serif !important;
-  font-weight: $weight !important;
+  font-style: normal;
 }
 
 @mixin font_base($weight: regular) {

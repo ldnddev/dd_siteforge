@@ -22,12 +22,9 @@ pub struct Site {
     /// `<html lang>` value. Defaults to `en` for legacy JSON.
     #[serde(default = "default_lang")]
     pub lang: String,
-    /// Pasted GTM `<script>` snippet. Export emits a canonical snippet when a `GTM-XXXX` id is present.
+    /// GA4 measurement id (`G-` plus letters and digits). Empty omits the consent tag.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub header_gtm_tag: Option<String>,
-    /// Pasted GTM `<noscript>` iframe snippet. Export emits a canonical noscript when a `GTM-XXXX` id is present.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub body_gtm_tag: Option<String>,
+    pub ga_measurement_id: Option<String>,
     /// When true, non-home pages export to `{slug}/index.html` (pretty URLs).
     /// Nested slugs like `blog/entry` always create folders.
     #[serde(default, skip_serializing_if = "is_false")]
@@ -1688,8 +1685,7 @@ impl Site {
             export_dir: None,
             base_url: None,
             lang: default_lang(),
-            header_gtm_tag: None,
-            body_gtm_tag: None,
+            ga_measurement_id: None,
             pretty_urls: false,
             pages: vec![Page {
                 id: "page-home".to_string(),
@@ -2166,27 +2162,21 @@ pub fn is_site_relative_url(url: &str) -> bool {
     true
 }
 
-/// True when `year` is a machine-readable date label: YYYY, YYYY-MM, or YYYY-MM-DD.
-/// Extract a `GTM-XXXX` container id from a pasted snippet. ASCII alphanumerics after the prefix.
-pub fn extract_gtm_id(snippet: &str) -> Option<String> {
-    let upper = snippet.to_ascii_uppercase();
-    let bytes = upper.as_bytes();
-    let mut i = 0;
-    while i + 4 <= bytes.len() {
-        if &bytes[i..i + 4] == b"GTM-" {
-            let mut j = i + 4;
-            while j < bytes.len() && bytes[j].is_ascii_alphanumeric() {
-                j += 1;
-            }
-            if j > i + 4 {
-                return Some(upper[i..j].to_string());
-            }
-        }
-        i += 1;
+/// Accept a GA4 measurement id: `G-` plus one or more ASCII letters or digits.
+/// The whole trimmed value must be the id. A pasted script or `GTM-` container id is rejected.
+pub fn normalize_ga_measurement_id(raw: &str) -> Option<String> {
+    let s = raw.trim();
+    let bytes = s.as_bytes();
+    if bytes.len() < 3 || &bytes[..2] != b"G-" {
+        return None;
     }
-    None
+    if !bytes[2..].iter().all(u8::is_ascii_alphanumeric) {
+        return None;
+    }
+    Some(s.to_string())
 }
 
+/// True when `year` is a machine-readable date label: YYYY, YYYY-MM, or YYYY-MM-DD.
 pub fn is_parseable_year_label(year: &str) -> bool {
     let s = year.trim();
     let b = s.as_bytes();
@@ -2747,8 +2737,7 @@ mod tests {
             }"##,
         )
         .expect("legacy site JSON should load");
-        assert!(site.header_gtm_tag.is_none());
-        assert!(site.body_gtm_tag.is_none());
+        assert!(site.ga_measurement_id.is_none());
         assert!(site.header.cta_url.is_none());
         assert!(site.header.banner.is_none());
         assert!(site.footer.blurb.is_none());
@@ -2756,20 +2745,25 @@ mod tests {
     }
 
     #[test]
-    fn extract_gtm_id_from_snippet() {
+    fn normalize_ga_measurement_id_accepts_only_the_id() {
         assert_eq!(
-            extract_gtm_id("https://www.googletagmanager.com/gtm.js?id=GTM-ABC123"),
-            Some("GTM-ABC123".to_string())
+            normalize_ga_measurement_id("  G-182EXQ0S2R  "),
+            Some("G-182EXQ0S2R".to_string())
         );
         assert_eq!(
-            extract_gtm_id(
-                "<noscript><iframe src=\"https://www.googletagmanager.com/ns.html?id=gtm-xyz9\"></iframe></noscript>"
-            ),
-            Some("GTM-XYZ9".to_string())
+            normalize_ga_measurement_id("G-abc123"),
+            Some("G-abc123".to_string())
         );
-        assert!(extract_gtm_id("not a tag").is_none());
-        assert!(extract_gtm_id("GTM-").is_none());
-        assert!(extract_gtm_id("").is_none());
+        assert!(normalize_ga_measurement_id("").is_none());
+        assert!(normalize_ga_measurement_id("G-").is_none());
+        assert!(normalize_ga_measurement_id("g-ABC123").is_none());
+        assert!(normalize_ga_measurement_id("GTM-ABC123").is_none());
+        assert!(normalize_ga_measurement_id("G-ABC 123").is_none());
+        assert!(normalize_ga_measurement_id("<script>alert(1)</script>").is_none());
+        assert!(
+            normalize_ga_measurement_id("https://www.googletagmanager.com/gtag/js?id=G-ABC123")
+                .is_none()
+        );
     }
 
     #[test]

@@ -22,28 +22,20 @@
       max-width: 85px;
     }
   }
+  &__search-icon {
+    display: inline-block;
+  }
   &__menu-icon {
-    display: block;
+    display: inline-block;
     @include mixins.mq(lg) {
       display: none;
     }
   }
-  & .dd-menu__toggle {
-    &-open {
-      display: block;
-    }
-    &-close {
-      display: none;
-    }
-    &.-active {
-      & .dd-menu__toggle-open {
-        display: none;
-      }
-      & .dd-menu__toggle-close {
-        display: block;
-      }
-    }
+  &__icons {
+    justify-items: flex-end;
+    text-align: right;
   }
+  & .dd-menu__toggle,
   & .dd-search__toggle {
     display: inline-flex;
     align-items: center;
@@ -64,6 +56,18 @@
     &-close {
       display: none;
     }
+  }
+  & .dd-menu__toggle {
+    &.-active {
+      & .dd-menu__toggle-open {
+        display: none;
+      }
+      & .dd-menu__toggle-close {
+        display: block;
+      }
+    }
+  }
+  & .dd-search__toggle {
     &.-active {
       & .dd-search__toggle-open {
         display: none;

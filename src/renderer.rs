@@ -80,7 +80,6 @@ pub fn render_page_html_with_chrome(
             "footer_html": footer_html,
             "content": content,
             "body_class": format!("page page-{body_slug}"),
-            "body_gtm": gtm_body_html(site.body_gtm_tag.as_deref()),
         }),
     )?;
     let prefix =
@@ -164,7 +163,9 @@ fn render_head(r: &Renderer, head: &DdHead, site: &Site, page: &Page) -> anyhow:
         "og_url": og_url,
         "twitter_card": twitter_card,
         "schema_json": schema_json,
-        "header_gtm": gtm_header_html(site.header_gtm_tag.as_deref()),
+        "ga_measurement_id": crate::model::normalize_ga_measurement_id(
+            site.ga_measurement_id.as_deref().unwrap_or(""),
+        ),
     });
     r.render("_head", &data)
 }
@@ -299,20 +300,6 @@ fn copyright_year() -> i32 {
     let doe = (z - era * 146097) as u32;
     let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
     (yoe as i64 + era * 400) as i32
-}
-
-fn gtm_header_html(snippet: Option<&str>) -> Option<String> {
-    let id = crate::model::extract_gtm_id(snippet.unwrap_or(""))?;
-    Some(format!(
-        r#"<script>(function(w,d,s,l,i){{w[l]=w[l]||[];w[l].push({{'gtm.start':new Date().getTime(),event:'gtm.js'}});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);}})(window,document,'script','dataLayer','{id}');</script>"#
-    ))
-}
-
-fn gtm_body_html(snippet: Option<&str>) -> Option<String> {
-    let id = crate::model::extract_gtm_id(snippet.unwrap_or(""))?;
-    Some(format!(
-        r#"<noscript><iframe src="https://www.googletagmanager.com/ns.html?id={id}" height="0" width="0" style="display:none;visibility:hidden" title="Google Tag Manager"></iframe></noscript>"#
-    ))
 }
 
 fn robots_token(r: crate::model::RobotsDirective) -> &'static str {
@@ -1933,7 +1920,15 @@ mod tests {
         assert!(html.contains("data-sort-key=\"priority\""), "{html}");
         assert!(html.contains("data-sort-key=\"effort\""), "{html}");
         assert!(html.contains("class=\"dd-data-table__sort\""), "{html}");
-        assert!(!html.contains("tabindex="), "{html}");
+        let scroll_open = html
+            .split("dd-data-table__scroll")
+            .nth(1)
+            .and_then(|rest| rest.split('>').next())
+            .unwrap_or("");
+        assert!(
+            !scroll_open.contains("tabindex") && !scroll_open.contains("role="),
+            "scroll wrapper is JS-owned: {scroll_open}"
+        );
         assert!(!html.contains("role=\"region\""), "{html}");
         assert!(!html.contains("id=\"task-table\""), "{html}");
 
@@ -2504,7 +2499,7 @@ mod tests {
     }
 
     #[test]
-    fn header_cta_banner_footer_socials_and_gtm_render() {
+    fn header_cta_banner_footer_socials_and_ga4_render() {
         let mut site = Site::starter();
         site.header.cta_url = Some("/contact.html".to_string());
         site.header.cta_label = Some("Contact us".to_string());
@@ -2512,11 +2507,7 @@ mod tests {
         site.footer.blurb = Some("Hello\nworld".to_string());
         site.footer.copyright = Some("© Custom Co".to_string());
         site.footer.social_github = Some("https://github.com/ldnddev".to_string());
-        site.header_gtm_tag = Some(
-            "<script src=\"https://www.googletagmanager.com/gtm.js?id=GTM-ABC123\"></script>"
-                .to_string(),
-        );
-        site.body_gtm_tag = Some("id=GTM-ABC123".to_string());
+        site.ga_measurement_id = Some("G-ABC123".to_string());
         let r = crate::templates::Renderer::bundled_only().unwrap();
         let header = super::render_header(&r, &site.header).unwrap();
         let footer = super::render_footer(&r, &site.footer, &site.name).unwrap();
@@ -2535,16 +2526,32 @@ mod tests {
 
         let html = super::render_page_html_with_chrome(&r, &site.pages[0], &header, &footer, &site)
             .unwrap();
+        assert!(html.contains("gtag('consent', 'default'"), "{html}");
+        assert!(html.contains("gtag('config', 'G-ABC123')"), "{html}");
         assert!(
-            html.contains("https://www.googletagmanager.com/gtm.js?id='+i"),
+            html.contains("https://www.googletagmanager.com/gtag/js?id=G-ABC123"),
             "{html}"
         );
-        assert!(html.contains("'GTM-ABC123'"), "{html}");
-        assert!(
-            html.contains("https://www.googletagmanager.com/ns.html?id=GTM-ABC123"),
-            "{html}"
-        );
-        assert!(html.contains("title=\"Google Tag Manager\""), "{html}");
+        assert!(!html.contains("gtm.js"), "{html}");
+        assert!(!html.contains("ns.html"), "{html}");
+        let config_at = html.find("gtag('config', 'G-ABC123')").unwrap();
+        let src_at = html
+            .find("https://www.googletagmanager.com/gtag/js?id=G-ABC123")
+            .unwrap();
+        assert!(config_at < src_at, "consent config must precede gtag.js");
+
+        site.ga_measurement_id = None;
+        let bare = super::render_page_html_with_chrome(&r, &site.pages[0], &header, &footer, &site)
+            .unwrap();
+        assert!(!bare.contains("gtag/js"), "{bare}");
+        assert!(!bare.contains("function gtag"), "{bare}");
+
+        site.ga_measurement_id = Some("<script>alert(1)</script>".to_string());
+        let rejected =
+            super::render_page_html_with_chrome(&r, &site.pages[0], &header, &footer, &site)
+                .unwrap();
+        assert!(!rejected.contains("alert(1)"), "{rejected}");
+        assert!(!rejected.contains("gtag/js"), "{rejected}");
     }
 
     #[test]

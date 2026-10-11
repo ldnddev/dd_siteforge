@@ -1,14 +1,14 @@
 <!DOCTYPE html>
 <html lang="{{lang}}" data-search-index="/search-index.json">
-{{{head_html}}}
-<body class="{{body_class}}">
-<div name="page_top" id="page_top"></div>
-{{#if body_gtm}}{{{body_gtm}}}{{/if}}
-{{{header_html}}}
-<main>
-{{{content}}}
-</main>
-{{{footer_html}}}
-<script src="assets/js/main.min.js"></script>
-</body>
+  {{{head_html}}}
+  <body class="{{body_class}}">
+    <a class="dd-skip-link" href="#main-content">Skip to main content</a>
+    <div name="page_top" id="page_top"></div>
+      {{{header_html}}}
+      <main id="main-content" tabindex="-1">
+        {{{content}}}
+      </main>
+    {{{footer_html}}}
+    <script src="assets/js/main.min.js"></script>
+  </body>
 </html>

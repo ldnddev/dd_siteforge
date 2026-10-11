@@ -155,3 +155,8 @@
     background-color: variables.$c_ui_neutral_900;
   }
 }
+
+/* Skip link: hidden until keyboard focus. */
+.dd-skip-link { position: absolute; left: 0.5rem; top: -100px; z-index: 10000; padding: 0.75rem 1rem; background: #000; color: #fff; text-decoration: none; }
+.dd-skip-link:focus, .dd-skip-link:focus-visible { top: 0.5rem; outline: 3px solid #ffca76; }
+#main-content:focus { outline: none; }

@@ -6298,7 +6298,7 @@ fn header_form_save_writes_cta_and_banner() {
 }
 
 #[test]
-fn site_form_save_writes_gtm_snippets() {
+fn site_form_save_writes_ga_measurement_id() {
     let mut app = App::new(
         Site::starter(),
         None,
@@ -6310,14 +6310,12 @@ fn site_form_save_writes_gtm_snippets() {
     app.sync_tree_row_with_selection();
     send_key(&mut app, KeyCode::Enter, KeyModifiers::NONE);
     if let Some(Modal::FormEdit { state, .. }) = &mut app.modal {
-        state.set("header_gtm_tag", "GTM-ABC123");
-        state.set("body_gtm_tag", "GTM-ABC123");
+        state.set("ga_measurement_id", "G-ABC123");
     } else {
         panic!("expected Site settings FormEdit");
     }
     send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
-    assert_eq!(app.site.header_gtm_tag.as_deref(), Some("GTM-ABC123"));
-    assert_eq!(app.site.body_gtm_tag.as_deref(), Some("GTM-ABC123"));
+    assert_eq!(app.site.ga_measurement_id.as_deref(), Some("G-ABC123"));
 }
 
 #[test]

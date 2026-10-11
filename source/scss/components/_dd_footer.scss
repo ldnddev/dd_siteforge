@@ -8,8 +8,10 @@
   }
   & .company-info {
     align-items: center;
-    &__logo {
-      // todo
+  }
+  &__logo {
+    & img {
+      width: 100%;
     }
   }
   &__copyright {

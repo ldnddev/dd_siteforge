@@ -40,9 +40,10 @@ figure {
 }
 
 hr {
-  color: variables.$c_primary_default;
+  border: solid 2px variables.$c_primary_default;
+  margin: 2rem 0;
   @include mixins.pref_dark {
-    color: variables.$c_primary_default--dark;
+    border: solid 2px variables.$c_primary_default--dark;
   }
 }
 
@@ -62,11 +63,21 @@ p {
 }
 
 pre {
+  display: block;
   word-wrap: break-word;
   width: 100%;
   overflow-x: auto;
   white-space: pre-wrap;
   box-sizing: border-box;
+  border: solid 1px variables.$c_ui_neutral_300;
+  border-left: solid 5px variables.$c_ui_neutral_300;
+  @include mixins.pref_dark {
+    border: solid 1px variables.$c_ui_neutral_300--dark;
+    border-left: solid 5px variables.$c_ui_neutral_300--dark;
+  }
+  & code {
+    border: none !important;
+  }
 }
 
 ul {

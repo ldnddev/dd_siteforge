@@ -7,7 +7,6 @@
 //! dispatch, and it gains the same editor UX as every other component.
 //!
 //! Future phases remain additive:
-//!   - codegen from `components/dd-*.md` YAML → same `EditForm` values
 //!   - runtime-loaded specs → `EditForm` parsed at app startup
 //!   - user-authored components → `SectionComponent::Dynamic` variant
 //! No further TUI logic is required for those phases; only data plumbing.

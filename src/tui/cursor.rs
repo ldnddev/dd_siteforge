@@ -1365,8 +1365,7 @@ fn apply_site_values(site: &mut Site, state: &EditFormState) -> Result<()> {
     site.theme.secondary_color = secondary;
     site.theme.tertiary_color = tertiary;
     site.theme.support_color = support;
-    site.header_gtm_tag = opt_trimmed(state.get("header_gtm_tag"));
-    site.body_gtm_tag = opt_trimmed(state.get("body_gtm_tag"));
+    site.ga_measurement_id = opt_trimmed(state.get("ga_measurement_id"));
     site.pretty_urls = state.get("pretty_urls").trim() == "on";
     Ok(())
 }
@@ -1456,12 +1455,8 @@ pub fn site_to_form_state(site: &Site) -> EditFormState {
     s.set("tertiary_color", site.theme.tertiary_color.clone());
     s.set("support_color", site.theme.support_color.clone());
     s.set(
-        "header_gtm_tag",
-        site.header_gtm_tag.clone().unwrap_or_default(),
-    );
-    s.set(
-        "body_gtm_tag",
-        site.body_gtm_tag.clone().unwrap_or_default(),
+        "ga_measurement_id",
+        site.ga_measurement_id.clone().unwrap_or_default(),
     );
     s.set("pretty_urls", if site.pretty_urls { "on" } else { "off" });
     s
