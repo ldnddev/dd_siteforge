@@ -63,7 +63,7 @@
       height: auto;
     }
     & nav {
-      width: 100vw;
+      width: 100%;
       @include mixins.mq(lg) {
         width: auto;
       }
@@ -94,41 +94,163 @@
         }
       }
     }
+    & .menu > .menu-item > a:focus-visible,
+    & .sub-menu a:focus-visible {
+      outline: 2px solid variables.$c_text_primary;
+      outline-offset: 2px;
+      @include mixins.pref_dark {
+        outline-color: variables.$c_text_primary--dark;
+      }
+    }
+    & .menu-item.-has-children,
     & .menu-item-has-children {
       position: relative;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+      column-gap: 2px;
+      @include mixins.mq(lg) {
+        justify-content: flex-start;
+      }
       & > a {
+        display: inline-flex;
+        align-items: center;
+        width: auto;
+        min-width: 0;
+        max-width: 100%;
+        white-space: normal;
         &::after {
-          content: '\f0d7';
-          padding-left: 8px;
-          @include mixins.font_icon();
+          content: "";
+          display: inline-block;
+          flex: 0 0 auto;
+          width: 0.45em;
+          height: 0.45em;
+          margin-left: 0.45em;
+          border-right: 2px solid currentColor;
+          border-bottom: 2px solid currentColor;
+          transform: rotate(45deg) translateY(-0.1em);
         }
       }
-      &:hover {
-        color: variables.$c_primary_action_hover_text;
+      &:has(> .menu-item__toggle) > a::after {
+        content: none;
+        display: none;
+        border: 0;
+      }
+      & > .menu-item__toggle {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 44px;
+        box-sizing: border-box;
+        width: 44px;
+        min-width: 44px;
+        height: 44px;
+        min-height: 44px;
+        margin: 0;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: variables.$c_text_primary;
+        line-height: 1;
         @include mixins.pref_dark {
-          color: variables.$c_primary_action_hover_text--dark;
+          color: variables.$c_text_primary--dark;
+        }
+        &:hover,
+        &:focus,
+        &:focus-visible,
+        &:active {
+          border: 0;
+          background: transparent;
+          color: variables.$c_text_primary;
+          @include mixins.pref_dark {
+            color: variables.$c_text_primary--dark;
+          }
+        }
+        &:focus-visible {
+          outline: 2px solid variables.$c_text_primary;
+          outline-offset: 2px;
+          @include mixins.pref_dark {
+            outline-color: variables.$c_text_primary--dark;
+          }
         }
       }
-      &.-active {
-        & > a {
-          &::after {
-            content: '\f0d8';
-          }
-        }
-        & .sub-menu {
-          display: flex;
-          @include mixins.mq(lg) {
-            position: absolute;
-            top: 32px;
-            padding: 1rem;
-            width: max-content;
-          }
-        }
+      & > .sub-menu {
+        flex: 1 0 100%;
+      }
+      &:hover > .sub-menu,
+      &:focus-within > .sub-menu,
+      &.-active > .sub-menu,
+      & > .menu-item__toggle[aria-expanded="true"] + .sub-menu {
+        display: flex;
       }
     }
     & .sub-menu {
       display: none;
       flex-direction: column;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      background-color: variables.$c_ui_neutral_200;
+      @include mixins.pref_dark {
+        background-color: variables.$c_ui_neutral_200--dark;
+      }
+      & .menu-item {
+        width: 100%;
+      }
+      & a {
+        padding: 8px 16px;
+        min-height: 44px;
+        scroll-margin: 8px;
+        display: flex;
+        align-items: center;
+      }
+    }
+    & .menu-item.-has-children > .sub-menu,
+    & .menu-item-has-children > .sub-menu {
+      @include mixins.mq(lg) {
+        position: absolute;
+        top: 100%;
+        right: 0;
+        left: auto;
+        z-index: 30;
+        padding: 8px;
+        width: max-content;
+        min-width: 12rem;
+        max-height: calc(100vh - 8rem);
+        overflow-y: auto;
+        border: 1px solid variables.$c_text_secondary;
+        @include mixins.pref_dark {
+          border-color: variables.$c_text_secondary--dark;
+        }
+      }
+    }
+    // After the disclosure buttons exist, only an expanded toggle shows the panel.
+    &.-submenu-ready {
+      & .menu-item.-has-children,
+      & .menu-item-has-children {
+        &:hover > .sub-menu,
+        &:focus-within > .sub-menu,
+        &.-active > .sub-menu {
+          display: none;
+        }
+        & > .menu-item__toggle[aria-expanded="true"] + .sub-menu {
+          display: flex;
+        }
+      }
+    }
+    @media (forced-colors: active) {
+      & .menu-item__toggle,
+      & .dd-menu__close {
+        border: 1px solid CanvasText;
+        color: CanvasText;
+        forced-color-adjust: auto;
+      }
+      & .menu-item.-has-children > a::after,
+      & .menu-item-has-children > a::after {
+        border-color: CanvasText;
+      }
     }
     & .get-involved {
       @extend .dd-button;
@@ -145,14 +267,61 @@
         background-color: variables.$c_ui_neutral_100--dark;
       }
       top: 66px;
+      right: 0;
+      width: auto;
       height: calc(100vh - 66px);
       display: flex;
       flex-direction: column;
       z-index: 9000;
       @include mixins.vertical_scroll();
-      & .dd-menu__close {
-        display: none; // hide because we still show main menu close icon
-        padding: 15px 40px;
+      & nav {
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+      }
+      & button.dd-menu__close {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        align-self: flex-end;
+        flex: 0 0 auto;
+        & .dd-menu__toggle-close {
+          display: block;
+        }
+        box-sizing: border-box;
+        width: 44px;
+        min-width: 44px;
+        height: 44px;
+        min-height: 44px;
+        margin: 8px 16px 0 auto;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: variables.$c_text_primary;
+        @include mixins.pref_dark {
+          color: variables.$c_text_primary--dark;
+        }
+        &:hover,
+        &:focus,
+        &:focus-visible,
+        &:active {
+          border: 0;
+          background: transparent;
+          color: variables.$c_text_primary;
+          @include mixins.pref_dark {
+            color: variables.$c_text_primary--dark;
+          }
+        }
+        &:focus-visible {
+          outline: 2px solid variables.$c_text_primary;
+          outline-offset: 2px;
+          @include mixins.pref_dark {
+            outline-color: variables.$c_text_primary--dark;
+          }
+        }
+        @include mixins.mq(lg) {
+          display: none;
+        }
       }
       & .menu {
         text-align: center;
