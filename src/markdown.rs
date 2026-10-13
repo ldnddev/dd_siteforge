@@ -18,9 +18,10 @@ struct Attrs {
 pub(crate) fn to_html(input: &str) -> String {
     let events = parse(input);
     let rewritten = apply_inline_attrs(&events);
+    let rewritten = scrub_events(rewritten);
     let mut out = String::new();
     html::push_html(&mut out, rewritten.into_iter());
-    out
+    sanitize_html(&out)
 }
 
 pub(crate) fn to_plain(input: &str) -> String {
@@ -256,10 +257,10 @@ fn parse_attr_block(inside: &str) -> Option<Attrs> {
                 if is_token_value(&value) {
                     id = Some(value);
                 }
-            } else {
+            } else if attr_kept(key, Some(&value)) {
                 attrs.push((key.to_string(), Some(value)));
             }
-        } else if is_attr_name(token) {
+        } else if is_attr_name(token) && attr_kept(token, None) {
             attrs.push((token.to_string(), None));
         }
     }
@@ -314,7 +315,7 @@ fn inline_plain(events: &[Event<'_>]) -> String {
 fn render_img(dest_url: &str, title: &str, alt: &str, attrs: &Attrs) -> String {
     let mut html = String::new();
     html.push_str("<img src=\"");
-    push_href(&mut html, dest_url);
+    push_href(&mut html, &safe_img_src(dest_url));
     html.push_str("\" alt=\"");
     push_html(&mut html, alt);
     html.push('"');
@@ -334,7 +335,7 @@ fn render_link_open(link_type: LinkType, dest_url: &str, title: &str, attrs: &At
     if link_type == LinkType::Email {
         html.push_str("mailto:");
     }
-    push_href(&mut html, dest_url);
+    push_href(&mut html, &safe_link_href(dest_url));
     html.push('"');
     if !title.is_empty() {
         html.push_str(" title=\"");
@@ -379,6 +380,305 @@ fn push_html(out: &mut String, value: &str) {
 
 fn push_href(out: &mut String, value: &str) {
     pulldown_cmark_escape::escape_href(&mut *out, value).expect("string write");
+}
+
+fn safe_link_href(url: &str) -> String {
+    let safe = crate::model::safe_href(url);
+    if safe.is_empty() {
+        "#".to_string()
+    } else {
+        safe
+    }
+}
+
+fn safe_img_src(url: &str) -> String {
+    crate::model::safe_href(url)
+}
+
+fn scrub_events<'a>(events: Vec<Event<'a>>) -> Vec<Event<'a>> {
+    events.into_iter().map(scrub_event).collect()
+}
+
+fn scrub_event<'a>(event: Event<'a>) -> Event<'a> {
+    match event {
+        Event::Start(Tag::Link {
+            link_type,
+            dest_url,
+            title,
+            id,
+        }) => Event::Start(Tag::Link {
+            link_type,
+            dest_url: CowStr::from(safe_link_href(&dest_url)),
+            title,
+            id,
+        }),
+        Event::Start(Tag::Image {
+            link_type,
+            dest_url,
+            title,
+            id,
+        }) => Event::Start(Tag::Image {
+            link_type,
+            dest_url: CowStr::from(safe_img_src(&dest_url)),
+            title,
+            id,
+        }),
+        Event::Start(Tag::Heading {
+            level,
+            id,
+            classes,
+            attrs,
+        }) => Event::Start(Tag::Heading {
+            level,
+            id,
+            classes,
+            attrs: attrs
+                .into_iter()
+                .filter(|(name, value)| attr_kept(name, value.as_deref()))
+                .collect(),
+        }),
+        other => other,
+    }
+}
+
+/// Extra attributes from `{.class #id key=value}` and heading blocks.
+/// Event-handler names and scriptable URLs are not styling.
+fn attr_kept(name: &str, value: Option<&str>) -> bool {
+    let lower = name.to_ascii_lowercase();
+    if lower.starts_with("on") {
+        return false;
+    }
+    if lower == "style" {
+        let Some(value) = value else {
+            return false;
+        };
+        let compact = value.split_whitespace().collect::<Vec<_>>().join(" ");
+        return matches!(
+            compact.as_str(),
+            "text-align: left" | "text-align: center" | "text-align: right"
+        );
+    }
+    let allowed = matches!(
+        lower.as_str(),
+        "class"
+            | "id"
+            | "href"
+            | "src"
+            | "alt"
+            | "title"
+            | "width"
+            | "height"
+            | "loading"
+            | "decoding"
+            | "sizes"
+            | "srcset"
+            | "referrerpolicy"
+            | "crossorigin"
+            | "role"
+            | "tabindex"
+            | "align"
+            | "colspan"
+            | "rowspan"
+            | "span"
+            | "start"
+            | "target"
+            | "type"
+            | "disabled"
+            | "checked"
+    ) || lower.starts_with("aria-")
+        || lower.starts_with("data-");
+    if !allowed || !is_attr_name(&lower) {
+        return false;
+    }
+    if lower == "target" {
+        return matches!(value, Some("_self" | "_blank" | "_parent" | "_top"));
+    }
+    if matches!(
+        lower.as_str(),
+        "src" | "href" | "srcset" | "poster" | "action" | "formaction"
+    ) {
+        let Some(value) = value else {
+            return false;
+        };
+        return !crate::model::is_scriptable_url(value)
+            && !crate::model::is_scriptable_url(value.trim_start_matches('/'));
+    }
+    true
+}
+
+fn is_allowed_tag(name: &str) -> bool {
+    matches!(
+        name,
+        "p" | "br"
+            | "hr"
+            | "strong"
+            | "em"
+            | "del"
+            | "s"
+            | "code"
+            | "pre"
+            | "blockquote"
+            | "ul"
+            | "ol"
+            | "li"
+            | "h1"
+            | "h2"
+            | "h3"
+            | "h4"
+            | "h5"
+            | "h6"
+            | "a"
+            | "img"
+            | "div"
+            | "span"
+            | "table"
+            | "thead"
+            | "tbody"
+            | "tfoot"
+            | "tr"
+            | "th"
+            | "td"
+            | "figure"
+            | "figcaption"
+            | "picture"
+            | "source"
+            | "sup"
+            | "sub"
+            | "details"
+            | "summary"
+            | "caption"
+            | "small"
+            | "mark"
+            | "abbr"
+            | "cite"
+            | "q"
+            | "kbd"
+            | "samp"
+            | "var"
+            | "wbr"
+            | "b"
+            | "i"
+            | "u"
+            | "input"
+            | "col"
+            | "colgroup"
+    )
+}
+
+/// Keep CommonMark tags and the raw `img` / `div` authors paste into copy.
+/// Drop every other tag, event-handler attributes, and scriptable URLs.
+fn sanitize_html(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let mut rest = input;
+    while let Some(start) = rest.find('<') {
+        out.push_str(&rest[..start]);
+        let after = &rest[start..];
+        if after.starts_with("<!--") {
+            if let Some(end) = after.find("-->") {
+                rest = &after[end + 3..];
+                continue;
+            }
+            push_html(&mut out, after);
+            break;
+        }
+        let Some(rel_end) = after.find('>') else {
+            push_html(&mut out, after);
+            break;
+        };
+        let tag = &after[..=rel_end];
+        out.push_str(&rewrite_tag(tag));
+        rest = &after[rel_end + 1..];
+    }
+    out.push_str(rest);
+    out
+}
+
+fn rewrite_tag(tag: &str) -> String {
+    let inner = &tag[1..tag.len() - 1];
+    let trimmed = inner.trim();
+    let self_closing = trimmed.ends_with('/');
+    let closing = trimmed.starts_with('/');
+    let body = trimmed.trim_start_matches('/').trim_end_matches('/').trim();
+    let name = body.split_whitespace().next().unwrap_or("");
+    let name_lower = name.to_ascii_lowercase();
+    if name_lower.is_empty() || !is_allowed_tag(&name_lower) {
+        let mut escaped = String::new();
+        push_html(&mut escaped, tag);
+        return escaped;
+    }
+    if closing {
+        return format!("</{name_lower}>");
+    }
+    let attr_src = body[name.len()..].trim().trim_end_matches('/').trim();
+    let attrs = parse_attrs(attr_src);
+    if attrs
+        .iter()
+        .all(|(attr, value)| attr_kept(attr, value.as_deref()))
+    {
+        return tag.to_string();
+    }
+    let mut rewritten = format!("<{name_lower}");
+    for (attr, value) in attrs {
+        if !attr_kept(&attr, value.as_deref()) {
+            continue;
+        }
+        let attr_name = attr.to_ascii_lowercase();
+        rewritten.push(' ');
+        rewritten.push_str(&attr_name);
+        if let Some(value) = value {
+            rewritten.push_str("=\"");
+            push_html(&mut rewritten, &value);
+            rewritten.push('"');
+        }
+    }
+    if self_closing {
+        rewritten.push_str(" />");
+    } else {
+        rewritten.push('>');
+    }
+    rewritten
+}
+
+fn parse_attrs(input: &str) -> Vec<(String, Option<String>)> {
+    let mut out = Vec::new();
+    let mut rest = input.trim();
+    while !rest.is_empty() {
+        rest = rest.trim_start();
+        if rest.is_empty() {
+            break;
+        }
+        let name_len = rest
+            .find(|c: char| c.is_whitespace() || c == '=' || c == '/' || c == '>')
+            .unwrap_or(rest.len());
+        if name_len == 0 {
+            break;
+        }
+        let name = rest[..name_len].to_string();
+        rest = rest[name_len..].trim_start();
+        if let Some(stripped) = rest.strip_prefix('=') {
+            rest = stripped.trim_start();
+            let (value, next) = take_attr_value(rest);
+            out.push((name, Some(value)));
+            rest = next;
+        } else {
+            out.push((name, None));
+        }
+    }
+    out
+}
+
+fn take_attr_value(input: &str) -> (String, &str) {
+    let Some(first) = input.chars().next() else {
+        return (String::new(), input);
+    };
+    if first == '"' || first == '\'' {
+        if let Some(end) = input[1..].find(first) {
+            return (input[1..1 + end].to_string(), &input[1 + end + 1..]);
+        }
+        return (input[1..].to_string(), "");
+    }
+    let end = input.find(char::is_whitespace).unwrap_or(input.len());
+    (input[..end].to_string(), &input[end..])
 }
 
 #[cfg(test)]
@@ -490,5 +790,30 @@ mod tests {
         assert_eq!(without_trailing_attrs("Fee {.dd-title}"), "Fee");
         assert_eq!(without_trailing_attrs("Use {braces}"), "Use {braces}");
         assert_eq!(without_trailing_attrs("Plain"), "Plain");
+    }
+
+    #[test]
+    fn scriptable_markdown_urls_and_event_handlers_are_removed() {
+        let link = to_html("[click](javascript:alert(1))");
+        assert!(!link.to_ascii_lowercase().contains("javascript:"), "{link}");
+        assert!(link.contains("href=\"#\""), "{link}");
+
+        let mixed = to_html("[Go](/go){.dd-button onclick=alert(1)}");
+        assert!(mixed.contains("class=\"dd-button\""), "{mixed}");
+        assert!(!mixed.to_ascii_lowercase().contains("onclick"), "{mixed}");
+
+        let heading = to_html("# Title {onclick=alert(1)}");
+        assert!(
+            !heading.to_ascii_lowercase().contains("onclick"),
+            "{heading}"
+        );
+
+        let raw = to_html("<script>alert(1)</script>\n\n<div class=\"note\">ok</div>");
+        assert!(!raw.to_ascii_lowercase().contains("<script"), "{raw}");
+        assert!(raw.contains("class=\"note\""), "{raw}");
+
+        let image = to_html("<img src=x onerror=alert(1)>");
+        assert!(!image.to_ascii_lowercase().contains("onerror"), "{image}");
+        assert!(image.contains("<img"), "{image}");
     }
 }

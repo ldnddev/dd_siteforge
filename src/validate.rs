@@ -905,15 +905,22 @@ fn validate_section_context(section: &DdSection, scope: &str, errors: &mut Vec<S
 
 fn is_valid_url(url: &str) -> bool {
     let v = url.trim();
-    !v.is_empty()
-        && (v.starts_with('/')
-            || v.starts_with('#')
-            || v.starts_with("http://")
-            || v.starts_with("https://")
-            || v.starts_with("mailto:")
-            || v.starts_with("tel:")
-            || v.starts_with("assets/")
-            || v.ends_with(".html"))
+    if v.is_empty()
+        || crate::model::is_scriptable_url(v)
+        || crate::model::is_scriptable_url(v.trim_start_matches('/'))
+    {
+        return false;
+    }
+    let scheme = crate::model::url_scheme(v);
+    let allowed_scheme = matches!(scheme.as_deref(), Some("http" | "https" | "mailto" | "tel"));
+    // A relative `.html` path is a page link. A scheme smuggled before `.html`
+    // (`javascript:alert(1)//.html`) is not.
+    let relative_html = v.ends_with(".html") && scheme.is_none();
+    v.starts_with('/')
+        || v.starts_with('#')
+        || allowed_scheme
+        || v.starts_with("assets/")
+        || relative_html
 }
 
 pub fn validate_site_with_root(site: &Site, root: Option<&std::path::Path>) -> Vec<String> {
@@ -1134,6 +1141,30 @@ mod tests {
         assert!(
             errors.iter().all(|e| !e.contains("GA4 measurement id")),
             "valid id should pass, got {errors:?}"
+        );
+    }
+
+    #[test]
+    fn scriptable_link_urls_fail_validation() {
+        let mut site = Site::starter();
+        site.header.cta_url = Some("javascript:alert(1)//.html".to_string());
+        let errors = validate_site(&site);
+        assert!(
+            errors.iter().any(|e| e.contains("CTA URL")),
+            "expected CTA URL error, got {errors:?}"
+        );
+        site.header.cta_url = Some("/contact.html".to_string());
+        site.footer.social_github = Some("java\nscript:alert(1)".to_string());
+        let errors = validate_site(&site);
+        assert!(
+            errors.iter().any(|e| e.contains("GitHub")),
+            "expected GitHub URL error, got {errors:?}"
+        );
+        site.footer.social_github = Some("https://github.com/ldnddev".to_string());
+        let errors = validate_site(&site);
+        assert!(
+            errors.iter().all(|e| !e.contains("URL")),
+            "ordinary URLs should pass, got {errors:?}"
         );
     }
 
