@@ -103,8 +103,9 @@ pub(in crate::tui) enum ConfirmKind {
     QuitUnsaved,
 }
 
-/// Live state of an open image picker. `root` and `cwd` are absolute
-/// paths; `cwd` is always equal to or a descendant of `root`.
+/// Live state of an open image picker. `root` and `cwd` are paths under
+/// `source/images/`. `cwd` stays inside `root` even when a listed folder is a
+/// symlink.
 #[derive(Debug, Clone)]
 pub(in crate::tui) struct ImagePickerState {
     pub(in crate::tui) root: std::path::PathBuf,

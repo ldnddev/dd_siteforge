@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::Context;
 
@@ -105,18 +105,139 @@ pub fn copy_source_images(site_root: Option<&Path>, output_dir: &Path) -> anyhow
 }
 
 pub fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
-    fs::create_dir_all(dst)?;
-    for entry in fs::read_dir(src)? {
-        let entry = entry?;
-        let path = entry.path();
-        let target = dst.join(entry.file_name());
-        if path.is_dir() {
-            copy_dir_recursive(&path, &target)?;
-        } else {
-            fs::copy(&path, &target)?;
+    let root = confinement_root(src)?;
+    let mut stack = std::collections::HashSet::new();
+    copy_confined(&root, &root, dst, &mut stack)
+}
+
+/// `src` itself must not be a symlink whose target leaves its parent.
+/// Nested symlinks are checked again in `copy_confined`.
+fn confinement_root(src: &Path) -> std::io::Result<PathBuf> {
+    let meta = fs::symlink_metadata(src)?;
+    let canon = fs::canonicalize(src)?;
+    if meta.file_type().is_symlink() {
+        let inside_parent = src.parent().and_then(|parent| {
+            fs::canonicalize(parent)
+                .ok()
+                .map(|parent| canon.starts_with(parent))
+        });
+        if inside_parent != Some(true) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "refusing to copy a symlink that points outside its parent directory",
+            ));
         }
     }
-    Ok(())
+    Ok(canon)
+}
+
+fn copy_confined(
+    root: &Path,
+    src: &Path,
+    dst: &Path,
+    stack: &mut std::collections::HashSet<PathBuf>,
+) -> std::io::Result<()> {
+    let here = fs::canonicalize(src)?;
+    if !here.starts_with(root) || !stack.insert(here.clone()) {
+        return Ok(());
+    }
+    let copied = (|| {
+        fs::create_dir_all(dst)?;
+        for entry in fs::read_dir(&here)? {
+            let entry = entry?;
+            let path = entry.path();
+            let target = dst.join(entry.file_name());
+            let ft = entry.file_type()?;
+            if ft.is_symlink() {
+                let Ok(canon) = fs::canonicalize(&path) else {
+                    continue;
+                };
+                if !canon.starts_with(root) {
+                    continue;
+                }
+                let meta = fs::metadata(&canon)?;
+                if meta.is_dir() {
+                    copy_confined(root, &canon, &target, stack)?;
+                } else if meta.is_file() {
+                    fs::copy(&canon, &target)?;
+                }
+                continue;
+            }
+            if ft.is_dir() {
+                copy_confined(root, &path, &target, stack)?;
+            } else if ft.is_file() {
+                fs::copy(&path, &target)?;
+            }
+        }
+        Ok(())
+    })();
+    stack.remove(&here);
+    copied
+}
+
+/// Join `rel` onto `root` when the result stays inside `root`.
+///
+/// Empty, `.`, and `./` mean `root`. Absolute paths, `..`, NUL, and a
+/// destination whose real path already leaves `root` are rejected.
+pub fn join_inside(root: &Path, rel: &str) -> Option<PathBuf> {
+    let dest = lexical_inside(root, rel)?;
+    destination_inside(root, &dest).then_some(dest)
+}
+
+fn lexical_inside(root: &Path, rel: &str) -> Option<PathBuf> {
+    let mut s = rel.trim();
+    if s.contains('\0') {
+        return None;
+    }
+    while let Some(rest) = s.strip_prefix("./") {
+        s = rest.trim_start_matches('/');
+    }
+    s = s.trim_end_matches('/');
+    if s.is_empty() || s == "." {
+        return Some(root.to_path_buf());
+    }
+    let rel_path = Path::new(s);
+    if rel_path.is_absolute() {
+        return None;
+    }
+    let safe = rel_path.components().all(|component| {
+        matches!(
+            component,
+            std::path::Component::Normal(_) | std::path::Component::CurDir
+        )
+    });
+    if !safe {
+        return None;
+    }
+    Some(root.join(rel_path))
+}
+
+fn destination_inside(root: &Path, dest: &Path) -> bool {
+    let Ok(root_canon) = root.canonicalize() else {
+        return false;
+    };
+    let mut probe = dest.to_path_buf();
+    loop {
+        if probe.exists() {
+            return probe
+                .canonicalize()
+                .is_ok_and(|canon| canon.starts_with(&root_canon));
+        }
+        if !probe.pop() {
+            return false;
+        }
+    }
+}
+
+/// True when `candidate` canonicalizes to `root` or a path inside it.
+pub fn path_is_inside(root: &Path, candidate: &Path) -> bool {
+    let Ok(root) = root.canonicalize() else {
+        return false;
+    };
+    let Ok(candidate) = candidate.canonicalize() else {
+        return false;
+    };
+    candidate.starts_with(root)
 }
 
 fn write_sitemap(site: &Site, output_dir: &Path) -> anyhow::Result<()> {
@@ -466,5 +587,82 @@ mod tests {
         let html = fs::read_to_string(out.join("404.html")).unwrap();
         assert!(html.contains("Custom 404"));
         std::fs::remove_dir_all(&out).ok();
+    }
+
+    #[test]
+    fn join_inside_keeps_relative_paths_and_rejects_escape() {
+        let root = tmp_dir("dd_join_inside");
+        fs::create_dir_all(&root).unwrap();
+        assert_eq!(join_inside(&root, "web").unwrap(), root.join("web"));
+        assert_eq!(join_inside(&root, "./web/").unwrap(), root.join("web"));
+        assert_eq!(join_inside(&root, "").unwrap(), root);
+        assert_eq!(join_inside(&root, ".").unwrap(), root);
+        assert!(join_inside(&root, "../x").is_none());
+        assert!(join_inside(&root, "/tmp/x").is_none());
+        assert!(join_inside(&root, "web/../../etc").is_none());
+        assert!(join_inside(&root, "web\0").is_none());
+        let sibling = std::env::temp_dir().join(format!(
+            "{}-evil",
+            root.file_name().unwrap().to_string_lossy()
+        ));
+        fs::create_dir_all(&sibling).unwrap();
+        fs::write(sibling.join("secret.txt"), b"nope").unwrap();
+        assert!(!path_is_inside(&root, &sibling));
+        assert!(!path_is_inside(&root, &sibling.join("secret.txt")));
+        fs::write(root.join("inside.txt"), b"yes").unwrap();
+        assert!(path_is_inside(&root, &root.join("inside.txt")));
+        std::fs::remove_dir_all(&root).ok();
+        std::fs::remove_dir_all(&sibling).ok();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn copy_skips_symlinks_that_leave_the_source_tree() {
+        let root = tmp_dir("dd_copy_symlink");
+        let outside = tmp_dir("dd_copy_symlink_out");
+        fs::create_dir_all(&outside).unwrap();
+        fs::write(outside.join("secret.txt"), b"SECRET").unwrap();
+        let images = root.join("images");
+        fs::create_dir_all(&images).unwrap();
+        fs::write(images.join("hero.jpg"), b"hero").unwrap();
+        std::os::unix::fs::symlink(outside.join("secret.txt"), images.join("leak.txt")).unwrap();
+        std::os::unix::fs::symlink(&outside, images.join("leak-dir")).unwrap();
+        std::os::unix::fs::symlink(images.join("hero.jpg"), images.join("alias.jpg")).unwrap();
+        let nested = images.join("nested");
+        fs::create_dir_all(&nested).unwrap();
+        fs::write(nested.join("a.jpg"), b"a").unwrap();
+        std::os::unix::fs::symlink(&nested, images.join("linked")).unwrap();
+
+        let dst = root.join("out");
+        copy_dir_recursive(&images, &dst).unwrap();
+        assert_eq!(fs::read(dst.join("hero.jpg")).unwrap(), b"hero");
+        assert_eq!(fs::read(dst.join("alias.jpg")).unwrap(), b"hero");
+        assert_eq!(fs::read(dst.join("linked/a.jpg")).unwrap(), b"a");
+        assert!(!dst.join("leak.txt").exists());
+        assert!(!dst.join("leak-dir").exists());
+        assert!(!dst.join("secret.txt").exists());
+
+        let link_root = root.join("escaped");
+        std::os::unix::fs::symlink(&outside, &link_root).unwrap();
+        let err = copy_dir_recursive(&link_root, &root.join("escaped-out")).unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+        assert!(!root.join("escaped-out/secret.txt").exists());
+
+        std::fs::remove_dir_all(&root).ok();
+        std::fs::remove_dir_all(&outside).ok();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn join_inside_rejects_a_symlink_that_leaves_the_site() {
+        let root = tmp_dir("dd_join_symlink");
+        let outside = tmp_dir("dd_join_symlink_out");
+        fs::create_dir_all(&root).unwrap();
+        fs::create_dir_all(&outside).unwrap();
+        std::os::unix::fs::symlink(&outside, root.join("web")).unwrap();
+        assert!(join_inside(&root, "web").is_none());
+        assert_eq!(join_inside(&root, "dist").unwrap(), root.join("dist"));
+        std::fs::remove_dir_all(&root).ok();
+        std::fs::remove_dir_all(&outside).ok();
     }
 }

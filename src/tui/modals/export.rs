@@ -87,26 +87,34 @@ impl App {
             self.push_toast(ToastLevel::Warning, "Preview path required.");
             self.modal = Some(Modal::PreviewPathPrompt { path });
             Some(ModalResult::Continue)
-        } else {
-            self.commit_preview_to(trimmed.to_string());
+        } else if self.commit_preview_to(trimmed.to_string()) {
             Some(ModalResult::CloseSuccess)
+        } else {
+            self.modal = Some(Modal::PreviewPathPrompt { path });
+            Some(ModalResult::Continue)
         }
     }
 
-    pub(in crate::tui) fn commit_preview_to(&mut self, rel: String) {
-        use std::path::{Path, PathBuf};
+    pub(in crate::tui) fn commit_preview_to(&mut self, rel: String) -> bool {
+        use std::path::PathBuf;
         let normalized = normalize_relative_path(&rel);
         let base = self
             .path
             .as_ref()
             .and_then(|p| p.parent().map(PathBuf::from))
             .unwrap_or_else(|| PathBuf::from("."));
-        let out = base.join(Path::new(&normalized));
+        let Some(out) = crate::export::join_inside(&base, &rel) else {
+            self.push_toast(
+                ToastLevel::Warning,
+                "Export path must stay inside the site directory.",
+            );
+            return false;
+        };
 
         if let Err(e) = crate::export::export_site(&self.site, &out, Some(&base)) {
             let msg = format!("Preview failed: {}", e);
             self.push_toast(ToastLevel::Error, msg);
-            return;
+            return true;
         }
         self.site.export_dir = Some(normalized.clone());
 
@@ -142,6 +150,7 @@ impl App {
                 self.push_toast(ToastLevel::Error, format!("Preview server failed: {}", e));
             }
         }
+        true
     }
 
     /// Re-export into the running preview server after a form save. Leaves the browser tab alone.
@@ -155,14 +164,19 @@ impl App {
         if rel.trim().is_empty() {
             return;
         }
-        use std::path::{Path, PathBuf};
-        let normalized = normalize_relative_path(&rel);
+        use std::path::PathBuf;
         let base = self
             .path
             .as_ref()
             .and_then(|p| p.parent().map(PathBuf::from))
             .unwrap_or_else(|| PathBuf::from("."));
-        let out = base.join(Path::new(&normalized));
+        let Some(out) = crate::export::join_inside(&base, &rel) else {
+            self.push_toast(
+                ToastLevel::Warning,
+                "Export path must stay inside the site directory.",
+            );
+            return;
+        };
         if let Err(e) = crate::export::export_site(&self.site, &out, Some(&base)) {
             self.push_toast(ToastLevel::Error, format!("Preview refresh failed: {}", e));
             return;
@@ -256,21 +270,29 @@ impl App {
             self.push_toast(ToastLevel::Warning, "Export path required.");
             self.modal = Some(Modal::ExportPathPrompt { path });
             Some(ModalResult::Continue)
-        } else {
-            self.commit_export_to(trimmed.to_string());
+        } else if self.commit_export_to(trimmed.to_string()) {
             Some(ModalResult::CloseSuccess)
+        } else {
+            self.modal = Some(Modal::ExportPathPrompt { path });
+            Some(ModalResult::Continue)
         }
     }
 
-    pub(in crate::tui) fn commit_export_to(&mut self, rel: String) {
-        use std::path::{Path, PathBuf};
+    pub(in crate::tui) fn commit_export_to(&mut self, rel: String) -> bool {
+        use std::path::PathBuf;
         let normalized = normalize_relative_path(&rel);
         let base = self
             .path
             .as_ref()
             .and_then(|p| p.parent().map(PathBuf::from))
             .unwrap_or_else(|| PathBuf::from("."));
-        let out = base.join(Path::new(&normalized));
+        let Some(out) = crate::export::join_inside(&base, &rel) else {
+            self.push_toast(
+                ToastLevel::Warning,
+                "Export path must stay inside the site directory.",
+            );
+            return false;
+        };
 
         match crate::export::export_site(&self.site, &out, Some(&base)) {
             Ok(report) => {
@@ -291,5 +313,6 @@ impl App {
                 self.push_toast(ToastLevel::Error, msg);
             }
         }
+        true
     }
 }

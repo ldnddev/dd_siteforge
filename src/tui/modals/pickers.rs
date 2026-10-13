@@ -35,7 +35,11 @@ impl App {
             KeyCode::Left if !key.modifiers.contains(KeyModifiers::CONTROL) => {
                 if state.cwd != state.root {
                     if let Some(parent) = state.cwd.parent() {
-                        state.cwd = parent.to_path_buf();
+                        if crate::export::path_is_inside(&state.root, parent) {
+                            state.cwd = parent.to_path_buf();
+                        } else {
+                            state.cwd = state.root.clone();
+                        }
                         state.filter.clear();
                         state.selected = 0;
                     }
@@ -68,7 +72,7 @@ impl App {
     }
 
     pub(in crate::tui) fn image_picker_descend_or_pick(&mut self) {
-        let (cwd, root, selected_name, is_dir, binding) = {
+        let (cwd, root, selected_name, binding) = {
             let Some(Modal::ImagePicker { state }) = self.modal.as_ref() else {
                 return;
             };
@@ -84,27 +88,42 @@ impl App {
                 state.cwd.clone(),
                 state.root.clone(),
                 entry.name.clone(),
-                entry.is_dir,
                 state.binding.clone(),
             )
         };
 
-        if is_dir {
+        let next = cwd.join(&selected_name);
+        if next.is_dir() {
+            if !crate::export::path_is_inside(&root, &next) {
+                self.push_toast(
+                    ToastLevel::Warning,
+                    "That folder is outside the image directory.",
+                );
+                return;
+            }
             if let Some(Modal::ImagePicker { state }) = self.modal.as_mut() {
-                state.cwd = cwd.join(&selected_name);
+                state.cwd = next;
                 state.filter.clear();
                 state.selected = 0;
             }
             return;
         }
 
-        // File pick: build the output-relative path under assets/images/.
-        let target_full = cwd.join(&selected_name);
-        let rel_under_root = target_full
-            .strip_prefix(&root)
-            .unwrap_or(&target_full)
-            .to_string_lossy()
-            .replace('\\', "/");
+        if !crate::export::path_is_inside(&root, &next) {
+            self.push_toast(
+                ToastLevel::Warning,
+                "That folder is outside the image directory.",
+            );
+            return;
+        }
+        let Ok(rel_under_root) = next.strip_prefix(&root) else {
+            self.push_toast(
+                ToastLevel::Warning,
+                "That folder is outside the image directory.",
+            );
+            return;
+        };
+        let rel_under_root = rel_under_root.to_string_lossy().replace('\\', "/");
         let stored = format!("assets/images/{}", rel_under_root);
 
         self.commit_image_pick(stored, binding);
