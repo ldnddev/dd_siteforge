@@ -1303,13 +1303,23 @@ fn youtube_id(url: &str) -> Option<String> {
             .filter(|s| !s.is_empty())
             .map(|s| s.to_string())
     };
-    after("youtu.be/")
+    let id = after("youtu.be/")
         .or_else(|| after("youtube.com/embed/"))
         .or_else(|| after("youtube-nocookie.com/embed/"))
         .or_else(|| after("youtube.com/shorts/"))
         .or_else(|| after("youtube.com/watch?v="))
         .or_else(|| after("youtube.com/watch?si=").and_then(|_| after("v=")))
-        .or_else(|| after("v="))
+        .or_else(|| after("v="))?;
+    is_youtube_video_id(&id).then_some(id)
+}
+
+/// YouTube video ids are 11 characters from this alphabet. Anything else is
+/// not interpolated into an iframe `src`.
+fn is_youtube_video_id(id: &str) -> bool {
+    id.len() == 11
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
 }
 
 fn vimeo_id(url: &str) -> Option<String> {
@@ -2162,6 +2172,58 @@ pub fn is_site_relative_url(url: &str) -> bool {
     true
 }
 
+/// Scheme of `url` after ASCII whitespace and control characters are removed.
+/// Paths, hashes, queries, and protocol-relative URLs have no scheme.
+pub fn url_scheme(url: &str) -> Option<String> {
+    let compact: String = url
+        .trim()
+        .chars()
+        .filter(|c| !c.is_control() && !c.is_whitespace() && *c != '\u{feff}')
+        .collect();
+    let lower = compact.to_ascii_lowercase();
+    if lower.starts_with("//")
+        || lower.starts_with('/')
+        || lower.starts_with('#')
+        || lower.starts_with('?')
+    {
+        return None;
+    }
+    let head = lower.split(['/', '?', '#']).next().unwrap_or("");
+    let scheme = head.split_once(':')?.0;
+    if scheme.is_empty()
+        || !scheme
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '.' | '-'))
+    {
+        return None;
+    }
+    Some(scheme.to_string())
+}
+
+/// True for schemes that run script or read a local file from `href` or `src`.
+/// Browsers ignore ASCII case and whitespace inside the scheme, so this does too.
+pub fn is_scriptable_url(url: &str) -> bool {
+    matches!(
+        url_scheme(url).as_deref(),
+        Some("javascript" | "data" | "vbscript" | "blob" | "file")
+    )
+}
+
+/// Trimmed URL, or empty when it is a scriptable scheme.
+///
+/// A leading `/` is preserved. Export strips those slashes for site-relative
+/// links, so a value that becomes scriptable only after that strip is empty too.
+pub fn safe_href(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if trimmed.is_empty()
+        || is_scriptable_url(trimmed)
+        || is_scriptable_url(trimmed.trim_start_matches('/'))
+    {
+        return String::new();
+    }
+    trimmed.to_string()
+}
+
 /// Accept a GA4 measurement id: `G-` plus one or more ASCII letters or digits.
 /// The whole trimmed value must be the id. A pasted script or `GTM-` container id is rejected.
 pub fn normalize_ga_measurement_id(raw: &str) -> Option<String> {
@@ -2675,6 +2737,36 @@ mod tests {
             _ => panic!("expected vimeo"),
         }
         assert!(parse_oembed_url("https://example.com/watch").is_none());
+        assert!(
+            parse_oembed_url(
+                r#"https://www.youtube.com/watch?v=dQw4w9wgGcQ"><script>alert(1)</script>"#
+            )
+            .is_none()
+        );
+        assert!(parse_oembed_url("https://youtu.be/not an id").is_none());
+    }
+
+    #[test]
+    fn scriptable_urls_cover_case_and_whitespace() {
+        assert!(is_scriptable_url("javascript:alert(1)"));
+        assert!(is_scriptable_url("JavaScript:alert(1)"));
+        assert!(is_scriptable_url("java\nscript:alert(1)"));
+        assert!(is_scriptable_url("java\tscript:alert(1)//.html"));
+        assert!(is_scriptable_url(
+            "data:text/html,<script>alert(1)</script>"
+        ));
+        assert!(is_scriptable_url("vbscript:msgbox(1)"));
+        assert!(is_scriptable_url("file:///etc/passwd"));
+        assert!(!is_scriptable_url("https://example.com"));
+        assert!(!is_scriptable_url("HTTP://example.com"));
+        assert!(!is_scriptable_url("/contact.html"));
+        assert!(!is_scriptable_url("assets/images/a.jpg"));
+        assert!(!is_scriptable_url("mailto:hello@example.com"));
+        assert!(!is_scriptable_url("#section"));
+        assert!(safe_href("javascript:alert(1)").is_empty());
+        assert!(safe_href("/javascript:alert(1)").is_empty());
+        assert_eq!(safe_href("  /contact.html  "), "/contact.html");
+        assert_eq!(safe_href("https://example.com/a"), "https://example.com/a");
     }
 
     #[test]

@@ -84,7 +84,7 @@ pub fn render_page_html_with_chrome(
     )?;
     let prefix =
         crate::model::url_prefix_for_page(&page.slug, site.pretty_urls, site.base_url.as_deref());
-    Ok(prefix_relative_urls(&html, &prefix))
+    Ok(ensure_blank_noopener(&prefix_relative_urls(&html, &prefix)))
 }
 
 fn render_head(r: &Renderer, head: &DdHead, site: &Site, page: &Page) -> anyhow::Result<String> {
@@ -111,7 +111,8 @@ fn render_head(r: &Renderer, head: &DdHead, site: &Site, page: &Page) -> anyhow:
         head.canonical_url.as_deref(),
         &page.slug,
         site.pretty_urls,
-    );
+    )
+    .filter(|url| !crate::model::is_scriptable_url(url));
     if let Some(u) = canonical.as_deref() {
         schema.insert("url".to_string(), Value::String(u.to_string()));
     }
@@ -194,7 +195,7 @@ pub(crate) fn render_header(r: &Renderer, header: &DdHeader) -> anyhow::Result<S
     let cta_url = header
         .cta_url
         .as_deref()
-        .map(str::trim)
+        .map(crate::model::safe_href)
         .filter(|s| !s.is_empty());
     let cta_label = header
         .cta_label
@@ -267,7 +268,7 @@ pub(crate) fn render_footer(
         (footer.social_x.as_deref(), "X", "fa-x-twitter"),
         (footer.social_github.as_deref(), "GitHub", "fa-github"),
     ] {
-        if let Some(url) = url.map(str::trim).filter(|s| !s.is_empty()) {
+        if let Some(url) = url.map(crate::model::safe_href).filter(|s| !s.is_empty()) {
             socials.push(json!({
                 "url": url,
                 "label": label,
@@ -477,9 +478,8 @@ fn render_card(r: &Renderer, card: &DdCard) -> anyhow::Result<String> {
         let link_url = item
             .child_link_url
             .as_deref()
-            .map(str::trim)
-            .filter(|v| !v.is_empty())
-            .map(str::to_string);
+            .map(crate::model::safe_href)
+            .filter(|v| !v.is_empty());
         let link_label = item
             .child_link_label
             .as_deref()
@@ -583,9 +583,8 @@ fn render_milestones(r: &Renderer, milestones: &DdMilestones) -> anyhow::Result<
         let link_url = item
             .child_link_url
             .as_deref()
-            .map(str::trim)
-            .filter(|v| !v.is_empty())
-            .map(str::to_string);
+            .map(crate::model::safe_href)
+            .filter(|v| !v.is_empty());
         let link_label = item
             .child_link_label
             .as_deref()
@@ -1002,11 +1001,12 @@ fn render_alert(r: &Renderer, alert: &DdAlert) -> anyhow::Result<String> {
 
 fn render_image(r: &Renderer, image: &crate::model::DdImage) -> anyhow::Result<String> {
     let sal_attr = sal_html_attrs(image.sal, image.sal_duration, image.sal_delay);
-    let has_link = image
+    let link_url = image
         .parent_link_url
         .as_deref()
-        .map(|v| !v.trim().is_empty())
-        .unwrap_or(false);
+        .map(crate::model::safe_href)
+        .filter(|s| !s.is_empty());
+    let has_link = link_url.is_some();
     let link_target = image
         .parent_link_target
         .as_ref()
@@ -1024,7 +1024,7 @@ fn render_image(r: &Renderer, image: &crate::model::DdImage) -> anyhow::Result<S
         "parent_image_url": image.parent_image_url,
         "parent_image_url_dark": dark,
         "parent_image_alt": image.parent_image_alt,
-        "parent_link_url": image.parent_link_url.clone().unwrap_or_default(),
+        "parent_link_url": link_url.unwrap_or_default(),
         "parent_link_target": link_target,
     });
     r.render("dd-image", &data)
@@ -1073,7 +1073,7 @@ fn nav_item_to_json(item: &crate::model::NavigationItem) -> Value {
         "is_link": matches!(item.child_kind, crate::model::NavigationKind::Link),
         "is_button": matches!(item.child_kind, crate::model::NavigationKind::Button),
         "child_link_label": item.child_link_label,
-        "child_link_url": item.child_link_url.as_deref().unwrap_or(""),
+        "child_link_url": crate::model::safe_href(item.child_link_url.as_deref().unwrap_or("")),
         "child_link_target": item
             .child_link_target
             .map(link_target_token)
@@ -1264,17 +1264,21 @@ fn button_style_token(style: ButtonStyle) -> &'static str {
     }
 }
 
-fn dd_link_json(link: &DdLink) -> Value {
-    json!({
-        "url": public_url(&link.url),
+fn dd_link_json(link: &DdLink) -> Option<Value> {
+    let url = public_url(&link.url);
+    if url.is_empty() {
+        return None;
+    }
+    Some(json!({
+        "url": url,
         "label": link.label,
         "target": link_target_token(link.target),
         "style": button_style_token(link.style),
-    })
+    }))
 }
 
 fn links_payload(links: &[DdLink]) -> (bool, Vec<Value>) {
-    let items: Vec<Value> = links.iter().map(dd_link_json).collect();
+    let items: Vec<Value> = links.iter().filter_map(dd_link_json).collect();
     (!items.is_empty(), items)
 }
 
@@ -1400,16 +1404,26 @@ fn hero_to_json(hero: &DdHero) -> Value {
     })
 }
 
+fn embed_token_ok(id: &str) -> bool {
+    !id.is_empty()
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
+}
+
 fn oembed_iframe(url: &str) -> String {
     match parse_oembed_url(url) {
-        Some(OembedProvider::Youtube { id }) => format!(
+        Some(OembedProvider::Youtube { id }) if embed_token_ok(&id) => format!(
             r#"<iframe src="https://www.youtube-nocookie.com/embed/{id}" title="YouTube video" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen loading="lazy"></iframe>"#
         ),
-        Some(OembedProvider::Vimeo { id }) => format!(
+        Some(OembedProvider::Vimeo { id }) if embed_token_ok(&id) => format!(
             r#"<iframe src="https://player.vimeo.com/video/{id}" title="Vimeo video" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen loading="lazy"></iframe>"#
         ),
-        None => {
-            let href = html_escape_attr(url);
+        Some(_) | None => {
+            let href = html_escape_attr(&crate::model::safe_href(url));
+            if href.is_empty() {
+                return String::new();
+            }
             format!(r#"<p><a href="{href}">{href}</a></p>"#)
         }
     }
@@ -1593,17 +1607,65 @@ fn prefix_srcset_value(value: &str, prefix: &str) -> String {
 }
 
 fn public_url(stored: &str) -> String {
-    let t = stored.trim();
-    if t.starts_with("http://")
-        || t.starts_with("https://")
-        || t.starts_with('#')
-        || t.starts_with("mailto:")
-        || t.starts_with("tel:")
-    {
-        t.to_string()
-    } else {
-        t.trim_start_matches('/').to_string()
+    let safe = crate::model::safe_href(stored);
+    if safe.is_empty() {
+        return String::new();
     }
+    if safe.starts_with("http://")
+        || safe.starts_with("https://")
+        || safe.starts_with('#')
+        || safe.starts_with("mailto:")
+        || safe.starts_with("tel:")
+    {
+        safe
+    } else {
+        safe.trim_start_matches('/').to_string()
+    }
+}
+
+/// `target="_blank"` without `rel=noopener` lets the opened page navigate the
+/// opener. Add the rel when the anchor does not already have it.
+fn ensure_blank_noopener(html: &str) -> String {
+    let mut out = String::with_capacity(html.len());
+    let mut rest = html;
+    while let Some(start) = find_anchor_open(rest) {
+        out.push_str(&rest[..start]);
+        let after = &rest[start..];
+        let Some(end) = after.find('>') else {
+            out.push_str(after);
+            return out;
+        };
+        let tag = &after[..=end];
+        if tag_has_blank_target(tag) && !tag.to_ascii_lowercase().contains("noopener") {
+            out.push_str(&tag[..tag.len() - 1]);
+            out.push_str(" rel=\"noopener noreferrer\">");
+        } else {
+            out.push_str(tag);
+        }
+        rest = &after[end + 1..];
+    }
+    out.push_str(rest);
+    out
+}
+
+fn find_anchor_open(html: &str) -> Option<usize> {
+    let mut offset = 0;
+    let mut rest = html;
+    while let Some(index) = rest.find("<a") {
+        let abs = offset + index;
+        let next = html[abs + 2..].chars().next();
+        if matches!(next, Some(' ' | '\n' | '\t' | '\r' | '>')) {
+            return Some(abs);
+        }
+        offset = abs + 2;
+        rest = &html[offset..];
+    }
+    None
+}
+
+fn tag_has_blank_target(tag: &str) -> bool {
+    let lower = tag.to_ascii_lowercase();
+    lower.contains("target=\"_blank\"") || lower.contains("target='_blank'")
 }
 
 /// Absolute asset URL when `base_url` is set; otherwise the page's relative prefix.
@@ -2147,6 +2209,55 @@ mod tests {
         assert!(html.contains(">One<"), "{html}");
         assert!(html.contains(">Two<"), "{html}");
         assert!(html.contains("target=\"_blank\""), "{html}");
+        assert!(html.contains("rel=\"noopener noreferrer\""), "{html}");
+    }
+
+    #[test]
+    fn scriptable_hrefs_are_omitted_and_embed_ids_cannot_break_the_iframe() {
+        use crate::model::{
+            BannerClass, ButtonStyle, CardLinkTarget, CtaClass, DdBanner, DdCta, DdLink, Media,
+            SalAnimation, SectionComponent,
+        };
+        let cta = DdCta {
+            parent_class: CtaClass::TopLeft,
+            parent_image_url: "/c.jpg".to_string(),
+            parent_image_alt: "alt".to_string(),
+            sal: SalAnimation::NoAnimation,
+            sal_duration: None,
+            sal_delay: None,
+            parent_title: "T".to_string(),
+            parent_subtitle: String::new(),
+            parent_copy: String::new(),
+            links: vec![DdLink {
+                url: "java\nscript:alert(1)//.html".to_string(),
+                label: "Bad".to_string(),
+                target: CardLinkTarget::Blank,
+                style: ButtonStyle::Primary,
+            }],
+            parent_link_url: None,
+            parent_link_target: None,
+            parent_link_label: None,
+        };
+        let html = render_page_html(&page_with_component(SectionComponent::Cta(cta))).unwrap();
+        assert!(!html.to_ascii_lowercase().contains("javascript:"), "{html}");
+        assert!(!html.contains(">Bad<"), "{html}");
+
+        let banner = DdBanner {
+            parent_class: BannerClass::BgCenterCenter,
+            sal: SalAnimation::NoAnimation,
+            sal_duration: None,
+            sal_delay: None,
+            parent_image_url: String::new(),
+            parent_image_alt: String::new(),
+            media: Media::Oembed {
+                url: "https://www.youtube.com/watch?v=abc\"onload=\"alert(1)".to_string(),
+            },
+        };
+        let html =
+            render_page_html(&page_with_component(SectionComponent::Banner(banner))).unwrap();
+        assert!(!html.contains("<iframe"), "{html}");
+        assert!(!html.contains("onload=\""), "{html}");
+        assert!(html.contains("&quot;"), "{html}");
     }
 
     #[test]
