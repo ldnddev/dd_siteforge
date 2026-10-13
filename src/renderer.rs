@@ -124,8 +124,7 @@ fn render_head(r: &Renderer, head: &DdHead, site: &Site, page: &Page) -> anyhow:
     if let Some(i) = og_image.as_deref() {
         schema.insert("image".to_string(), Value::String(i.to_string()));
     }
-    let schema_json =
-        serde_json::to_string_pretty(&Value::Object(schema)).unwrap_or_else(|_| "{}".to_string());
+    let schema_json = json_for_html_script(&Value::Object(schema), true);
 
     // Empty OG title uses meta title, then the page title (`html_title`).
     // Empty OG description uses meta description.
@@ -663,20 +662,23 @@ fn render_slider(r: &Renderer, slider: &DdSlider) -> anyhow::Result<String> {
 
 fn render_accordion(r: &Renderer, accordion: &DdAccordion) -> anyhow::Result<String> {
     let mut v = serde_json::to_value(accordion)?;
-    let faq_schema = serde_json::to_string(&json!({
-        "@context": "https://schema.org",
-        "@type": "FAQPage",
-        "mainEntity": accordion.items.iter().map(|item| {
-            json!({
-                "@type": "Question",
-                "name": item.child_title,
-                "acceptedAnswer": {
-                    "@type": "Answer",
-                    "text": item.child_copy
-                }
-            })
-        }).collect::<Vec<_>>()
-    }))?;
+    let faq_schema = json_for_html_script(
+        &json!({
+            "@context": "https://schema.org",
+            "@type": "FAQPage",
+            "mainEntity": accordion.items.iter().map(|item| {
+                json!({
+                    "@type": "Question",
+                    "name": item.child_title,
+                    "acceptedAnswer": {
+                        "@type": "Answer",
+                        "text": item.child_copy
+                    }
+                })
+            }).collect::<Vec<_>>()
+        }),
+        false,
+    );
     if let Some(obj) = v.as_object_mut() {
         obj.insert(
             "parent_type".to_string(),
@@ -718,18 +720,21 @@ fn render_accordion(r: &Renderer, accordion: &DdAccordion) -> anyhow::Result<Str
 }
 
 fn render_blockquote(r: &Renderer, blockquote: &DdBlockquote) -> anyhow::Result<String> {
-    let blockquote_schema_json = serde_json::to_string(&json!({
-      "@context": "https://schema.org/",
-      "@type": "Quotation",
-      "creator": {
-        "@type": "Person",
-        "name": format!(
-            "{}, {}",
-            blockquote.parent_name, blockquote.parent_role
-        )
-      },
-      "text": blockquote.parent_copy
-    }))?;
+    let blockquote_schema_json = json_for_html_script(
+        &json!({
+          "@context": "https://schema.org/",
+          "@type": "Quotation",
+          "creator": {
+            "@type": "Person",
+            "name": format!(
+                "{}, {}",
+                blockquote.parent_name, blockquote.parent_role
+            )
+          },
+          "text": blockquote.parent_copy
+        }),
+        false,
+    );
     let mut v = serde_json::to_value(blockquote)?;
     if let Some(obj) = v.as_object_mut() {
         obj.insert(
@@ -1415,6 +1420,31 @@ fn html_escape_attr(s: &str) -> String {
         .replace('"', "&quot;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
+}
+
+/// JSON embedded in `<script type="application/ld+json">`.
+///
+/// `serde_json` leaves `<` intact, and an HTML parser closes the script element
+/// at the first `</script>` before it parses the JSON. Escape the characters
+/// that can break out of that element. The result is still valid JSON.
+fn json_for_html_script(value: &Value, pretty: bool) -> String {
+    let json = if pretty {
+        serde_json::to_string_pretty(value).unwrap_or_else(|_| "{}".to_string())
+    } else {
+        serde_json::to_string(value).unwrap_or_else(|_| "{}".to_string())
+    };
+    let mut out = String::with_capacity(json.len());
+    for ch in json.chars() {
+        match ch {
+            '<' => out.push_str("\\u003c"),
+            '>' => out.push_str("\\u003e"),
+            '&' => out.push_str("\\u0026"),
+            '\u{2028}' => out.push_str("\\u2028"),
+            '\u{2029}' => out.push_str("\\u2029"),
+            _ => out.push(ch),
+        }
+    }
+    out
 }
 
 fn media_to_json(media: &Media) -> Value {
@@ -2616,6 +2646,80 @@ mod tests {
         ) || html.contains(
             "property=\"og:title\" content=\"Custom Drupal & WordPress Development | ldnddev\""
         ));
+    }
+
+    #[test]
+    fn json_ld_cannot_close_the_script_element() {
+        use crate::model::{
+            AccordionClass, AccordionItem, AccordionType, DdAccordion, DdBlockquote, SalAnimation,
+            SectionComponent,
+        };
+        let payload = "</script><script>alert(1)</script>";
+        let mut site = Site::starter();
+        site.pages[0].head.title = format!("Hello {payload}");
+        site.pages[0].head.meta_description = Some(format!("About {payload}"));
+        let r = crate::templates::Renderer::bundled_only().unwrap();
+        let html =
+            super::render_page_html_with_chrome(&r, &site.pages[0], "", "", &site).unwrap();
+        assert!(
+            html.contains("\\u003c/script\\u003e\\u003cscript\\u003ealert(1)\\u003c/script\\u003e"),
+            "{html}"
+        );
+        assert!(!html.contains("</script><script>alert(1)</script>"), "{html}");
+
+        let faq = page_with_component(SectionComponent::Accordion(DdAccordion {
+            parent_type: AccordionType::Faq,
+            parent_class: AccordionClass::Primary,
+            sal: SalAnimation::NoAnimation,
+            sal_duration: None,
+            sal_delay: None,
+            parent_group_name: "faq".to_string(),
+            items: vec![AccordionItem {
+                child_title: payload.to_string(),
+                child_copy: payload.to_string(),
+            }],
+            multiple: Some(false),
+        }));
+        let html = render_page_html(&faq).expect("faq");
+        let blocks = json_ld_blocks(&html);
+        let faq_block = blocks
+            .iter()
+            .find(|block| block.contains("FAQPage"))
+            .expect("faq schema");
+        assert!(!faq_block.contains('<'), "{faq_block}");
+        assert!(faq_block.contains("\\u003c/script\\u003e"), "{faq_block}");
+
+        let quote = page_with_component(SectionComponent::Blockquote(DdBlockquote {
+            sal: SalAnimation::NoAnimation,
+            sal_duration: None,
+            sal_delay: None,
+            parent_image_url: "/a.jpg".to_string(),
+            parent_image_alt: "alt".to_string(),
+            parent_name: payload.to_string(),
+            parent_role: "Role".to_string(),
+            parent_copy: payload.to_string(),
+        }));
+        let html = render_page_html(&quote).expect("blockquote");
+        let blocks = json_ld_blocks(&html);
+        assert!(
+            blocks.iter().any(|block| block.contains("Quotation")),
+            "{html}"
+        );
+        for block in blocks {
+            assert!(!block.contains('<'), "{block}");
+        }
+    }
+
+    fn json_ld_blocks(html: &str) -> Vec<&str> {
+        let mut blocks = Vec::new();
+        let mut rest = html;
+        while let Some(start) = rest.find("<script type=\"application/ld+json\">") {
+            let after = &rest[start + "<script type=\"application/ld+json\">".len()..];
+            let end = after.find("</script>").unwrap_or(after.len());
+            blocks.push(&after[..end]);
+            rest = &after[end..];
+        }
+        blocks
     }
 
     #[test]
