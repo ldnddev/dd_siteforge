@@ -3699,6 +3699,97 @@ fn begin_export_flow_with_saved_export_dir_commits_directly() {
 }
 
 #[test]
+fn export_dir_outside_the_site_does_not_write() {
+    let n = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let tmp = std::env::temp_dir().join(format!("dd_export_confine_{n}"));
+    let imgs = tmp.join("source").join("images");
+    std::fs::create_dir_all(&imgs).unwrap();
+    std::fs::write(imgs.join("hero.jpg"), b"fake").unwrap();
+    let json_path = tmp.join("site.json");
+    let mut app = App::new(
+        Site::starter(),
+        Some(json_path),
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    let outside_name = format!("dd_export_escape_{n}");
+    app.site.export_dir = Some(format!("../{outside_name}"));
+    app.begin_export_flow();
+    let escaped = tmp.parent().unwrap().join(&outside_name);
+    assert!(
+        !escaped.exists(),
+        "saved export_dir must not create {}",
+        escaped.display()
+    );
+    assert_eq!(
+        app.site.export_dir.as_deref(),
+        Some(format!("../{outside_name}")).as_deref()
+    );
+    assert!(app.toasts.iter().any(|toast| {
+        toast.level == ToastLevel::Warning && toast.message.contains("inside the site directory")
+    }));
+
+    let absolute = std::env::temp_dir().join(format!("dd_export_abs_{n}"));
+    app.site.export_dir = Some(absolute.display().to_string());
+    app.toasts.clear();
+    app.begin_export_flow();
+    assert!(!absolute.exists(), "{}", absolute.display());
+    assert!(
+        app.toasts
+            .iter()
+            .any(|toast| { toast.message.contains("inside the site directory") })
+    );
+
+    app.site.export_dir = None;
+    app.toasts.clear();
+    let result = app.commit_export_path_from_prompt(format!("../{outside_name}"));
+    assert!(matches!(result, Some(ModalResult::Continue)));
+    assert!(matches!(app.modal, Some(Modal::ExportPathPrompt { .. })));
+    assert!(app.site.export_dir.is_none());
+    assert!(!escaped.exists());
+
+    std::fs::remove_dir_all(&tmp).ok();
+}
+
+#[cfg(unix)]
+#[test]
+fn export_dir_symlink_outside_the_site_does_not_write() {
+    let n = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let tmp = std::env::temp_dir().join(format!("dd_export_link_{n}"));
+    let outside = std::env::temp_dir().join(format!("dd_export_link_out_{n}"));
+    let imgs = tmp.join("source").join("images");
+    std::fs::create_dir_all(&imgs).unwrap();
+    std::fs::write(imgs.join("hero.jpg"), b"fake").unwrap();
+    std::fs::create_dir_all(&outside).unwrap();
+    std::os::unix::fs::symlink(&outside, tmp.join("web")).unwrap();
+    let mut app = App::new(
+        Site::starter(),
+        Some(tmp.join("site.json")),
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    app.site.export_dir = Some("web".to_string());
+    app.begin_export_flow();
+    assert!(!outside.join("index.html").exists());
+    assert_eq!(app.site.export_dir.as_deref(), Some("web"));
+    assert!(
+        app.toasts
+            .iter()
+            .any(|toast| { toast.message.contains("inside the site directory") })
+    );
+    std::fs::remove_dir_all(&tmp).ok();
+    std::fs::remove_dir_all(&outside).ok();
+}
+
+#[test]
 fn e_key_with_validation_errors_opens_validation_modal() {
     let mut app = App::new(
         Site::starter(),
@@ -4234,6 +4325,106 @@ fn image_picker_left_arrow_at_root_does_not_escape() {
         _ => panic!("picker should still be open at root"),
     }
     std::fs::remove_dir_all(&tmp).ok();
+}
+
+#[test]
+fn image_picker_enters_a_real_subdirectory() {
+    let tmp = std::env::temp_dir().join(format!(
+        "dd_imgpicker_sub_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let nested = tmp.join("nested");
+    std::fs::create_dir_all(&nested).unwrap();
+    std::fs::write(nested.join("a.jpg"), b"a").unwrap();
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    app.modal = Some(Modal::ImagePicker {
+        state: ImagePickerState {
+            root: tmp.clone(),
+            cwd: tmp.clone(),
+            filter: String::new(),
+            selected: 0,
+            binding: ImagePickBinding::FormEditField {
+                field_id: "x".to_string(),
+            },
+            file_kind: PickerFileKind::Image,
+        },
+    });
+    send_key(&mut app, KeyCode::Enter, KeyModifiers::NONE);
+    match &app.modal {
+        Some(Modal::ImagePicker { state }) => assert_eq!(state.cwd, nested),
+        _ => panic!("expected to enter the nested image folder"),
+    }
+    std::fs::remove_dir_all(&tmp).ok();
+}
+
+#[cfg(unix)]
+#[test]
+fn image_picker_refuses_symlink_outside_the_image_directory() {
+    let n = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let tmp = std::env::temp_dir().join(format!("dd_imgpicker_link_{n}"));
+    let outside = std::env::temp_dir().join(format!("dd_imgpicker_out_{n}"));
+    std::fs::create_dir_all(&tmp).unwrap();
+    std::fs::create_dir_all(&outside).unwrap();
+    std::fs::write(outside.join("secret.jpg"), b"secret").unwrap();
+    std::os::unix::fs::symlink(outside.join("secret.jpg"), tmp.join("leak.jpg")).unwrap();
+    std::os::unix::fs::symlink(&outside, tmp.join("outdir.jpg")).unwrap();
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    let picker = |selected| Modal::ImagePicker {
+        state: ImagePickerState {
+            root: tmp.clone(),
+            cwd: tmp.clone(),
+            filter: String::new(),
+            selected,
+            binding: ImagePickBinding::FormEditField {
+                field_id: "parent_image_url".to_string(),
+            },
+            file_kind: PickerFileKind::Image,
+        },
+    };
+    app.modal = Some(picker(0));
+    send_key(&mut app, KeyCode::Enter, KeyModifiers::NONE);
+    assert!(
+        matches!(app.modal, Some(Modal::ImagePicker { .. })),
+        "file symlink must not be stored"
+    );
+    assert!(
+        app.toasts
+            .iter()
+            .any(|toast| { toast.message.contains("outside the image directory") })
+    );
+
+    app.toasts.clear();
+    app.modal = Some(picker(1));
+    send_key(&mut app, KeyCode::Enter, KeyModifiers::NONE);
+    match &app.modal {
+        Some(Modal::ImagePicker { state }) => assert_eq!(state.cwd, tmp),
+        _ => panic!("directory symlink must not be opened"),
+    }
+    assert!(
+        app.toasts
+            .iter()
+            .any(|toast| { toast.message.contains("outside the image directory") })
+    );
+    std::fs::remove_dir_all(&tmp).ok();
+    std::fs::remove_dir_all(&outside).ok();
 }
 
 #[test]

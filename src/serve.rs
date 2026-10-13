@@ -107,6 +107,16 @@ fn handle_client(
         return Ok(());
     }
     let req = String::from_utf8_lossy(&buf[..n]);
+    if !request_host_allowed(&req) {
+        let body = b"Bad Request";
+        let header = format!(
+            "HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            body.len()
+        );
+        stream.write_all(header.as_bytes())?;
+        stream.write_all(body)?;
+        return Ok(());
+    }
     let path = parse_path(&req).unwrap_or("/");
     let root_path = root
         .lock()
@@ -128,7 +138,7 @@ fn handle_client(
         Some((bytes, mime)) => ("200 OK", bytes, mime, html_cache_header(mime)),
         None => {
             let fallback = root_path.join("404.html");
-            if let Ok(bytes) = std::fs::read(&fallback) {
+            if let Some(bytes) = read_confined(&root_path, &fallback) {
                 (
                     "404 Not Found",
                     bytes,
@@ -205,32 +215,132 @@ fn parse_path(req: &str) -> Option<&str> {
 }
 
 fn resolve_file(root: &Path, url_path: &str) -> Option<(Vec<u8>, &'static str)> {
-    let trimmed = url_path.trim_start_matches('/');
+    let decoded = percent_decode(url_path)?;
+    let trimmed = decoded.trim_start_matches('/');
     let rel = if trimmed.is_empty() {
         PathBuf::from("index.html")
     } else {
         PathBuf::from(trimmed)
     };
-    if rel
-        .components()
-        .any(|c| matches!(c, std::path::Component::ParentDir))
-    {
+    if !rel_is_safe(&rel) {
         return None;
     }
     let mut candidate = root.join(&rel);
     if candidate.is_dir() {
         candidate = candidate.join("index.html");
     }
-    if !candidate.exists() {
-        if let Some(name) = rel.file_name() {
-            if !name.to_string_lossy().contains('.') {
-                candidate = root.join(format!("{trimmed}.html"));
+    if let Some(bytes) = read_confined(root, &candidate) {
+        return Some((bytes, mime_for(&candidate)));
+    }
+    let name = rel.file_name()?.to_string_lossy();
+    if name.contains('.') {
+        return None;
+    }
+    let html_rel = PathBuf::from(format!("{trimmed}.html"));
+    if !rel_is_safe(&html_rel) {
+        return None;
+    }
+    let candidate = root.join(&html_rel);
+    let bytes = read_confined(root, &candidate)?;
+    Some((bytes, mime_for(&candidate)))
+}
+
+fn rel_is_safe(rel: &Path) -> bool {
+    rel.components().all(|component| {
+        matches!(
+            component,
+            std::path::Component::Normal(_) | std::path::Component::CurDir
+        )
+    })
+}
+
+fn read_confined(root: &Path, file: &Path) -> Option<Vec<u8>> {
+    let root = root.canonicalize().ok()?;
+    let file = file.canonicalize().ok()?;
+    if !file.starts_with(&root) || !file.is_file() {
+        return None;
+    }
+    std::fs::read(file).ok()
+}
+
+fn percent_decode(input: &str) -> Option<String> {
+    let bytes = input.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            0 => return None,
+            b'%' => {
+                if i + 2 >= bytes.len() {
+                    return None;
+                }
+                let hi = hex_val(bytes[i + 1])?;
+                let lo = hex_val(bytes[i + 2])?;
+                let decoded = (hi << 4) | lo;
+                if decoded == 0 {
+                    return None;
+                }
+                out.push(decoded);
+                i += 3;
+            }
+            byte => {
+                out.push(byte);
+                i += 1;
             }
         }
     }
-    let bytes = std::fs::read(&candidate).ok()?;
-    let mime = mime_for(&candidate);
-    Some((bytes, mime))
+    String::from_utf8(out).ok()
+}
+
+fn hex_val(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
+}
+
+fn request_host_allowed(req: &str) -> bool {
+    for line in req.lines().skip(1) {
+        let line = line.trim();
+        if line.is_empty() {
+            break;
+        }
+        let Some((name, value)) = line.split_once(':') else {
+            continue;
+        };
+        if name.trim().eq_ignore_ascii_case("host") && !host_is_local(value.trim()) {
+            return false;
+        }
+    }
+    true
+}
+
+fn host_is_local(host: &str) -> bool {
+    let host = host.trim();
+    if host.is_empty() {
+        return false;
+    }
+    if let Some(inner) = host.strip_prefix('[') {
+        let Some(end) = inner.find(']') else {
+            return false;
+        };
+        let after = &inner[end + 1..];
+        if !(after.is_empty() || after.starts_with(':')) {
+            return false;
+        }
+        return inner[..end].eq_ignore_ascii_case("::1");
+    }
+    let name = if let Some((name, _)) = host.rsplit_once(':') {
+        if name.contains(':') {
+            return false;
+        }
+        name
+    } else {
+        host
+    };
+    name.eq_ignore_ascii_case("localhost") || name == "127.0.0.1"
 }
 
 fn mime_for(path: &Path) -> &'static str {
@@ -296,12 +406,85 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
+    #[test]
+    fn preview_rejects_encoded_parent_bad_host_and_outside_symlink() {
+        let n = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("dd_serve_confine_{n}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("index.html"), b"<h1>hi</h1>").unwrap();
+        std::fs::write(dir.join("about"), b"about-page").unwrap();
+        let parent_secret = dir
+            .parent()
+            .unwrap()
+            .join(format!("dd_serve_parent_{n}.txt"));
+        std::fs::write(&parent_secret, b"PARENTSECRET").unwrap();
+        let outside = std::env::temp_dir().join(format!("dd_serve_outside_{n}"));
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join("secret.txt"), b"TOPSECRET").unwrap();
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(outside.join("secret.txt"), dir.join("leak.txt")).unwrap();
+            std::os::unix::fs::symlink(outside.join("secret.txt"), dir.join("404.html")).unwrap();
+        }
+        let server = StaticServer::start(dir.clone()).expect("bind");
+
+        let encoded_name = parent_secret.file_name().unwrap().to_string_lossy();
+        let encoded = http_get(server.port, &format!("/%2e%2e/{encoded_name}"));
+        assert!(
+            !encoded.contains("PARENTSECRET"),
+            "percent-decoded .. must not leave the export dir: {encoded}"
+        );
+        assert!(encoded.contains("404") || encoded.contains("Not Found"));
+        let encoded_slash = http_get(server.port, &format!("/%2e%2e%2f{encoded_name}"));
+        assert!(!encoded_slash.contains("PARENTSECRET"), "{encoded_slash}");
+
+        let null_path = http_get(server.port, "/%00");
+        assert!(null_path.contains("404") || null_path.contains("Not Found"));
+
+        let extensionless = http_get(server.port, "/about");
+        assert!(extensionless.contains("about-page"), "{extensionless}");
+
+        let missing_host = http_get_host(server.port, "/", None);
+        assert!(missing_host.contains("<h1>hi</h1>"), "{missing_host}");
+        let local_host = http_get_host(server.port, "/", Some("localhost:9"));
+        assert!(local_host.contains("<h1>hi</h1>"), "{local_host}");
+        let v6 = http_get_host(server.port, "/", Some("[::1]:9"));
+        assert!(v6.contains("<h1>hi</h1>"), "{v6}");
+
+        let evil = http_get_host(server.port, "/", Some("evil.example"));
+        assert!(evil.starts_with("HTTP/1.1 400"), "{evil}");
+        assert!(!evil.contains("evil.example"), "{evil}");
+        assert!(!evil.contains("<h1>hi</h1>"), "{evil}");
+
+        #[cfg(unix)]
+        {
+            let leak = http_get(server.port, "/leak.txt");
+            assert!(!leak.contains("TOPSECRET"), "{leak}");
+            let missing = http_get(server.port, "/missing.html");
+            assert!(!missing.contains("TOPSECRET"), "{missing}");
+            assert!(missing.contains("Not Found"), "{missing}");
+        }
+
+        std::fs::remove_dir_all(&dir).ok();
+        std::fs::remove_dir_all(&outside).ok();
+        std::fs::remove_file(&parent_secret).ok();
+    }
+
     fn http_get(port: u16, path: &str) -> String {
+        http_get_host(port, path, Some("127.0.0.1"))
+    }
+
+    fn http_get_host(port: u16, path: &str, host: Option<&str>) -> String {
         let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("connect");
+        let host_line = host
+            .map(|value| format!("Host: {value}\r\n"))
+            .unwrap_or_default();
         stream
             .write_all(
-                format!("GET {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n")
-                    .as_bytes(),
+                format!("GET {path} HTTP/1.1\r\n{host_line}Connection: close\r\n\r\n").as_bytes(),
             )
             .unwrap();
         let mut buf = String::new();
