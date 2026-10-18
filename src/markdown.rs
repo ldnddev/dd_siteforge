@@ -452,11 +452,7 @@ fn attr_kept(name: &str, value: Option<&str>) -> bool {
         let Some(value) = value else {
             return false;
         };
-        let compact = value.split_whitespace().collect::<Vec<_>>().join(" ");
-        return matches!(
-            compact.as_str(),
-            "text-align: left" | "text-align: center" | "text-align: right"
-        );
+        return style_value_kept(value);
     }
     let allowed = matches!(
         lower.as_str(),
@@ -485,6 +481,18 @@ fn attr_kept(name: &str, value: Option<&str>) -> bool {
             | "type"
             | "disabled"
             | "checked"
+            | "allow"
+            | "allowfullscreen"
+            | "frameborder"
+            | "sandbox"
+            | "name"
+            | "scrolling"
+            | "rel"
+            | "media"
+            | "integrity"
+            | "async"
+            | "defer"
+            | "nomodule"
     ) || lower.starts_with("aria-")
         || lower.starts_with("data-");
     if !allowed || !is_attr_name(&lower) {
@@ -504,6 +512,21 @@ fn attr_kept(name: &str, value: Option<&str>) -> bool {
             && !crate::model::is_scriptable_url(value.trim_start_matches('/'));
     }
     true
+}
+
+/// Layout CSS stays. Scriptable URLs and CSS expressions do not.
+fn style_value_kept(value: &str) -> bool {
+    let compact: String = value
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .flat_map(|c| c.to_lowercase())
+        .collect();
+    !compact.contains("javascript:")
+        && !compact.contains("vbscript:")
+        && !compact.contains("expression(")
+        && !compact.contains("@import")
+        && !compact.contains("-moz-binding")
+        && !compact.contains("behavior:")
 }
 
 fn is_allowed_tag(name: &str) -> bool {
@@ -562,11 +585,18 @@ fn is_allowed_tag(name: &str) -> bool {
             | "input"
             | "col"
             | "colgroup"
+            | "iframe"
+            | "script"
+            | "style"
+            | "link"
+            | "noscript"
     )
 }
 
-/// Keep CommonMark tags and the raw `img` / `div` authors paste into copy.
-/// Drop every other tag, event-handler attributes, and scriptable URLs.
+/// Keep CommonMark tags and author HTML in copy fields (`img`, `div`,
+/// `iframe`, `script`, `style`). Drop other tags, event-handler attributes,
+/// and scriptable URLs. `script` and `style` bodies are copied verbatim so a
+/// comparison such as `i < 10` is not treated as a tag.
 fn sanitize_html(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
     let mut rest = input;
@@ -586,6 +616,17 @@ fn sanitize_html(input: &str) -> String {
             break;
         };
         let tag = &after[..=rel_end];
+        let (name, closing, self_closing) = tag_flags(tag);
+        if matches!(name.as_str(), "script" | "style") && !closing && !self_closing {
+            if let Some(end) = find_closing_tag(after, &name) {
+                out.push_str(&sanitize_raw_container(&after[..end], &name));
+                rest = &after[end..];
+                continue;
+            }
+            out.push_str(&rewrite_tag(tag));
+            out.push_str(&after[rel_end + 1..]);
+            break;
+        }
         out.push_str(&rewrite_tag(tag));
         rest = &after[rel_end + 1..];
     }
@@ -593,14 +634,65 @@ fn sanitize_html(input: &str) -> String {
     out
 }
 
-fn rewrite_tag(tag: &str) -> String {
+fn tag_flags(tag: &str) -> (String, bool, bool) {
     let inner = &tag[1..tag.len() - 1];
     let trimmed = inner.trim();
     let self_closing = trimmed.ends_with('/');
     let closing = trimmed.starts_with('/');
     let body = trimmed.trim_start_matches('/').trim_end_matches('/').trim();
+    let name = body
+        .split_whitespace()
+        .next()
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    (name, closing, self_closing)
+}
+
+/// Rewrite the opening tag, then copy the element body unchanged.
+fn sanitize_raw_container(block: &str, name: &str) -> String {
+    let Some(rel_end) = block.find('>') else {
+        let mut escaped = String::new();
+        push_html(&mut escaped, block);
+        return escaped;
+    };
+    let open = rewrite_tag(&block[..=rel_end]);
+    let rest = &block[rel_end + 1..];
+    let close_at = rest.to_ascii_lowercase().rfind(&format!("</{name}"));
+    let Some(close_at) = close_at else {
+        return format!("{open}{rest}");
+    };
+    let body = &rest[..close_at];
+    format!("{open}{body}</{name}>")
+}
+
+fn find_closing_tag(haystack: &str, name: &str) -> Option<usize> {
+    let lower = haystack.to_ascii_lowercase();
+    let needle = format!("</{name}");
+    let mut from = 0;
+    while let Some(rel) = lower[from..].find(&needle) {
+        let abs = from + rel;
+        let mut tail = abs + needle.len();
+        while lower
+            .as_bytes()
+            .get(tail)
+            .is_some_and(|b| b.is_ascii_whitespace())
+        {
+            tail += 1;
+        }
+        if lower.as_bytes().get(tail) == Some(&b'>') {
+            return Some(tail + 1);
+        }
+        from = abs + needle.len();
+    }
+    None
+}
+
+fn rewrite_tag(tag: &str) -> String {
+    let (name_lower, closing, self_closing) = tag_flags(tag);
+    let inner = &tag[1..tag.len() - 1];
+    let trimmed = inner.trim();
+    let body = trimmed.trim_start_matches('/').trim_end_matches('/').trim();
     let name = body.split_whitespace().next().unwrap_or("");
-    let name_lower = name.to_ascii_lowercase();
     if name_lower.is_empty() || !is_allowed_tag(&name_lower) {
         let mut escaped = String::new();
         push_html(&mut escaped, tag);
@@ -611,9 +703,15 @@ fn rewrite_tag(tag: &str) -> String {
     }
     let attr_src = body[name.len()..].trim().trim_end_matches('/').trim();
     let attrs = parse_attrs(attr_src);
-    if attrs
-        .iter()
-        .all(|(attr, value)| attr_kept(attr, value.as_deref()))
+    let embedded_quotes = attrs.iter().any(|(_, value)| {
+        value
+            .as_ref()
+            .is_some_and(|value| value.contains('"') || value.contains('\''))
+    });
+    if !embedded_quotes
+        && attrs
+            .iter()
+            .all(|(attr, value)| attr_kept(attr, value.as_deref()))
     {
         return tag.to_string();
     }
@@ -672,13 +770,54 @@ fn take_attr_value(input: &str) -> (String, &str) {
         return (String::new(), input);
     };
     if first == '"' || first == '\'' {
-        if let Some(end) = input[1..].find(first) {
-            return (input[1..1 + end].to_string(), &input[1 + end + 1..]);
+        if let Some(end) = find_closing_quote(input, first) {
+            return (input[1..end].to_string(), &input[end + 1..]);
         }
         return (input[1..].to_string(), "");
     }
     let end = input.find(char::is_whitespace).unwrap_or(input.len());
     (input[..end].to_string(), &input[end..])
+}
+
+/// The closing quote is the one followed by another attribute, `>`, or `/`.
+/// A prefill query such as `entry={"Audit_Type":"wcag_audit"}` contains quotes
+/// that are not the end of the attribute.
+fn find_closing_quote(input: &str, quote: char) -> Option<usize> {
+    let bytes = input.as_bytes();
+    let q = quote as u8;
+    if bytes.first() != Some(&q) {
+        return None;
+    }
+    let mut index = 1;
+    let mut last = None;
+    while index < bytes.len() {
+        if bytes[index] == q {
+            last = Some(index);
+            if quote_closes_attr(input, index + 1) {
+                return Some(index);
+            }
+        }
+        index += 1;
+    }
+    last
+}
+
+fn quote_closes_attr(input: &str, after: usize) -> bool {
+    let rest = input[after..].trim_start();
+    if rest.is_empty() || rest.starts_with('>') || rest.starts_with('/') {
+        return true;
+    }
+    let name_len = rest
+        .find(|c: char| c.is_whitespace() || c == '=' || c == '/' || c == '>')
+        .unwrap_or(rest.len());
+    if name_len == 0 || !is_attr_name(&rest[..name_len]) {
+        return false;
+    }
+    let after_name = rest[name_len..].trim_start();
+    after_name.is_empty()
+        || after_name.starts_with('=')
+        || after_name.starts_with('>')
+        || after_name.starts_with('/')
 }
 
 #[cfg(test)]
@@ -809,11 +948,119 @@ mod tests {
         );
 
         let raw = to_html("<script>alert(1)</script>\n\n<div class=\"note\">ok</div>");
-        assert!(!raw.to_ascii_lowercase().contains("<script"), "{raw}");
+        assert!(raw.contains("<script>alert(1)</script>"), "{raw}");
         assert!(raw.contains("class=\"note\""), "{raw}");
 
         let image = to_html("<img src=x onerror=alert(1)>");
         assert!(!image.to_ascii_lowercase().contains("onerror"), "{image}");
         assert!(image.contains("<img"), "{image}");
+    }
+
+    #[test]
+    fn author_iframe_script_and_style_pass_through() {
+        let iframe = to_html(
+            r#"<iframe src="https://www.cognitoforms.com/f/nKwDEJz_5k-922Y1-zu0fg/4" allow="payment" style="border:0;width:100%;" height="1122"></iframe>"#,
+        );
+        assert!(
+            iframe.contains(r#"src="https://www.cognitoforms.com/f/nKwDEJz_5k-922Y1-zu0fg/4""#),
+            "{iframe}"
+        );
+        assert!(iframe.contains(r#"allow="payment""#), "{iframe}");
+        assert!(
+            iframe.contains(r#"style="border:0;width:100%;""#),
+            "{iframe}"
+        );
+        assert!(iframe.contains(r#"height="1122""#), "{iframe}");
+        assert!(!iframe.contains("&lt;iframe"), "{iframe}");
+
+        let cognito = to_html(
+            "<script src=\"https://www.cognitoforms.com/f/seamless.js\" data-key=\"nKwDEJz_5k-922Y1-zu0fg\" data-form=\"1\"></script>\n<script>\n  (function () { if (i < 10) return; window.Cognito.on('afterSubmit', function () {}); })();\n</script>",
+        );
+        assert!(
+            cognito.contains(
+                r#"<script src="https://www.cognitoforms.com/f/seamless.js" data-key="nKwDEJz_5k-922Y1-zu0fg" data-form="1"></script>"#
+            ),
+            "{cognito}"
+        );
+        assert!(cognito.contains("if (i < 10) return;"), "{cognito}");
+        assert!(cognito.contains("window.Cognito.on"), "{cognito}");
+
+        let json_ld =
+            to_html(r#"<script type="application/ld+json">{"@type":"BreadcrumbList"}</script>"#);
+        assert!(
+            json_ld.contains(
+                r#"<script type="application/ld+json">{"@type":"BreadcrumbList"}</script>"#
+            ),
+            "{json_ld}"
+        );
+
+        let css = to_html("<style>\n.embed { width: 100%; }\n</style>");
+        assert!(css.contains("<style>"), "{css}");
+        assert!(css.contains(".embed { width: 100%; }"), "{css}");
+        assert!(css.contains("</style>"), "{css}");
+    }
+
+    #[test]
+    fn script_src_keeps_a_quoted_prefill_query() {
+        let html = to_html(
+            r#"<script src="https://www.cognitoforms.com/f/seamless.js?entry={"Audit_Type":"wcag_audit"}" data-key="nKwDEJz_5k-922Y1-zu0fg" data-form="2"></script>"#,
+        );
+        assert!(
+            html.contains(
+                r#"src="https://www.cognitoforms.com/f/seamless.js?entry={&quot;Audit_Type&quot;:&quot;wcag_audit&quot;}""#
+            ),
+            "{html}"
+        );
+        assert!(
+            html.contains(r#"data-key="nKwDEJz_5k-922Y1-zu0fg""#),
+            "{html}"
+        );
+        assert!(html.contains(r#"data-form="2""#), "{html}");
+        assert!(!html.contains("entry={\""), "{html}");
+
+        // Saved author copy is missing the quote that closes the field name.
+        // The exporter still has to keep that string; it must not stop at `{`.
+        let saved = to_html(
+            r#"<script src="https://www.cognitoforms.com/f/seamless.js?entry={"Audit_Type:"wcag_audit"}" data-key="nKwDEJz_5k-922Y1-zu0fg" data-form="2"></script>"#,
+        );
+        assert!(
+            saved.contains(
+                r#"src="https://www.cognitoforms.com/f/seamless.js?entry={&quot;Audit_Type:&quot;wcag_audit&quot;}""#
+            ),
+            "{saved}"
+        );
+        assert!(
+            saved.contains(r#"data-key="nKwDEJz_5k-922Y1-zu0fg""#),
+            "{saved}"
+        );
+        assert!(saved.contains(r#"data-form="2""#), "{saved}");
+    }
+
+    #[test]
+    fn scriptable_embed_urls_and_css_are_removed() {
+        let iframe = to_html(r#"<iframe src="javascript:alert(1)" allow="payment"></iframe>"#);
+        assert!(
+            !iframe.to_ascii_lowercase().contains("javascript:"),
+            "{iframe}"
+        );
+        assert!(iframe.contains("<iframe"), "{iframe}");
+        assert!(iframe.contains(r#"allow="payment""#), "{iframe}");
+
+        let script = to_html(r#"<script src="javascript:alert(1)">if (i < 10) return;</script>"#);
+        assert!(
+            !script.to_ascii_lowercase().contains("javascript:"),
+            "{script}"
+        );
+        assert!(script.contains("if (i < 10) return;"), "{script}");
+
+        let styled = to_html(r#"<div style="background:url(javascript:alert(1))">x</div>"#);
+        assert!(
+            !styled.to_ascii_lowercase().contains("javascript:"),
+            "{styled}"
+        );
+        assert!(styled.contains("<div>"), "{styled}");
+
+        let aligned = to_html(r#"<td style="text-align: center">x</td>"#);
+        assert!(aligned.contains("text-align: center"), "{aligned}");
     }
 }
