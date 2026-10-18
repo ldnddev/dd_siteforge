@@ -3895,6 +3895,52 @@ fn export_dir_symlink_outside_the_site_does_not_write() {
 }
 
 #[test]
+fn bare_site_json_name_exports_into_the_working_directory() {
+    let n = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let rel = format!("target/dd_export_bare_{n}");
+    let mut app = App::new(
+        Site::starter(),
+        Some(std::path::PathBuf::from("site.json")),
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    assert_eq!(app.site_root(), std::path::PathBuf::from("."));
+    let empty_parent = std::path::Path::new("site.json")
+        .parent()
+        .unwrap()
+        .to_path_buf();
+    assert!(empty_parent.as_os_str().is_empty());
+    assert!(crate::export::join_inside(&empty_parent, "web").is_none());
+
+    if let PageNode::Hero(hero) = &mut app.site.pages[0].nodes[0] {
+        hero.parent_image_url = "https://example.com/hero.jpg".to_string();
+    }
+    app.site.export_dir = Some(rel.clone());
+    app.begin_export_flow();
+    let out = std::path::PathBuf::from(&rel);
+    let toast = app.toasts.last().map(|toast| toast.message.as_str());
+    assert!(
+        out.join("index.html").is_file(),
+        "export from a bare site.json path should write inside the working directory, toast={toast:?}"
+    );
+    assert!(
+        app.toasts
+            .iter()
+            .any(|toast| toast.level == ToastLevel::Success),
+        "{:?}",
+        app.toasts
+            .iter()
+            .map(|toast| &toast.message)
+            .collect::<Vec<_>>()
+    );
+    std::fs::remove_dir_all(&out).ok();
+}
+
+#[test]
 fn e_key_with_validation_errors_opens_validation_modal() {
     let mut app = App::new(
         Site::starter(),

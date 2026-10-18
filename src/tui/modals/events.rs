@@ -702,10 +702,7 @@ impl App {
     /// Run `validate_site` on the current site. Open `Modal::ValidationErrors`
     /// if any errors; otherwise set a green status and leave no modal open.
     pub(in crate::tui) fn open_validation_modal(&mut self) {
-        let root = self
-            .path
-            .as_ref()
-            .and_then(|p| p.parent().map(std::path::Path::to_path_buf));
+        let root = self.path.as_ref().map(|_| self.site_root());
         let errors = crate::validate::validate_site_with_root(&self.site, root.as_deref());
         if errors.is_empty() {
             self.push_toast(ToastLevel::Success, "No validation errors.");

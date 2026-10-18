@@ -96,13 +96,8 @@ impl App {
     }
 
     pub(in crate::tui) fn commit_preview_to(&mut self, rel: String) -> bool {
-        use std::path::PathBuf;
         let normalized = normalize_relative_path(&rel);
-        let base = self
-            .path
-            .as_ref()
-            .and_then(|p| p.parent().map(PathBuf::from))
-            .unwrap_or_else(|| PathBuf::from("."));
+        let base = self.site_root();
         let Some(out) = crate::export::join_inside(&base, &rel) else {
             self.push_toast(
                 ToastLevel::Warning,
@@ -164,12 +159,7 @@ impl App {
         if rel.trim().is_empty() {
             return;
         }
-        use std::path::PathBuf;
-        let base = self
-            .path
-            .as_ref()
-            .and_then(|p| p.parent().map(PathBuf::from))
-            .unwrap_or_else(|| PathBuf::from("."));
+        let base = self.site_root();
         let Some(out) = crate::export::join_inside(&base, &rel) else {
             self.push_toast(
                 ToastLevel::Warning,
@@ -212,10 +202,7 @@ impl App {
     }
 
     pub(in crate::tui) fn begin_preview_flow(&mut self) {
-        let root = self
-            .path
-            .as_ref()
-            .and_then(|p| p.parent().map(std::path::Path::to_path_buf));
+        let root = self.path.as_ref().map(|_| self.site_root());
         let errors = crate::validate::validate_site_with_root(&self.site, root.as_deref());
         if !errors.is_empty() {
             self.modal = Some(Modal::ValidationErrors {
@@ -237,10 +224,7 @@ impl App {
     }
 
     pub(in crate::tui) fn begin_export_flow(&mut self) {
-        let root = self
-            .path
-            .as_ref()
-            .and_then(|p| p.parent().map(std::path::Path::to_path_buf));
+        let root = self.path.as_ref().map(|_| self.site_root());
         let errors = crate::validate::validate_site_with_root(&self.site, root.as_deref());
         if !errors.is_empty() {
             self.modal = Some(Modal::ValidationErrors {
@@ -279,13 +263,8 @@ impl App {
     }
 
     pub(in crate::tui) fn commit_export_to(&mut self, rel: String) -> bool {
-        use std::path::PathBuf;
         let normalized = normalize_relative_path(&rel);
-        let base = self
-            .path
-            .as_ref()
-            .and_then(|p| p.parent().map(PathBuf::from))
-            .unwrap_or_else(|| PathBuf::from("."));
+        let base = self.site_root();
         let Some(out) = crate::export::join_inside(&base, &rel) else {
             self.push_toast(
                 ToastLevel::Warning,

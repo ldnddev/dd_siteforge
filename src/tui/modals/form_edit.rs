@@ -811,12 +811,7 @@ impl App {
 
         let pick_video = field_id.contains("mp4");
         if Self::url_field_opens_file_picker(&field_id) {
-            let base = self
-                .path
-                .as_ref()
-                .and_then(|p| p.parent().map(std::path::PathBuf::from))
-                .unwrap_or_else(|| std::path::PathBuf::from("."));
-            let root = base.join("source").join("images");
+            let root = self.site_root().join("source").join("images");
             if !root.exists() {
                 self.push_toast(
                     ToastLevel::Warning,
