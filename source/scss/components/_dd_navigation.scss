@@ -52,6 +52,7 @@
 // Main Menu
 .navigation {
   &.-main-menu {
+    --dd-nav-panel-top: 0px;
     position: fixed;
     top: 0px;
     left: 0px;
@@ -61,6 +62,7 @@
       position: relative;
       display: block;
       height: auto;
+      z-index: 40;
     }
     & nav {
       width: 100%;
@@ -106,20 +108,31 @@
     & .menu-item-has-children {
       position: relative;
       display: flex;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
       align-items: center;
       justify-content: center;
-      column-gap: 2px;
       @include mixins.mq(lg) {
         justify-content: flex-start;
+        column-gap: 2px;
       }
       & > a {
         display: inline-flex;
         align-items: center;
+        justify-content: center;
+        flex: 1 1 auto;
         width: auto;
         min-width: 0;
         max-width: 100%;
+        min-height: 44px;
+        padding-right: 48px;
+        padding-left: 48px;
         white-space: normal;
+        @include mixins.mq(lg) {
+          flex: 0 1 auto;
+          justify-content: flex-start;
+          min-height: 0;
+          padding: 0;
+        }
         &::after {
           content: "";
           display: inline-block;
@@ -138,7 +151,10 @@
         border: 0;
       }
       & > .menu-item__toggle {
-        position: relative;
+        position: absolute;
+        top: 50%;
+        right: 8px;
+        z-index: 1;
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -154,8 +170,15 @@
         background: transparent;
         color: variables.$c_text_primary;
         line-height: 1;
+        transform: translateY(-50%);
         @include mixins.pref_dark {
           color: variables.$c_text_primary--dark;
+        }
+        @include mixins.mq(lg) {
+          position: relative;
+          top: auto;
+          right: auto;
+          transform: none;
         }
         &:hover,
         &:focus,
@@ -176,76 +199,227 @@
           }
         }
       }
-      & > .sub-menu {
-        flex: 1 0 100%;
+      & .menu-item__caret {
+        display: block;
+        transform: rotate(-90deg);
+        @include mixins.mq(lg) {
+          transform: none;
+        }
       }
-      &:hover > .sub-menu,
-      &:focus-within > .sub-menu,
-      &.-active > .sub-menu,
-      & > .menu-item__toggle[aria-expanded="true"] + .sub-menu {
-        display: flex;
+      &.-active > .menu-item__toggle .menu-item__caret {
+        @include mixins.mq(lg) {
+          transform: rotate(180deg);
+        }
       }
     }
     & .sub-menu {
-      display: none;
+      display: flex;
       flex-direction: column;
+      position: fixed;
+      z-index: 1;
+      top: var(--dd-nav-panel-top);
+      right: 0;
+      bottom: 0;
+      left: 0;
+      box-sizing: border-box;
+      width: auto;
+      min-width: 0;
+      max-width: 100%;
       margin: 0;
-      padding: 0;
+      padding: 8px;
       list-style: none;
+      text-align: left;
       background-color: variables.$c_ui_neutral_200;
+      box-shadow: -12px 0 28px rgba(28, 30, 33, 0.16);
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      scroll-padding: 8px;
+      transform: translateX(100%);
+      visibility: hidden;
+      pointer-events: none;
+      transition: transform 0.28s ease, visibility 0s linear 0.28s;
       @include mixins.pref_dark {
         background-color: variables.$c_ui_neutral_200--dark;
+      }
+      @include mixins.mq(lg) {
+        display: none;
+        position: absolute;
+        top: 100%;
+        right: 0;
+        bottom: auto;
+        left: auto;
+        z-index: 30;
+        width: max-content;
+        min-width: 14rem;
+        max-width: calc(100vw - 2rem);
+        height: auto;
+        max-height: calc(100vh - 8rem);
+        transform: none;
+        visibility: visible;
+        pointer-events: auto;
+        transition: none;
+        border: 1px solid variables.$c_text_secondary;
+        box-shadow: 0 8px 24px rgba(28, 30, 33, 0.12);
+        @include mixins.pref_dark {
+          border-color: variables.$c_text_secondary--dark;
+        }
+        &::before {
+          content: "";
+          position: absolute;
+          top: -8px;
+          right: 0;
+          left: 0;
+          height: 8px;
+        }
       }
       & .menu-item {
         width: 100%;
       }
       & a {
-        padding: 8px 16px;
+        padding: 12px 16px;
         min-height: 44px;
         scroll-margin: 8px;
         display: flex;
         align-items: center;
+        min-width: 0;
+        max-width: 100%;
+        white-space: normal;
+        overflow-wrap: anywhere;
+        &:hover,
+        &:focus-visible {
+          background-color: variables.$c_ui_neutral_300;
+          color: variables.$c_text_primary;
+          @include mixins.pref_dark {
+            background-color: variables.$c_ui_neutral_300--dark;
+            color: variables.$c_text_primary--dark;
+          }
+        }
       }
     }
-    & .menu-item.-has-children > .sub-menu,
-    & .menu-item-has-children > .sub-menu {
+    & .menu-item.-has-children.-active > .sub-menu,
+    & .menu-item-has-children.-active > .sub-menu {
+      transform: translateX(0);
+      visibility: visible;
+      pointer-events: auto;
+      transition: transform 0.28s ease, visibility 0s linear 0s;
       @include mixins.mq(lg) {
-        position: absolute;
-        top: 100%;
-        right: 0;
-        left: auto;
-        z-index: 30;
-        padding: 8px;
-        width: max-content;
-        min-width: 12rem;
-        max-height: calc(100vh - 8rem);
-        overflow-y: auto;
-        border: 1px solid variables.$c_text_secondary;
-        @include mixins.pref_dark {
-          border-color: variables.$c_text_secondary--dark;
-        }
+        display: flex;
+        transform: none;
       }
     }
-    // After the disclosure buttons exist, only an expanded toggle shows the panel.
-    &.-submenu-ready {
-      & .menu-item.-has-children,
-      & .menu-item-has-children {
-        &:hover > .sub-menu,
-        &:focus-within > .sub-menu,
-        &.-active > .sub-menu {
-          display: none;
-        }
-        & > .menu-item__toggle[aria-expanded="true"] + .sub-menu {
+    &:not(.-submenu-ready) {
+      & .menu-item.-has-children:hover > .sub-menu,
+      & .menu-item.-has-children:focus-within > .sub-menu,
+      & .menu-item-has-children:hover > .sub-menu,
+      & .menu-item-has-children:focus-within > .sub-menu {
+        @include mixins.mq(lg) {
           display: flex;
         }
       }
     }
+    // Once the disclosure buttons exist, hover and focus-within no longer open the panel.
+    &.-submenu-ready {
+      @include mixins.mq(lg) {
+        & .menu-item.-has-children:hover > .sub-menu,
+        & .menu-item.-has-children:focus-within > .sub-menu,
+        & .menu-item-has-children:hover > .sub-menu,
+        & .menu-item-has-children:focus-within > .sub-menu {
+          display: none;
+        }
+        & .menu-item.-has-children.-active > .sub-menu,
+        & .menu-item-has-children.-active > .sub-menu {
+          display: flex;
+        }
+      }
+    }
+    & .menu-item--chrome-back,
+    & .menu-item--chrome-label {
+      width: 100%;
+      text-align: left;
+      @include mixins.mq(lg) {
+        display: none;
+      }
+    }
+    & .menu-item__back {
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 8px;
+      box-sizing: border-box;
+      width: 100%;
+      min-width: 44px;
+      min-height: 44px;
+      margin: 0;
+      padding: 12px 16px;
+      border: 0;
+      background: transparent;
+      color: variables.$c_text_primary;
+      font: inherit;
+      line-height: 1.3;
+      max-width: 100%;
+      text-align: left;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      @include mixins.pref_dark {
+        color: variables.$c_text_primary--dark;
+      }
+      &:hover,
+      &:focus,
+      &:focus-visible,
+      &:active {
+        border: 0;
+        background-color: variables.$c_ui_neutral_300;
+        color: variables.$c_text_primary;
+        @include mixins.pref_dark {
+          background-color: variables.$c_ui_neutral_300--dark;
+          color: variables.$c_text_primary--dark;
+        }
+      }
+      &:focus-visible {
+        outline: 2px solid variables.$c_text_primary;
+        outline-offset: 2px;
+        @include mixins.pref_dark {
+          outline-color: variables.$c_text_primary--dark;
+        }
+      }
+    }
+    & .menu-item__back-icon {
+      flex: 0 0 auto;
+    }
+    & .menu-item__label {
+      display: block;
+      padding: 4px 16px 12px;
+      border-bottom: 1px solid variables.$c_text_secondary;
+      color: variables.$c_text_primary;
+      font-weight: 700;
+      line-height: 1.3;
+      text-align: left;
+      @include mixins.pref_dark {
+        border-bottom-color: variables.$c_text_secondary--dark;
+        color: variables.$c_text_primary--dark;
+      }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      & .sub-menu {
+        transition: none;
+      }
+    }
     @media (forced-colors: active) {
       & .menu-item__toggle,
+      & .menu-item__back,
       & .dd-menu__close {
-        border: 1px solid CanvasText;
-        color: CanvasText;
+        border: 1px solid CanvasText !important;
+        background: transparent !important;
+        color: CanvasText !important;
         forced-color-adjust: auto;
+        &:hover,
+        &:focus,
+        &:focus-visible,
+        &:active {
+          border: 1px solid CanvasText !important;
+          background: transparent !important;
+          color: CanvasText !important;
+        }
       }
       & .menu-item.-has-children > a::after,
       & .menu-item-has-children > a::after {
@@ -270,16 +444,38 @@
       right: 0;
       width: auto;
       height: calc(100vh - 66px);
+      height: calc(100dvh - 66px);
       display: flex;
       flex-direction: column;
       z-index: 9000;
-      @include mixins.vertical_scroll();
+      overflow: hidden;
+      @include mixins.mq(lg) {
+        position: relative;
+        top: auto;
+        right: auto;
+        width: auto;
+        height: auto;
+        display: block;
+        overflow: visible;
+        background-color: transparent;
+        z-index: 40;
+      }
       & nav {
         display: flex;
         flex-direction: column;
+        flex: 1 1 auto;
+        min-height: 0;
         width: 100%;
+        overflow: hidden;
+        @include mixins.mq(lg) {
+          display: block;
+          flex: none;
+          overflow: visible;
+        }
       }
       & button.dd-menu__close {
+        position: relative;
+        z-index: 2;
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -324,15 +520,26 @@
         }
       }
       & .menu {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-x: hidden;
+        overflow-y: auto;
         text-align: center;
+        @include mixins.mq(lg) {
+          overflow: visible;
+        }
       }
       & .menu-item {
         @include mixins.font_size(32px);
-        line-height: 32px;
+        line-height: 1.3;
         padding: 20px 0;
         & a {
           @include mixins.font_size(32px);
         }
+      }
+      & .sub-menu .menu-item {
+        padding: 0;
+        line-height: 1.3;
       }
     }
   }
@@ -409,6 +616,18 @@
     & .-x {
       -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M10.4883 14.651L15.25 21H22.25L14.3917 10.5223L20.9308 3H18.2808L13.1643 8.88578L8.75 3H1.75L9.26086 13.0145L2.31915 21H4.96917L10.4883 14.651ZM16.25 19L5.75 5H7.75L18.25 19H16.25Z'%3E%3C/path%3E%3C/svg%3E");
       mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M10.4883 14.651L15.25 21H22.25L14.3917 10.5223L20.9308 3H18.2808L13.1643 8.88578L8.75 3H1.75L9.26086 13.0145L2.31915 21H4.96917L10.4883 14.651ZM16.25 19L5.75 5H7.75L18.25 19H16.25Z'%3E%3C/path%3E%3C/svg%3E");
+    }
+    & .-facebook {
+      -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M13.001 19.9381C16.9473 19.446 20.001 16.0796 20.001 12C20.001 7.58172 16.4193 4 12.001 4C7.5827 4 4.00098 7.58172 4.00098 12C4.00098 16.0796 7.05467 19.446 11.001 19.9381V14H9.00098V12H11.001V10.3458C11.001 9.00855 11.1402 8.52362 11.4017 8.03473C11.6631 7.54584 12.0468 7.16216 12.5357 6.9007C12.9184 6.69604 13.3931 6.57252 14.2227 6.51954C14.5519 6.49851 14.9781 6.52533 15.501 6.6V8.5H15.001C14.0837 8.5 13.7052 8.54332 13.4789 8.66433C13.3386 8.73939 13.2404 8.83758 13.1653 8.97793C13.0443 9.20418 13.001 9.42853 13.001 10.3458V12H15.501L15.001 14H13.001V19.9381ZM12.001 22C6.47813 22 2.00098 17.5228 2.00098 12C2.00098 6.47715 6.47813 2 12.001 2C17.5238 2 22.001 6.47715 22.001 12C22.001 17.5228 17.5238 22 12.001 22Z'%3E%3C/path%3E%3C/svg%3E");
+      mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M13.001 19.9381C16.9473 19.446 20.001 16.0796 20.001 12C20.001 7.58172 16.4193 4 12.001 4C7.5827 4 4.00098 7.58172 4.00098 12C4.00098 16.0796 7.05467 19.446 11.001 19.9381V14H9.00098V12H11.001V10.3458C11.001 9.00855 11.1402 8.52362 11.4017 8.03473C11.6631 7.54584 12.0468 7.16216 12.5357 6.9007C12.9184 6.69604 13.3931 6.57252 14.2227 6.51954C14.5519 6.49851 14.9781 6.52533 15.501 6.6V8.5H15.001C14.0837 8.5 13.7052 8.54332 13.4789 8.66433C13.3386 8.73939 13.2404 8.83758 13.1653 8.97793C13.0443 9.20418 13.001 9.42853 13.001 10.3458V12H15.501L15.001 14H13.001V19.9381ZM12.001 22C6.47813 22 2.00098 17.5228 2.00098 12C2.00098 6.47715 6.47813 2 12.001 2C17.5238 2 22.001 6.47715 22.001 12C22.001 17.5228 17.5238 22 12.001 22Z'%3E%3C/path%3E%3C/svg%3E");
+    }
+    & .-instagram {
+      -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M12.001 9C10.3436 9 9.00098 10.3431 9.00098 12C9.00098 13.6573 10.3441 15 12.001 15C13.6583 15 15.001 13.6569 15.001 12C15.001 10.3427 13.6579 9 12.001 9ZM12.001 7C14.7614 7 17.001 9.2371 17.001 12C17.001 14.7605 14.7639 17 12.001 17C9.24051 17 7.00098 14.7629 7.00098 12C7.00098 9.23953 9.23808 7 12.001 7ZM18.501 6.74915C18.501 7.43926 17.9402 7.99917 17.251 7.99917C16.5609 7.99917 16.001 7.4384 16.001 6.74915C16.001 6.0599 16.5617 5.5 17.251 5.5C17.9393 5.49913 18.501 6.0599 18.501 6.74915ZM12.001 4C9.5265 4 9.12318 4.00655 7.97227 4.0578C7.18815 4.09461 6.66253 4.20007 6.17416 4.38967C5.74016 4.55799 5.42709 4.75898 5.09352 5.09255C4.75867 5.4274 4.55804 5.73963 4.3904 6.17383C4.20036 6.66332 4.09493 7.18811 4.05878 7.97115C4.00703 9.0752 4.00098 9.46105 4.00098 12C4.00098 14.4745 4.00753 14.8778 4.05877 16.0286C4.0956 16.8124 4.2012 17.3388 4.39034 17.826C4.5591 18.2606 4.7605 18.5744 5.09246 18.9064C5.42863 19.2421 5.74179 19.4434 6.17187 19.6094C6.66619 19.8005 7.19148 19.9061 7.97212 19.9422C9.07618 19.9939 9.46203 20 12.001 20C14.4755 20 14.8788 19.9934 16.0296 19.9422C16.8117 19.9055 17.3385 19.7996 17.827 19.6106C18.2604 19.4423 18.5752 19.2402 18.9074 18.9085C19.2436 18.5718 19.4445 18.2594 19.6107 17.8283C19.8013 17.3358 19.9071 16.8098 19.9432 16.0289C19.9949 14.9248 20.001 14.5389 20.001 12C20.001 9.52552 19.9944 9.12221 19.9432 7.97137C19.9064 7.18906 19.8005 6.66149 19.6113 6.17318C19.4434 5.74038 19.2417 5.42635 18.9084 5.09255C18.573 4.75715 18.2616 4.55693 17.8271 4.38942C17.338 4.19954 16.8124 4.09396 16.0298 4.05781C14.9258 4.00605 14.5399 4 12.001 4ZM12.001 2C14.7176 2 15.0568 2.01 16.1235 2.06C17.1876 2.10917 17.9135 2.2775 18.551 2.525C19.2101 2.77917 19.7668 3.1225 20.3226 3.67833C20.8776 4.23417 21.221 4.7925 21.476 5.45C21.7226 6.08667 21.891 6.81333 21.941 7.8775C21.9885 8.94417 22.001 9.28333 22.001 12C22.001 14.7167 21.991 15.0558 21.941 16.1225C21.8918 17.1867 21.7226 17.9125 21.476 18.55C21.2218 19.2092 20.8776 19.7658 20.3226 20.3217C19.7668 20.8767 19.2076 21.22 18.551 21.475C17.9135 21.7217 17.1876 21.89 16.1235 21.94C15.0568 21.9875 14.7176 22 12.001 22C9.28431 22 8.94514 21.99 7.87848 21.94C6.81431 21.8908 6.08931 21.7217 5.45098 21.475C4.79264 21.2208 4.23514 20.8767 3.67931 20.3217C3.12348 19.7658 2.78098 19.2067 2.52598 18.55C2.27848 17.9125 2.11098 17.1867 2.06098 16.1225C2.01348 15.0558 2.00098 14.7167 2.00098 12C2.00098 9.28333 2.01098 8.94417 2.06098 7.8775C2.11014 6.8125 2.27848 6.0875 2.52598 5.45C2.78014 4.79167 3.12348 4.23417 3.67931 3.67833C4.23514 3.1225 4.79348 2.78 5.45098 2.525C6.08848 2.2775 6.81348 2.11 7.87848 2.06C8.94514 2.0125 9.28431 2 12.001 2Z'%3E%3C/path%3E%3C/svg%3E");
+      mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M12.001 9C10.3436 9 9.00098 10.3431 9.00098 12C9.00098 13.6573 10.3441 15 12.001 15C13.6583 15 15.001 13.6569 15.001 12C15.001 10.3427 13.6579 9 12.001 9ZM12.001 7C14.7614 7 17.001 9.2371 17.001 12C17.001 14.7605 14.7639 17 12.001 17C9.24051 17 7.00098 14.7629 7.00098 12C7.00098 9.23953 9.23808 7 12.001 7ZM18.501 6.74915C18.501 7.43926 17.9402 7.99917 17.251 7.99917C16.5609 7.99917 16.001 7.4384 16.001 6.74915C16.001 6.0599 16.5617 5.5 17.251 5.5C17.9393 5.49913 18.501 6.0599 18.501 6.74915ZM12.001 4C9.5265 4 9.12318 4.00655 7.97227 4.0578C7.18815 4.09461 6.66253 4.20007 6.17416 4.38967C5.74016 4.55799 5.42709 4.75898 5.09352 5.09255C4.75867 5.4274 4.55804 5.73963 4.3904 6.17383C4.20036 6.66332 4.09493 7.18811 4.05878 7.97115C4.00703 9.0752 4.00098 9.46105 4.00098 12C4.00098 14.4745 4.00753 14.8778 4.05877 16.0286C4.0956 16.8124 4.2012 17.3388 4.39034 17.826C4.5591 18.2606 4.7605 18.5744 5.09246 18.9064C5.42863 19.2421 5.74179 19.4434 6.17187 19.6094C6.66619 19.8005 7.19148 19.9061 7.97212 19.9422C9.07618 19.9939 9.46203 20 12.001 20C14.4755 20 14.8788 19.9934 16.0296 19.9422C16.8117 19.9055 17.3385 19.7996 17.827 19.6106C18.2604 19.4423 18.5752 19.2402 18.9074 18.9085C19.2436 18.5718 19.4445 18.2594 19.6107 17.8283C19.8013 17.3358 19.9071 16.8098 19.9432 16.0289C19.9949 14.9248 20.001 14.5389 20.001 12C20.001 9.52552 19.9944 9.12221 19.9432 7.97137C19.9064 7.18906 19.8005 6.66149 19.6113 6.17318C19.4434 5.74038 19.2417 5.42635 18.9084 5.09255C18.573 4.75715 18.2616 4.55693 17.8271 4.38942C17.338 4.19954 16.8124 4.09396 16.0298 4.05781C14.9258 4.00605 14.5399 4 12.001 4ZM12.001 2C14.7176 2 15.0568 2.01 16.1235 2.06C17.1876 2.10917 17.9135 2.2775 18.551 2.525C19.2101 2.77917 19.7668 3.1225 20.3226 3.67833C20.8776 4.23417 21.221 4.7925 21.476 5.45C21.7226 6.08667 21.891 6.81333 21.941 7.8775C21.9885 8.94417 22.001 9.28333 22.001 12C22.001 14.7167 21.991 15.0558 21.941 16.1225C21.8918 17.1867 21.7226 17.9125 21.476 18.55C21.2218 19.2092 20.8776 19.7658 20.3226 20.3217C19.7668 20.8767 19.2076 21.22 18.551 21.475C17.9135 21.7217 17.1876 21.89 16.1235 21.94C15.0568 21.9875 14.7176 22 12.001 22C9.28431 22 8.94514 21.99 7.87848 21.94C6.81431 21.8908 6.08931 21.7217 5.45098 21.475C4.79264 21.2208 4.23514 20.8767 3.67931 20.3217C3.12348 19.7658 2.78098 19.2067 2.52598 18.55C2.27848 17.9125 2.11098 17.1867 2.06098 16.1225C2.01348 15.0558 2.00098 14.7167 2.00098 12C2.00098 9.28333 2.01098 8.94417 2.06098 7.8775C2.11014 6.8125 2.27848 6.0875 2.52598 5.45C2.78014 4.79167 3.12348 4.23417 3.67931 3.67833C4.23514 3.1225 4.79348 2.78 5.45098 2.525C6.08848 2.2775 6.81348 2.11 7.87848 2.06C8.94514 2.0125 9.28431 2 12.001 2Z'%3E%3C/path%3E%3C/svg%3E");
+    }
+    & .-linkedin {
+      -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M4.00098 3H20.001C20.5533 3 21.001 3.44772 21.001 4V20C21.001 20.5523 20.5533 21 20.001 21H4.00098C3.44869 21 3.00098 20.5523 3.00098 20V4C3.00098 3.44772 3.44869 3 4.00098 3ZM5.00098 5V19H19.001V5H5.00098ZM7.50098 9C6.67255 9 6.00098 8.32843 6.00098 7.5C6.00098 6.67157 6.67255 6 7.50098 6C8.3294 6 9.00098 6.67157 9.00098 7.5C9.00098 8.32843 8.3294 9 7.50098 9ZM6.50098 10H8.50098V17.5H6.50098V10ZM12.001 10.4295C12.5854 9.86534 13.2665 9.5 14.001 9.5C16.072 9.5 17.501 11.1789 17.501 13.25V17.5H15.501V13.25C15.501 12.2835 14.7175 11.5 13.751 11.5C12.7845 11.5 12.001 12.2835 12.001 13.25V17.5H10.001V10H12.001V10.4295Z'%3E%3C/path%3E%3C/svg%3E");
+      mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M4.00098 3H20.001C20.5533 3 21.001 3.44772 21.001 4V20C21.001 20.5523 20.5533 21 20.001 21H4.00098C3.44869 21 3.00098 20.5523 3.00098 20V4C3.00098 3.44772 3.44869 3 4.00098 3ZM5.00098 5V19H19.001V5H5.00098ZM7.50098 9C6.67255 9 6.00098 8.32843 6.00098 7.5C6.00098 6.67157 6.67255 6 7.50098 6C8.3294 6 9.00098 6.67157 9.00098 7.5C9.00098 8.32843 8.3294 9 7.50098 9ZM6.50098 10H8.50098V17.5H6.50098V10ZM12.001 10.4295C12.5854 9.86534 13.2665 9.5 14.001 9.5C16.072 9.5 17.501 11.1789 17.501 13.25V17.5H15.501V13.25C15.501 12.2835 14.7175 11.5 13.751 11.5C12.7845 11.5 12.001 12.2835 12.001 13.25V17.5H10.001V10H12.001V10.4295Z'%3E%3C/path%3E%3C/svg%3E");
     }
     & .-codepen {
       -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M16.5 13.2018L13 15.5352V19.1315L19.1972 15L16.5 13.2018ZM14.6972 12L12 10.2018L9.30278 12L12 13.7982L14.6972 12ZM20 10.8685L18.3028 12L20 13.1315V10.8685ZM19.1972 9L13 4.86852V8.46482L16.5 10.7982L19.1972 9ZM7.5 10.7982L11 8.46482V4.86852L4.80278 9L7.5 10.7982ZM4.80278 15L11 19.1315V15.5352L7.5 13.2018L4.80278 15ZM4 13.1315L5.69722 12L4 10.8685V13.1315ZM2 9C2 8.66565 2.1671 8.35342 2.4453 8.16795L11.4453 2.16795C11.7812 1.94402 12.2188 1.94402 12.5547 2.16795L21.5547 8.16795C21.8329 8.35342 22 8.66565 22 9V15C22 15.3344 21.8329 15.6466 21.5547 15.8321L12.5547 21.8321C12.2188 22.056 11.7812 22.056 11.4453 21.8321L2.4453 15.8321C2.1671 15.6466 2 15.3344 2 15V9Z'%3E%3C/path%3E%3C/svg%3E");

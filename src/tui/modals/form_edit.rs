@@ -197,7 +197,10 @@ impl App {
             };
 
         // SubForm collection handling: A/X/Enter/Up/Down operate on items list.
+        // Shift+J / Shift+K reorder the highlighted item among its siblings.
         if is_subform {
+            let shift = key.modifiers.contains(KeyModifiers::SHIFT)
+                && !key.modifiers.contains(KeyModifiers::CONTROL);
             match key.code {
                 KeyCode::Char('A') => {
                     let max_items = match state.form.fields[focused_idx].kind {
@@ -249,6 +252,18 @@ impl App {
                             ToastLevel::Warning,
                             format!("Must keep at least {min_items} item(s)."),
                         );
+                    }
+                    return Some(ModalResult::Continue);
+                }
+                KeyCode::Char('j' | 'J') if shift => {
+                    if move_subform_selection(state, field_id, true) {
+                        self.push_toast(ToastLevel::Success, "Moved item down.");
+                    }
+                    return Some(ModalResult::Continue);
+                }
+                KeyCode::Char('k' | 'K') if shift => {
+                    if move_subform_selection(state, field_id, false) {
+                        self.push_toast(ToastLevel::Success, "Moved item up.");
                     }
                     return Some(ModalResult::Continue);
                 }
@@ -889,4 +904,33 @@ fn edit_form_text(
     state.set(field_id, new);
     *cursor_pos = pos;
     *selection_anchor = None;
+}
+
+/// Swap the highlighted subform item with its next or previous sibling.
+/// The highlight stays on the moved item. The ends do not wrap.
+fn move_subform_selection(state: &mut editform::EditFormState, field_id: &str, down: bool) -> bool {
+    let selected = state.selected_sub_item.get(field_id).copied().unwrap_or(0);
+    let len = state
+        .sub_state
+        .get(field_id)
+        .map(|items| items.len())
+        .unwrap_or(0);
+    if len < 2 || selected >= len {
+        return false;
+    }
+    let dest = if down {
+        selected + 1
+    } else {
+        selected.wrapping_sub(1)
+    };
+    if dest >= len {
+        return false;
+    }
+    state
+        .sub_state
+        .get_mut(field_id)
+        .expect("subform items")
+        .swap(selected, dest);
+    state.selected_sub_item.insert(field_id.to_string(), dest);
+    true
 }

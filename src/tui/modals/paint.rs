@@ -665,7 +665,7 @@ impl App {
                 let selected = state.selected_sub_item.get(field.id).copied().unwrap_or(0);
                 let mut lines: Vec<String> = Vec::new();
                 lines.push(format!(
-                    "{} item(s) — A add · X remove · Enter edit",
+                    "{} item(s) — A add · X remove · Shift+J/K move · Enter edit",
                     items.len()
                 ));
                 if items.is_empty() {

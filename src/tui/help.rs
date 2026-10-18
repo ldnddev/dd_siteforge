@@ -317,6 +317,10 @@ pub(crate) fn build_help_text(theme: &AppTheme, width: usize) -> Text<'static> {
                 "Newline in textarea / next field / drill into SubForm item",
             ),
             (
+                "Shift+J / Shift+K",
+                "Move the highlighted subform item (menu items and nested sub-menus) among its siblings",
+            ),
+            (
                 "Home / End",
                 "Start/end of the current wrapped line in a textarea",
             ),

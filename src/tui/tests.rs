@@ -2044,6 +2044,111 @@ fn tier_d_navigation_button_saves_url() {
 }
 
 #[test]
+fn navigation_menu_and_submenu_reorder_with_shift_jk() {
+    let mut app = app_with_component(ComponentKind::Navigation);
+    if let PageNode::Section(section) = &mut app.site.pages[0].nodes[1] {
+        let crate::model::SectionComponent::Navigation(nav) = &mut section.columns[0].components[0]
+        else {
+            panic!("expected Navigation");
+        };
+        nav.items = vec![
+            nav_item("Home", vec![]),
+            nav_item(
+                "About",
+                vec![nav_item("Blog", vec![]), nav_item("News", vec![])],
+            ),
+            nav_item("Contact", vec![]),
+        ];
+    }
+    open_form_edit_on_page_component(&mut app);
+    tab_to_items_field(&mut app);
+    assert_eq!(subform_labels(&app), vec!["Home", "About", "Contact"]);
+    send_key(&mut app, KeyCode::Char('j'), KeyModifiers::NONE);
+    assert_eq!(subform_selected(&app), 1);
+    assert_eq!(subform_labels(&app), vec!["Home", "About", "Contact"]);
+
+    send_key(&mut app, KeyCode::Char('J'), KeyModifiers::SHIFT);
+    assert_eq!(subform_selected(&app), 2);
+    assert_eq!(subform_labels(&app), vec!["Home", "Contact", "About"]);
+    send_key(&mut app, KeyCode::Char('J'), KeyModifiers::SHIFT);
+    assert_eq!(subform_selected(&app), 2);
+    assert_eq!(subform_labels(&app), vec!["Home", "Contact", "About"]);
+    send_key(&mut app, KeyCode::Char('K'), KeyModifiers::SHIFT);
+    assert_eq!(subform_selected(&app), 1);
+    assert_eq!(subform_labels(&app), vec!["Home", "About", "Contact"]);
+
+    send_key(&mut app, KeyCode::Enter, KeyModifiers::NONE);
+    tab_to_items_field(&mut app);
+    assert_eq!(subform_labels(&app), vec!["Blog", "News"]);
+    send_key(&mut app, KeyCode::Char('K'), KeyModifiers::SHIFT);
+    assert_eq!(subform_selected(&app), 0);
+    assert_eq!(subform_labels(&app), vec!["Blog", "News"]);
+    send_key(&mut app, KeyCode::Char('J'), KeyModifiers::SHIFT);
+    assert_eq!(subform_selected(&app), 1);
+    assert_eq!(subform_labels(&app), vec!["News", "Blog"]);
+
+    send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
+    assert_eq!(subform_labels(&app), vec!["Home", "About", "Contact"]);
+    send_key(&mut app, KeyCode::Char('K'), KeyModifiers::SHIFT);
+    assert_eq!(subform_selected(&app), 0);
+    assert_eq!(subform_labels(&app), vec!["About", "Home", "Contact"]);
+    send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
+
+    match &app.site.pages[0].nodes[1] {
+        PageNode::Section(section) => match &section.columns[0].components[0] {
+            crate::model::SectionComponent::Navigation(nav) => {
+                assert_eq!(nav.items[0].child_link_label, "About");
+                assert_eq!(
+                    nav.items[0]
+                        .items
+                        .iter()
+                        .map(|item| item.child_link_label.as_str())
+                        .collect::<Vec<_>>(),
+                    vec!["News", "Blog"]
+                );
+                assert_eq!(nav.items[1].child_link_label, "Home");
+                assert_eq!(nav.items[2].child_link_label, "Contact");
+            }
+            _ => panic!("expected Navigation"),
+        },
+        _ => panic!("expected Section"),
+    }
+}
+
+fn nav_item(label: &str, items: Vec<crate::model::NavigationItem>) -> crate::model::NavigationItem {
+    crate::model::NavigationItem {
+        child_kind: crate::model::NavigationKind::Link,
+        child_link_label: label.to_string(),
+        child_link_url: Some("/".to_string()),
+        child_link_target: Some(crate::model::CardLinkTarget::SelfTarget),
+        child_link_css: None,
+        items,
+    }
+}
+
+fn subform_labels(app: &App) -> Vec<String> {
+    let Some(Modal::FormEdit { state, .. }) = app.modal.as_ref() else {
+        panic!("expected FormEdit");
+    };
+    let field_id = state.form.fields[state.focused_field].id;
+    state
+        .sub_state
+        .get(field_id)
+        .expect("focused subform")
+        .iter()
+        .map(|item| item.get("child_link_label").to_string())
+        .collect()
+}
+
+fn subform_selected(app: &App) -> usize {
+    let Some(Modal::FormEdit { state, .. }) = app.modal.as_ref() else {
+        panic!("expected FormEdit");
+    };
+    let field_id = state.form.fields[state.focused_field].id;
+    state.selected_sub_item.get(field_id).copied().unwrap_or(0)
+}
+
+#[test]
 #[allow(non_snake_case)]
 fn tier_b_add_item_via_A_key() {
     let mut app = app_with_component(ComponentKind::Accordion);
