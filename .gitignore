@@ -60,6 +60,7 @@ Thumbs.db
 # Per-author local state (test site, export output, agent tooling)
 /site.json
 /site.json.backup
+/site-tmp.json
 /web/
 /.kilo/
 /.superpowers/

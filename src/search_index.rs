@@ -1,5 +1,4 @@
 //! Flattened per-page search documents written to `search-index.json` on export.
-use std::fs;
 use std::path::Path;
 
 use anyhow::Context;
@@ -37,8 +36,12 @@ pub struct SearchPage {
 pub fn write_search_index(site: &Site, output_dir: &Path) -> anyhow::Result<()> {
     let index = build_search_index(site);
     let json = serde_json::to_string_pretty(&index).context("failed to serialize search-index")?;
-    fs::write(output_dir.join("search-index.json"), json + "\n")
-        .context("failed to write search-index.json")
+    crate::export::write_inside(
+        output_dir,
+        "search-index.json",
+        format!("{json}\n").as_bytes(),
+    )
+    .context("failed to write search-index.json")
 }
 
 pub fn build_search_index(site: &Site) -> SearchIndex {

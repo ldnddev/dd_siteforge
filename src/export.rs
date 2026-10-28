@@ -13,6 +13,7 @@ use crate::search_index::write_search_index;
 
 const GRUNT_ASSET_DIRS: &[&str] = &["css", "js", "fonts", "favicon", "vendors"];
 
+#[derive(Debug)]
 pub struct ExportReport {
     pub pages: usize,
     pub wrote_404: bool,
@@ -54,7 +55,8 @@ fn copy_built_assets(site_root: Option<&Path>, output_dir: &Path) -> anyhow::Res
         for dir in GRUNT_ASSET_DIRS {
             let src = grunt_assets.join(dir);
             if src.exists() {
-                copy_dir_recursive(&src, &dest_assets.join(dir)).with_context(|| {
+                let dest = ensure_real_dest(output_dir, &format!("assets/{dir}"))?;
+                copy_dir_recursive(&src, &dest).with_context(|| {
                     format!("failed to copy grunt assets from '{}'", src.display())
                 })?;
             }
@@ -62,8 +64,10 @@ fn copy_built_assets(site_root: Option<&Path>, output_dir: &Path) -> anyhow::Res
     }
 
     let source = root.join("source");
-    fill_dir_if_empty(&source.join("fonts"), &dest_assets.join("fonts"))?;
-    fill_dir_if_empty(&source.join("favicon"), &dest_assets.join("favicon"))?;
+    let fonts = ensure_real_dest(output_dir, "assets/fonts")?;
+    let favicon = ensure_real_dest(output_dir, "assets/favicon")?;
+    fill_dir_if_empty(&source.join("fonts"), &fonts)?;
+    fill_dir_if_empty(&source.join("favicon"), &favicon)?;
     Ok(())
 }
 
@@ -99,7 +103,7 @@ pub fn copy_source_images(site_root: Option<&Path>, output_dir: &Path) -> anyhow
     if !src.exists() {
         return Ok(());
     }
-    let dst = output_dir.join("assets").join("images");
+    let dst = ensure_real_dest(output_dir, "assets/images")?;
     copy_dir_recursive(&src, &dst)
         .with_context(|| format!("failed to copy images from '{}'", src.display()))
 }
@@ -108,6 +112,60 @@ pub fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
     let root = confinement_root(src)?;
     let mut stack = std::collections::HashSet::new();
     copy_confined(&root, &root, dst, &mut stack)
+}
+
+/// Directory under `output_dir` that is not a symlink.
+///
+/// `join_inside` rejects `..` and a path whose real location already leaves
+/// the export root. A symlink is refused even when its target stays inside,
+/// so a later `create_dir_all` or `copy` cannot follow it.
+fn ensure_real_dest(output_dir: &Path, rel: &str) -> anyhow::Result<PathBuf> {
+    let dest = join_inside(output_dir, rel)
+        .ok_or_else(|| anyhow::anyhow!("refusing to write '{rel}' outside the export directory"))?;
+    if fs::symlink_metadata(&dest).is_ok_and(|meta| meta.file_type().is_symlink()) {
+        anyhow::bail!("refusing to write '{rel}' through a symlink");
+    }
+    Ok(dest)
+}
+
+/// Write `bytes` to `root/rel` only when every existing ancestor stays inside `root`.
+pub(crate) fn write_inside(root: &Path, rel: &str, bytes: &[u8]) -> anyhow::Result<()> {
+    let dest = join_inside(root, rel)
+        .ok_or_else(|| anyhow::anyhow!("refusing to write '{rel}' outside the export directory"))?;
+    if fs::symlink_metadata(&dest).is_ok_and(|meta| meta.file_type().is_symlink()) {
+        anyhow::bail!("refusing to write '{rel}' through a symlink");
+    }
+    if let Some(parent) = dest.parent() {
+        if parent != root {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("failed to create directory '{}'", parent.display()))?;
+        }
+    }
+    fs::write(&dest, bytes).with_context(|| format!("failed to write '{}'", dest.display()))
+}
+
+/// Export directory for `serve`.
+///
+/// An absolute `--output-dir` is the operator's explicit destination.
+/// A relative path, and `site.export_dir` when the flag is absent, must stay
+/// inside the site directory.
+pub fn resolve_serve_output(
+    root: &Path,
+    explicit: Option<&str>,
+    site_export_dir: Option<&str>,
+) -> anyhow::Result<PathBuf> {
+    if let Some(explicit) = explicit.map(str::trim).filter(|value| !value.is_empty()) {
+        let path = Path::new(explicit);
+        if path.is_absolute() {
+            return Ok(path.to_path_buf());
+        }
+        return join_inside(root, explicit).ok_or_else(|| {
+            anyhow::anyhow!("export path '{explicit}' must stay inside the site directory")
+        });
+    }
+    let rel = site_export_dir.unwrap_or("web");
+    join_inside(root, rel)
+        .ok_or_else(|| anyhow::anyhow!("export path '{rel}' must stay inside the site directory"))
 }
 
 /// `src` itself must not be a symlink whose target leaves its parent.
@@ -142,6 +200,7 @@ fn copy_confined(
         return Ok(());
     }
     let copied = (|| {
+        refuse_dest_symlink(dst)?;
         fs::create_dir_all(dst)?;
         for entry in fs::read_dir(&here)? {
             let entry = entry?;
@@ -159,6 +218,7 @@ fn copy_confined(
                 if meta.is_dir() {
                     copy_confined(root, &canon, &target, stack)?;
                 } else if meta.is_file() {
+                    refuse_dest_symlink(&target)?;
                     fs::copy(&canon, &target)?;
                 }
                 continue;
@@ -166,6 +226,7 @@ fn copy_confined(
             if ft.is_dir() {
                 copy_confined(root, &path, &target, stack)?;
             } else if ft.is_file() {
+                refuse_dest_symlink(&target)?;
                 fs::copy(&path, &target)?;
             }
         }
@@ -173,6 +234,16 @@ fn copy_confined(
     })();
     stack.remove(&here);
     copied
+}
+
+fn refuse_dest_symlink(path: &Path) -> std::io::Result<()> {
+    if fs::symlink_metadata(path).is_ok_and(|meta| meta.file_type().is_symlink()) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("refusing to write through symlink '{}'", path.display()),
+        ));
+    }
+    Ok(())
 }
 
 /// Join `rel` onto `root` when the result stays inside `root`.
@@ -263,7 +334,7 @@ fn write_sitemap(site: &Site, output_dir: &Path) -> anyhow::Result<()> {
         body.push_str("</lastmod>\n  </url>\n");
     }
     body.push_str("</urlset>\n");
-    fs::write(output_dir.join("sitemap.xml"), body).context("failed to write sitemap.xml")
+    write_inside(output_dir, "sitemap.xml", body.as_bytes()).context("failed to write sitemap.xml")
 }
 
 fn write_robots(site: &Site, output_dir: &Path) -> anyhow::Result<()> {
@@ -274,7 +345,7 @@ fn write_robots(site: &Site, output_dir: &Path) -> anyhow::Result<()> {
         body.push_str(&sitemap);
         body.push('\n');
     }
-    fs::write(output_dir.join("robots.txt"), body).context("failed to write robots.txt")
+    write_inside(output_dir, "robots.txt", body.as_bytes()).context("failed to write robots.txt")
 }
 
 fn write_404_if_missing(
@@ -294,7 +365,7 @@ fn write_404_if_missing(
         &crate::renderer::render_footer(&r, &site.footer, &site.name)?,
         site,
     )?;
-    fs::write(output_dir.join(page_file_name("404", false)), html)
+    write_inside(output_dir, &page_file_name("404", false), html.as_bytes())
         .context("failed to write 404.html")?;
     Ok(true)
 }
@@ -662,6 +733,99 @@ mod tests {
         std::os::unix::fs::symlink(&outside, root.join("web")).unwrap();
         assert!(join_inside(&root, "web").is_none());
         assert_eq!(join_inside(&root, "dist").unwrap(), root.join("dist"));
+        std::fs::remove_dir_all(&root).ok();
+        std::fs::remove_dir_all(&outside).ok();
+    }
+
+    #[test]
+    fn export_refuses_an_unsafe_page_slug() {
+        let base = tmp_dir("dd_export_unsafe_base");
+        let out = base.join("out");
+        fs::create_dir_all(&out).unwrap();
+        let marker = base.join("index.html");
+        fs::write(&marker, b"keep").unwrap();
+        let mut site = Site::starter();
+        site.pretty_urls = true;
+        site.pages[0].slug = "..".to_string();
+        let err = export_site(&site, &out, None).unwrap_err();
+        assert!(err.to_string().contains("unsafe page slug"), "{err}");
+        assert_eq!(fs::read(&marker).unwrap(), b"keep");
+        assert!(!out.join("index.html").exists());
+        std::fs::remove_dir_all(&base).ok();
+    }
+
+    #[test]
+    fn resolve_serve_output_keeps_relative_paths_inside_the_site() {
+        let root = tmp_dir("dd_serve_output");
+        fs::create_dir_all(&root).unwrap();
+        let web = resolve_serve_output(&root, None, None).unwrap();
+        assert_eq!(web, root.join("web"));
+        let nested = resolve_serve_output(&root, Some("./dist/preview"), None).unwrap();
+        assert_eq!(nested, root.join("dist/preview"));
+        assert!(resolve_serve_output(&root, Some("../outside"), None).is_err());
+        assert!(resolve_serve_output(&root, None, Some("../outside")).is_err());
+        let abs = std::env::temp_dir().join("dd_serve_abs");
+        assert_eq!(
+            resolve_serve_output(&root, Some(abs.to_str().unwrap()), None).unwrap(),
+            abs
+        );
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn export_does_not_follow_a_symlink_out_of_the_output_dir() {
+        let out = tmp_dir("dd_export_symlink_page");
+        let outside = tmp_dir("dd_export_symlink_page_out");
+        fs::create_dir_all(&out).unwrap();
+        fs::create_dir_all(&outside).unwrap();
+        let secret = outside.join("secret.txt");
+        fs::write(&secret, b"SECRET").unwrap();
+        std::os::unix::fs::symlink(&secret, out.join("index.html")).unwrap();
+        let err = export_site(&Site::starter(), &out, None).unwrap_err();
+        assert!(err.to_string().contains("refusing to write"), "{err}");
+        assert_eq!(fs::read(&secret).unwrap(), b"SECRET");
+        std::fs::remove_dir_all(&out).ok();
+        std::fs::remove_dir_all(&outside).ok();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn export_does_not_copy_assets_through_a_symlink() {
+        let root = tmp_dir("dd_export_symlink_assets_root");
+        let outside = tmp_dir("dd_export_symlink_assets_out");
+        fs::create_dir_all(&outside).unwrap();
+        fs::write(outside.join("secret.txt"), b"SECRET").unwrap();
+        copy_dir_recursive(&crate_source().join("fonts"), &root.join("source/fonts")).unwrap();
+        let out = root.join("out");
+        fs::create_dir_all(&out).unwrap();
+        std::os::unix::fs::symlink(&outside, out.join("assets")).unwrap();
+        let err = export_site(&Site::starter(), &out, Some(&root)).unwrap_err();
+        assert!(err.to_string().contains("refusing to write"), "{err}");
+        assert_eq!(fs::read(outside.join("secret.txt")).unwrap(), b"SECRET");
+        assert!(!outside.join("fonts").exists());
+        assert!(!outside.join("Lato-Regular.woff2").exists());
+        std::fs::remove_dir_all(&root).ok();
+        std::fs::remove_dir_all(&outside).ok();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn copy_refuses_to_overwrite_a_destination_symlink() {
+        let root = tmp_dir("dd_copy_dest_symlink");
+        let outside = tmp_dir("dd_copy_dest_symlink_out");
+        fs::create_dir_all(&outside).unwrap();
+        let secret = outside.join("secret.txt");
+        fs::write(&secret, b"SECRET").unwrap();
+        let src = root.join("src");
+        fs::create_dir_all(&src).unwrap();
+        fs::write(src.join("style.css"), b"css").unwrap();
+        let dst = root.join("dst");
+        fs::create_dir_all(&dst).unwrap();
+        std::os::unix::fs::symlink(&secret, dst.join("style.css")).unwrap();
+        let err = copy_dir_recursive(&src, &dst).unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+        assert_eq!(fs::read(&secret).unwrap(), b"SECRET");
         std::fs::remove_dir_all(&root).ok();
         std::fs::remove_dir_all(&outside).ok();
     }

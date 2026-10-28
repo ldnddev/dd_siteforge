@@ -279,14 +279,11 @@ fn main() -> anyhow::Result<()> {
                 }
                 std::process::exit(1);
             }
-            let out_path = if let Some(explicit) = output_dir.as_deref() {
-                root.join(explicit)
-            } else {
-                let rel = site.export_dir.clone().unwrap_or_else(|| "web".to_string());
-                export::join_inside(&root, &rel).ok_or_else(|| {
-                    anyhow::anyhow!("export path '{rel}' must stay inside the site directory")
-                })?
-            };
+            let out_path = export::resolve_serve_output(
+                &root,
+                output_dir.as_deref(),
+                site.export_dir.as_deref(),
+            )?;
             let report = export_site(&site, &out_path, Some(&root)).with_context(|| {
                 format!(
                     "could not export site '{}' to '{}'",

@@ -14,13 +14,13 @@
 #   ./install.sh --help           # this help
 #
 # Pin a version or override locations:
-#   VERSION=v1.29.2                # default: latest GitHub Release
+#   VERSION=v1.29.3                # default: latest GitHub Release
 #   PREFIX=$HOME/.local           # binary lives at $PREFIX/bin/dd_siteforge
 #   CONFIG_DIR=$HOME/.config/ldnddev
 #   TARGET=x86_64-unknown-linux-musl   # skip auto-detect
 #
 # Piped extras:
-#   curl -fsSL … | bash -s -- --version v1.29.2
+#   curl -fsSL … | bash -s -- --version v1.29.3
 #   curl -fsSL … | bash -s -- uninstall
 #
 # Re-run safe: existing themes are left alone on install; the binary is overwritten.
@@ -73,12 +73,12 @@ Usage:
   ./install.sh --help           this help
 
 Override defaults via env vars:
-  VERSION=v1.29.2                pin a release (default: latest)
+  VERSION=v1.29.3                pin a release (default: latest)
   PREFIX=$HOME/.local           binary lives at $PREFIX/bin/dd_siteforge
   BIN_DIR, CONFIG_DIR, TARGET, GITHUB_REPO
 
 Piped extras:
-  curl -fsSL … | bash -s -- --version v1.29.2
+  curl -fsSL … | bash -s -- --version v1.29.3
   curl -fsSL … | bash -s -- uninstall
 EOF
 }
@@ -138,7 +138,7 @@ detect_target() {
 }
 
 normalize_version() {
-    # Empty → latest. Accept "1.29.2" or "v1.29.2".
+    # Empty → latest. Accept "1.29.3" or "v1.29.3".
     if [ -z "$VERSION" ] || [ "$VERSION" = "latest" ]; then
         VERSION=""
         return 0
@@ -187,7 +187,7 @@ http_get() {
 verify_sha256() {
     local archive="$1" sumfile="$2"
     local expected got dir base
-    [ -s "$sumfile" ] || { yellow "Checksum file missing or empty — skipping verify."; return 0; }
+    [ -s "$sumfile" ] || { red "Checksum file missing or empty — refusing to install an unverified binary."; exit 1; }
 
     dir="$(dirname "$archive")"
     base="$(basename "$archive")"
@@ -209,8 +209,8 @@ verify_sha256() {
     elif command -v shasum >/dev/null 2>&1; then
         got="$(shasum -a 256 "$archive" | awk '{print $1}')"
     else
-        yellow "No sha256sum/shasum on PATH — skipping checksum for $base."
-        return 0
+        red "No sha256sum or shasum on PATH — cannot verify $base."
+        exit 1
     fi
 
     if [ "$expected" != "$got" ]; then
@@ -329,11 +329,12 @@ do_install_from_release() {
         exit 1
     fi
 
-    if http_get "$sum_url" "$tmp/$asset.sha256" 2>/dev/null; then
-        verify_sha256 "$archive" "$tmp/$asset.sha256"
-    else
-        yellow "No checksum published for this asset — skipping verify."
+    if ! http_get "$sum_url" "$tmp/$asset.sha256" 2>/dev/null; then
+        red "No checksum published for this asset — refusing to install an unverified binary."
+        red "  $sum_url"
+        exit 1
     fi
+    verify_sha256 "$archive" "$tmp/$asset.sha256"
 
     tar -xzf "$archive" -C "$tmp"
 
@@ -425,7 +426,7 @@ while [ $# -gt 0 ]; do
         --from-release|--binary)
                             mode="release"; shift ;;
         --version)
-            [ $# -ge 2 ] || { red "--version needs a value (e.g. v1.29.2)"; exit 1; }
+            [ $# -ge 2 ] || { red "--version needs a value (e.g. v1.29.3)"; exit 1; }
             VERSION="$2"
             shift 2
             ;;

@@ -2932,26 +2932,4 @@ mod tests {
             other => panic!("expected SearchResults, got {other:?}"),
         }
     }
-
-    #[test]
-    fn site_tmp_json_loads_search_results() {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("site-tmp.json");
-        if !path.is_file() {
-            return;
-        }
-        let raw = std::fs::read_to_string(&path).expect("read site-tmp.json");
-        let site: Site = serde_json::from_str(&raw).expect("site-tmp.json should parse");
-        let found = site.pages.iter().any(|page| {
-            page.nodes.iter().any(|node| match node {
-                PageNode::Section(section) => section.columns.iter().any(|column| {
-                    column
-                        .components
-                        .iter()
-                        .any(|c| matches!(c, SectionComponent::SearchResults(_)))
-                }),
-                _ => false,
-            })
-        });
-        assert!(found, "site-tmp.json should contain search_results");
-    }
 }

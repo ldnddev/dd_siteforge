@@ -23,17 +23,13 @@ pub fn render_site_to_dir(
     let header_html = render_header(&r, &site.header)?;
     let footer_html = render_footer(&r, &site.footer, &site.name)?;
     for page in &site.pages {
+        if !crate::model::is_safe_page_slug(&page.slug) {
+            anyhow::bail!("refusing to export unsafe page slug '{}'", page.slug);
+        }
         let html = render_page_html_with_chrome(&r, page, &header_html, &footer_html, site)?;
         let pretty = page.slug != "404" && site.pretty_urls;
         let file_name = crate::model::page_file_name(&page.slug, pretty);
-        let out_path = output_dir.join(&file_name);
-        if let Some(parent) = out_path.parent() {
-            fs::create_dir_all(parent).with_context(|| {
-                format!("failed to create page directory '{}'", parent.display())
-            })?;
-        }
-        fs::write(&out_path, html)
-            .with_context(|| format!("failed to write page output '{}'", out_path.display()))?;
+        crate::export::write_inside(output_dir, &file_name, html.as_bytes())?;
     }
     Ok(())
 }
@@ -2770,13 +2766,15 @@ mod tests {
         site.pages[0].head.title = format!("Hello {payload}");
         site.pages[0].head.meta_description = Some(format!("About {payload}"));
         let r = crate::templates::Renderer::bundled_only().unwrap();
-        let html =
-            super::render_page_html_with_chrome(&r, &site.pages[0], "", "", &site).unwrap();
+        let html = super::render_page_html_with_chrome(&r, &site.pages[0], "", "", &site).unwrap();
         assert!(
             html.contains("\\u003c/script\\u003e\\u003cscript\\u003ealert(1)\\u003c/script\\u003e"),
             "{html}"
         );
-        assert!(!html.contains("</script><script>alert(1)</script>"), "{html}");
+        assert!(
+            !html.contains("</script><script>alert(1)</script>"),
+            "{html}"
+        );
 
         let faq = page_with_component(SectionComponent::Accordion(DdAccordion {
             parent_type: AccordionType::Faq,
