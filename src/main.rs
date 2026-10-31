@@ -3,6 +3,7 @@ mod export;
 mod health;
 mod markdown;
 mod model;
+mod og_image;
 mod renderer;
 mod scaffold;
 mod search_index;

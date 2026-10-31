@@ -49,7 +49,7 @@ pub fn build_search_index(site: &Site) -> SearchIndex {
         .pages
         .iter()
         .filter(|page| is_indexed(page))
-        .map(|page| index_page(page, site.pretty_urls))
+        .map(|page| index_page(site, page, site.pretty_urls))
         .collect();
     SearchIndex {
         v: INDEX_VERSION,
@@ -64,7 +64,7 @@ fn is_indexed(page: &Page) -> bool {
     )
 }
 
-fn index_page(page: &Page, pretty: bool) -> SearchPage {
+fn index_page(site: &Site, page: &Page, pretty: bool) -> SearchPage {
     let mut parts: Vec<String> = Vec::new();
     let mut headings: Vec<String> = Vec::new();
     push_text(&mut parts, &page.head.title);
@@ -76,13 +76,7 @@ fn index_page(page: &Page, pretty: bool) -> SearchPage {
     }
     let body = truncate_chars(&collapse_ws(&parts.join(" ")), BODY_MAX_CHARS);
     let description = page_description(&page.head, &body);
-    let image = page
-        .head
-        .og_image
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(str::to_string);
+    let image = Some(site.share_image_source(page).url);
     SearchPage {
         url: page_href(&page.slug, pretty),
         path: page_public_path(&page.slug, pretty),
@@ -391,7 +385,7 @@ mod tests {
                 .contains("Compose pages with typed component schemas.")
         );
         assert!(page.body.contains("Get Started"));
-        assert!(page.image.is_none());
+        assert_eq!(page.image.as_deref(), Some("assets/images/hero.jpg"));
     }
 
     #[test]
@@ -486,6 +480,10 @@ mod tests {
             og_title: None,
             og_description: Some("  OG copy  ".into()),
             og_image: Some("assets/images/og.jpg".into()),
+            og_image_alt: None,
+            og_image_width: None,
+            og_image_height: None,
+            twitter_card: None,
         };
         assert_eq!(page_description(&head, "body text"), "OG copy");
         head.og_description = None;

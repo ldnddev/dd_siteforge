@@ -16,7 +16,8 @@ use anyhow::{Context, Result, anyhow};
 use crate::model::{
     AccordionClass, AccordionItem, AccordionType, AlertClass, AlertType, AlternatingItem,
     AlternatingType, BannerClass, ButtonStyle, CardItem, CardLinkTarget, CardType, CtaClass,
-    DATA_TABLE_MAX_COLUMNS, DataTableAlign, DataTableBadge, DataTableCell, DataTableCellType,
+    DATA_TABLE_MAX_COLUMNS, DEFAULT_OG_IMAGE, DEFAULT_OG_IMAGE_ALT, DEFAULT_OG_IMAGE_HEIGHT,
+    DEFAULT_OG_IMAGE_WIDTH, DataTableAlign, DataTableBadge, DataTableCell, DataTableCellType,
     DataTableColumn, DataTableRow, DdAccordion, DdAlert, DdAlternating, DdBanner, DdBlockquote,
     DdCard, DdCta, DdDataTable, DdFilmstrip, DdFooter, DdHead, DdHeader, DdHeaderMenu,
     DdHeaderSearch, DdHeadline, DdHero, DdImage, DdLink, DdMilestones, DdModal, DdNavigation,
@@ -25,7 +26,7 @@ use crate::model::{
     MilestonesItem, NavigationClass, NavigationItem, NavigationKind, NavigationType, PageNode,
     SalAnimation, SectionBg, SectionClass, SectionColumn, SectionComponent, SectionItemBoxClass,
     SectionPadding, Site, SliderItem, SpacerSize, TabsItem, TabsOrientation, TimelineItem,
-    column_id_local_part, rehome_column_id, uniquify_id,
+    TwitterCard, column_id_local_part, rehome_column_id, uniquify_id,
 };
 use crate::tui::editform::{self, EditFormState, FieldKind};
 
@@ -1297,6 +1298,8 @@ fn apply_section_values(section: &mut DdSection, state: &EditFormState) -> Resul
 }
 
 fn apply_head_values(head: &mut crate::model::DdHead, state: &EditFormState) -> Result<()> {
+    let og_image_width = opt_pixels(state.get("og_image_width"), "OG Image width")?;
+    let og_image_height = opt_pixels(state.get("og_image_height"), "OG Image height")?;
     head.title = state.get("title").to_string();
     let meta_title = state.get("meta_title").trim().to_string();
     head.meta_title = if meta_title.is_empty() {
@@ -1335,7 +1338,36 @@ fn apply_head_values(head: &mut crate::model::DdHead, state: &EditFormState) -> 
     head.og_description = if og_d.is_empty() { None } else { Some(og_d) };
     let og_i = state.get("og_image").trim().to_string();
     head.og_image = if og_i.is_empty() { None } else { Some(og_i) };
+    head.og_image_alt = opt_trimmed(state.get("og_image_alt"));
+    head.og_image_width = og_image_width;
+    head.og_image_height = og_image_height;
+    head.twitter_card = match state.get("twitter_card").trim() {
+        "summary" => Some(TwitterCard::Summary),
+        "summary_large_image" => Some(TwitterCard::SummaryLargeImage),
+        _ => None,
+    };
     Ok(())
+}
+
+fn opt_pixels(raw: &str, label: &str) -> Result<Option<u32>> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    let n: u32 = trimmed
+        .parse()
+        .with_context(|| format!("{label} must be a whole number of pixels"))?;
+    if n == 0 {
+        anyhow::bail!("{label} must be greater than 0");
+    }
+    Ok(Some(n))
+}
+
+fn required_pixels(raw: &str, label: &str, fallback: u32) -> Result<u32> {
+    match opt_pixels(raw, label)? {
+        Some(n) => Ok(n),
+        None => Ok(fallback),
+    }
 }
 
 fn require_css_hex(raw: &str, field: &str) -> Result<String> {
@@ -1351,6 +1383,16 @@ fn apply_site_values(site: &mut Site, state: &EditFormState) -> Result<()> {
     let secondary = require_css_hex(state.get("secondary_color"), "secondary_color")?;
     let tertiary = require_css_hex(state.get("tertiary_color"), "tertiary_color")?;
     let support = require_css_hex(state.get("support_color"), "support_color")?;
+    let default_og_image_width = required_pixels(
+        state.get("default_og_image_width"),
+        "Default OG image width",
+        DEFAULT_OG_IMAGE_WIDTH,
+    )?;
+    let default_og_image_height = required_pixels(
+        state.get("default_og_image_height"),
+        "Default OG image height",
+        DEFAULT_OG_IMAGE_HEIGHT,
+    )?;
     site.name = state.get("name").to_string();
     site.lang = state.get("lang").trim().to_string();
     let base = state.get("base_url").trim().to_string();
@@ -1367,6 +1409,24 @@ fn apply_site_values(site: &mut Site, state: &EditFormState) -> Result<()> {
     site.theme.support_color = support;
     site.ga_measurement_id = opt_trimmed(state.get("ga_measurement_id"));
     site.pretty_urls = state.get("pretty_urls").trim() == "on";
+    let default_image = state.get("default_og_image").trim();
+    site.default_og_image = if default_image.is_empty() {
+        DEFAULT_OG_IMAGE.to_string()
+    } else {
+        default_image.to_string()
+    };
+    let default_alt = state.get("default_og_image_alt").trim();
+    site.default_og_image_alt = if default_alt.is_empty() {
+        DEFAULT_OG_IMAGE_ALT.to_string()
+    } else {
+        default_alt.to_string()
+    };
+    site.default_og_image_width = default_og_image_width;
+    site.default_og_image_height = default_og_image_height;
+    site.default_twitter_card = match state.get("default_twitter_card").trim() {
+        "summary" => TwitterCard::Summary,
+        _ => TwitterCard::SummaryLargeImage,
+    };
     Ok(())
 }
 
@@ -1441,6 +1501,31 @@ pub fn page_head_to_form_state(page: &crate::model::Page) -> EditFormState {
         head.og_description.clone().unwrap_or_default(),
     );
     s.set("og_image", head.og_image.clone().unwrap_or_default());
+    s.set(
+        "og_image_alt",
+        head.og_image_alt.clone().unwrap_or_default(),
+    );
+    s.set(
+        "og_image_width",
+        head.og_image_width
+            .map(|n| n.to_string())
+            .unwrap_or_default(),
+    );
+    s.set(
+        "og_image_height",
+        head.og_image_height
+            .map(|n| n.to_string())
+            .unwrap_or_default(),
+    );
+    s.set(
+        "twitter_card",
+        match head.twitter_card {
+            Some(TwitterCard::Summary) => "summary",
+            Some(TwitterCard::SummaryLargeImage) => "summary_large_image",
+            None => "site default",
+        }
+        .to_string(),
+    );
     s
 }
 
@@ -1459,6 +1544,23 @@ pub fn site_to_form_state(site: &Site) -> EditFormState {
         site.ga_measurement_id.clone().unwrap_or_default(),
     );
     s.set("pretty_urls", if site.pretty_urls { "on" } else { "off" });
+    s.set("default_og_image", site.effective_default_og_image());
+    s.set(
+        "default_og_image_alt",
+        site.effective_default_og_image_alt(),
+    );
+    s.set(
+        "default_og_image_width",
+        site.effective_og_image_width().to_string(),
+    );
+    s.set(
+        "default_og_image_height",
+        site.effective_og_image_height().to_string(),
+    );
+    s.set(
+        "default_twitter_card",
+        site.default_twitter_card.as_str().to_string(),
+    );
     s
 }
 

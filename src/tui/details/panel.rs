@@ -166,6 +166,18 @@ impl App {
             "pretty_urls: {}",
             if self.site.pretty_urls { "on" } else { "off" }
         ));
+        view.push_plain(format!(
+            "default_og_image: {}",
+            self.site.effective_default_og_image()
+        ));
+        view.push_plain(format!(
+            "default_og_image_alt: {}",
+            self.site.effective_default_og_image_alt()
+        ));
+        view.push_plain(format!(
+            "default_twitter_card: {}",
+            self.site.default_twitter_card.as_str()
+        ));
         paint_theme_color_line(&mut view, "primary_color", &self.site.theme.primary_color);
         paint_theme_color_line(
             &mut view,

@@ -364,6 +364,7 @@ fn write_404_if_missing(
         &crate::renderer::render_header(&r, &site.header)?,
         &crate::renderer::render_footer(&r, &site.footer, &site.name)?,
         site,
+        site_root,
     )?;
     write_inside(output_dir, &page_file_name("404", false), html.as_bytes())
         .context("failed to write 404.html")?;
@@ -385,6 +386,10 @@ fn not_found_page() -> Page {
             og_title: None,
             og_description: None,
             og_image: None,
+            og_image_alt: None,
+            og_image_width: None,
+            og_image_height: None,
+            twitter_card: None,
         },
         nodes: vec![PageNode::Section(DdSection {
             id: "section-404".to_string(),

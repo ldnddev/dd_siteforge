@@ -26,7 +26,8 @@ pub fn render_site_to_dir(
         if !crate::model::is_safe_page_slug(&page.slug) {
             anyhow::bail!("refusing to export unsafe page slug '{}'", page.slug);
         }
-        let html = render_page_html_with_chrome(&r, page, &header_html, &footer_html, site)?;
+        let html =
+            render_page_html_with_chrome(&r, page, &header_html, &footer_html, site, site_root)?;
         let pretty = page.slug != "404" && site.pretty_urls;
         let file_name = crate::model::page_file_name(&page.slug, pretty);
         crate::export::write_inside(output_dir, &file_name, html.as_bytes())?;
@@ -38,7 +39,7 @@ pub fn render_site_to_dir(
 fn render_page_html(page: &Page) -> anyhow::Result<String> {
     let site = Site::starter();
     let r = Renderer::bundled_only()?;
-    render_page_html_with_chrome(&r, page, "", "", &site)
+    render_page_html_with_chrome(&r, page, "", "", &site, None)
 }
 
 pub fn render_page_html_with_chrome(
@@ -47,6 +48,7 @@ pub fn render_page_html_with_chrome(
     header_html: &str,
     footer_html: &str,
     site: &Site,
+    site_root: Option<&Path>,
 ) -> anyhow::Result<String> {
     let mut used_ids = reserved_html_ids(site, page);
     let mut content = String::new();
@@ -60,7 +62,7 @@ pub fn render_page_html_with_chrome(
         content.push('\n');
     }
 
-    let head_html = render_head(r, &page.head, site, page)?;
+    let head_html = render_head(r, &page.head, site, page, site_root)?;
     let lang = if site.lang.trim().is_empty() {
         "en"
     } else {
@@ -83,7 +85,13 @@ pub fn render_page_html_with_chrome(
     Ok(ensure_blank_noopener(&prefix_relative_urls(&html, &prefix)))
 }
 
-fn render_head(r: &Renderer, head: &DdHead, site: &Site, page: &Page) -> anyhow::Result<String> {
+fn render_head(
+    r: &Renderer,
+    head: &DdHead,
+    site: &Site,
+    page: &Page,
+    site_root: Option<&Path>,
+) -> anyhow::Result<String> {
     let robots = robots_token(head.robots);
     let schema_type = schema_type_token(head.schema_type);
     let mut schema = serde_json::Map::new();
@@ -112,15 +120,8 @@ fn render_head(r: &Renderer, head: &DdHead, site: &Site, page: &Page) -> anyhow:
     if let Some(u) = canonical.as_deref() {
         schema.insert("url".to_string(), Value::String(u.to_string()));
     }
-    let og_image = head
-        .og_image
-        .as_deref()
-        .map(str::trim)
-        .filter(|v| !v.is_empty())
-        .map(|v| resolve_head_asset_url(v, site, page));
-    if let Some(i) = og_image.as_deref() {
-        schema.insert("image".to_string(), Value::String(i.to_string()));
-    }
+    let share = share_image_tags(head, site, page, site_root);
+    schema.insert("image".to_string(), Value::String(share.url.clone()));
     let schema_json = json_for_html_script(&Value::Object(schema), true);
 
     // Empty OG title uses meta title, then the page title (`html_title`).
@@ -146,7 +147,10 @@ fn render_head(r: &Renderer, head: &DdHead, site: &Site, page: &Page) -> anyhow:
                 .map(str::to_string)
         });
     let og_url = canonical.clone();
-    let twitter_card = og_image.as_ref().map(|_| "summary_large_image".to_string());
+    let twitter_card = head
+        .twitter_card
+        .unwrap_or(site.default_twitter_card)
+        .as_str();
 
     let data = json!({
         "title": html_title,
@@ -155,7 +159,11 @@ fn render_head(r: &Renderer, head: &DdHead, site: &Site, page: &Page) -> anyhow:
         "robots": robots,
         "og_title": og_title,
         "og_description": og_description,
-        "og_image": og_image,
+        "og_image": share.url,
+        "og_image_alt": share.alt,
+        "og_image_width": share.width,
+        "og_image_height": share.height,
+        "og_image_type": share.mime,
         "og_url": og_url,
         "twitter_card": twitter_card,
         "schema_json": schema_json,
@@ -1664,6 +1672,49 @@ fn tag_has_blank_target(tag: &str) -> bool {
     lower.contains("target=\"_blank\"") || lower.contains("target='_blank'")
 }
 
+struct ShareImageTags {
+    url: String,
+    alt: String,
+    width: u32,
+    height: u32,
+    mime: Option<String>,
+}
+
+fn share_image_tags(
+    head: &DdHead,
+    site: &Site,
+    page: &Page,
+    site_root: Option<&Path>,
+) -> ShareImageTags {
+    let source = site.share_image_source(page);
+    let probed = site_root.and_then(|root| probe_local_image(root, &source.url));
+    let width = probed
+        .map(|size| size.width)
+        .or(head.og_image_width.filter(|n| *n > 0))
+        .unwrap_or_else(|| site.effective_og_image_width());
+    let height = probed
+        .map(|size| size.height)
+        .or(head.og_image_height.filter(|n| *n > 0))
+        .unwrap_or_else(|| site.effective_og_image_height());
+    let mime = probed
+        .map(|size| size.mime.to_string())
+        .or_else(|| crate::og_image::mime_from_url(&source.url).map(str::to_string));
+    ShareImageTags {
+        url: resolve_head_asset_url(&source.url, site, page),
+        alt: source.alt,
+        width,
+        height,
+        mime,
+    }
+}
+
+fn probe_local_image(site_root: &Path, stored_url: &str) -> Option<crate::og_image::RasterSize> {
+    let rel = crate::og_image::source_image_rel(stored_url)?;
+    let path = site_root.join("source").join("images").join(rel);
+    let bytes = fs::read(&path).ok()?;
+    crate::og_image::raster_size(&bytes)
+}
+
 /// Absolute asset URL when `base_url` is set; otherwise the page's relative prefix.
 fn resolve_head_asset_url(stored: &str, site: &Site, page: &Page) -> String {
     let u = public_url(stored);
@@ -2579,8 +2630,9 @@ mod tests {
             !header.contains("dd-alert"),
             "starter header must not render dd-alert: {header}"
         );
-        let html = super::render_page_html_with_chrome(&r, &site.pages[0], &header, &footer, &site)
-            .unwrap();
+        let html =
+            super::render_page_html_with_chrome(&r, &site.pages[0], &header, &footer, &site, None)
+                .unwrap();
         assert!(html.contains("lang=\"fr\""));
         assert!(html.contains("rel=\"canonical\" href=\"https://ex.com/\""));
         assert!(html.contains("property=\"og:url\" content=\"https://ex.com/\""));
@@ -2599,7 +2651,8 @@ mod tests {
         site.base_url = Some("https://ex.com".to_string());
         site.pages[0].slug = "blog/entry".to_string();
         let r = crate::templates::Renderer::bundled_only().unwrap();
-        let html = super::render_page_html_with_chrome(&r, &site.pages[0], "", "", &site).unwrap();
+        let html =
+            super::render_page_html_with_chrome(&r, &site.pages[0], "", "", &site, None).unwrap();
         assert!(html.contains("../../assets/css/style.min.css"), "{html}");
         assert!(html.contains("../../assets/js/main.min.js"), "{html}");
         assert!(
@@ -2642,7 +2695,8 @@ mod tests {
         site.pages[0].head.meta_description = Some("We build sites.".to_string());
         site.pages[0].head.og_image = Some("assets/images/og.jpg".to_string());
         let r = crate::templates::Renderer::bundled_only().unwrap();
-        let html = super::render_page_html_with_chrome(&r, &site.pages[0], "", "", &site).unwrap();
+        let html =
+            super::render_page_html_with_chrome(&r, &site.pages[0], "", "", &site, None).unwrap();
         assert!(
             html.contains("rel=\"canonical\" href=\"https://www.ldnddev.com/page/\""),
             "{html}"
@@ -2705,8 +2759,9 @@ mod tests {
         assert!(footer.contains("aria-label=\"Social\""), "{footer}");
         assert!(!footer.contains("fa-linkedin"), "{footer}");
 
-        let html = super::render_page_html_with_chrome(&r, &site.pages[0], &header, &footer, &site)
-            .unwrap();
+        let html =
+            super::render_page_html_with_chrome(&r, &site.pages[0], &header, &footer, &site, None)
+                .unwrap();
         assert!(html.contains("gtag('consent', 'default'"), "{html}");
         assert!(html.contains("gtag('config', 'G-ABC123')"), "{html}");
         assert!(
@@ -2722,14 +2777,15 @@ mod tests {
         assert!(config_at < src_at, "consent config must precede gtag.js");
 
         site.ga_measurement_id = None;
-        let bare = super::render_page_html_with_chrome(&r, &site.pages[0], &header, &footer, &site)
-            .unwrap();
+        let bare =
+            super::render_page_html_with_chrome(&r, &site.pages[0], &header, &footer, &site, None)
+                .unwrap();
         assert!(!bare.contains("gtag/js"), "{bare}");
         assert!(!bare.contains("function gtag"), "{bare}");
 
         site.ga_measurement_id = Some("<script>alert(1)</script>".to_string());
         let rejected =
-            super::render_page_html_with_chrome(&r, &site.pages[0], &header, &footer, &site)
+            super::render_page_html_with_chrome(&r, &site.pages[0], &header, &footer, &site, None)
                 .unwrap();
         assert!(!rejected.contains("alert(1)"), "{rejected}");
         assert!(!rejected.contains("gtag/js"), "{rejected}");
@@ -2742,7 +2798,8 @@ mod tests {
         site.pages[0].head.meta_title =
             Some("Custom Drupal & WordPress Development | ldnddev".to_string());
         let r = crate::templates::Renderer::bundled_only().unwrap();
-        let html = super::render_page_html_with_chrome(&r, &site.pages[0], "", "", &site).unwrap();
+        let html =
+            super::render_page_html_with_chrome(&r, &site.pages[0], "", "", &site, None).unwrap();
         assert!(
             html.contains("<title>Custom Drupal &amp; WordPress Development | ldnddev</title>")
                 || html.contains("<title>Custom Drupal & WordPress Development | ldnddev</title>")
@@ -2766,7 +2823,8 @@ mod tests {
         site.pages[0].head.title = format!("Hello {payload}");
         site.pages[0].head.meta_description = Some(format!("About {payload}"));
         let r = crate::templates::Renderer::bundled_only().unwrap();
-        let html = super::render_page_html_with_chrome(&r, &site.pages[0], "", "", &site).unwrap();
+        let html =
+            super::render_page_html_with_chrome(&r, &site.pages[0], "", "", &site, None).unwrap();
         assert!(
             html.contains("\\u003c/script\\u003e\\u003cscript\\u003ealert(1)\\u003c/script\\u003e"),
             "{html}"
@@ -2837,7 +2895,8 @@ mod tests {
         site.pages[0].head.og_description = None;
         site.pages[0].head.meta_description = Some("We build sites.".to_string());
         let r = crate::templates::Renderer::bundled_only().unwrap();
-        let html = super::render_page_html_with_chrome(&r, &site.pages[0], "", "", &site).unwrap();
+        let html =
+            super::render_page_html_with_chrome(&r, &site.pages[0], "", "", &site, None).unwrap();
         assert!(
             html.contains("property=\"og:description\" content=\"We build sites.\""),
             "{html}"
@@ -2852,7 +2911,8 @@ mod tests {
         site.pages[0].head.og_title = Some("OG Title".to_string());
         site.pages[0].head.og_description = Some("OG Description".to_string());
         let r = crate::templates::Renderer::bundled_only().unwrap();
-        let html = super::render_page_html_with_chrome(&r, &site.pages[0], "", "", &site).unwrap();
+        let html =
+            super::render_page_html_with_chrome(&r, &site.pages[0], "", "", &site, None).unwrap();
         assert!(
             html.contains("property=\"og:title\" content=\"OG Title\""),
             "{html}"
@@ -2863,6 +2923,100 @@ mod tests {
         );
         assert!(!html.contains("property=\"og:title\" content=\"Meta Title\""));
         assert!(!html.contains("property=\"og:description\" content=\"Meta Description\""));
+    }
+
+    #[test]
+    fn share_image_tags_follow_page_hero_and_site_default() {
+        let mut site = Site::starter();
+        site.base_url = Some("https://ex.com".to_string());
+        site.pages[0].head.schema_type = crate::model::SchemaType::Article;
+        site.pages[0].head.og_image = Some("assets/images/og.jpg".to_string());
+        site.pages[0].head.og_image_alt = Some("Say \"hello\" & go.".to_string());
+        site.pages[0].head.og_image_width = Some(800);
+        site.pages[0].head.og_image_height = Some(418);
+        site.pages[0].head.twitter_card = Some(crate::model::TwitterCard::Summary);
+        let r = crate::templates::Renderer::bundled_only().unwrap();
+        let html =
+            super::render_page_html_with_chrome(&r, &site.pages[0], "", "", &site, None).unwrap();
+        let tags = [
+            "property=\"og:image\" content=\"https://ex.com/assets/images/og.jpg\"",
+            "property=\"og:image:secure_url\" content=\"https://ex.com/assets/images/og.jpg\"",
+            "property=\"og:image:alt\" content=\"Say &quot;hello&quot; &amp; go.\"",
+            "property=\"og:image:width\" content=\"800\"",
+            "property=\"og:image:height\" content=\"418\"",
+            "property=\"og:image:type\" content=\"image/jpeg\"",
+            "property=\"og:type\" content=\"website\"",
+            "name=\"twitter:card\" content=\"summary\"",
+            "name=\"twitter:image\" content=\"https://ex.com/assets/images/og.jpg\"",
+            "name=\"twitter:image:alt\" content=\"Say &quot;hello&quot; &amp; go.\"",
+        ];
+        let mut at = 0;
+        for tag in tags {
+            let pos = html
+                .find(tag)
+                .unwrap_or_else(|| panic!("missing {tag}\n{html}"));
+            assert!(pos >= at, "{tag} is out of order");
+            at = pos;
+        }
+        assert!(html.contains("\"image\": \"https://ex.com/assets/images/og.jpg\""));
+
+        site.pages[0].head.og_image = None;
+        site.pages[0].head.og_image_alt = None;
+        site.pages[0].head.og_image_width = None;
+        site.pages[0].head.og_image_height = None;
+        site.pages[0].head.twitter_card = None;
+        let html =
+            super::render_page_html_with_chrome(&r, &site.pages[0], "", "", &site, None).unwrap();
+        assert!(
+            html.contains(
+                "property=\"og:image\" content=\"https://ex.com/assets/images/hero.jpg\""
+            )
+        );
+        assert!(html.contains("property=\"og:image:alt\" content=\"Decorative hero\""));
+        assert!(html.contains("property=\"og:image:width\" content=\"1200\""));
+        assert!(html.contains("property=\"og:image:height\" content=\"630\""));
+        assert!(html.contains("property=\"og:image:type\" content=\"image/jpeg\""));
+        assert!(html.contains("name=\"twitter:card\" content=\"summary_large_image\""));
+
+        let tmp = std::env::temp_dir().join(format!(
+            "dd_og_png_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let images = tmp.join("source").join("images");
+        std::fs::create_dir_all(&images).unwrap();
+        let mut png = vec![
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, b'I', b'H',
+            b'D', b'R',
+        ];
+        png.extend(640u32.to_be_bytes());
+        png.extend(480u32.to_be_bytes());
+        std::fs::write(images.join("wide.png"), &png).unwrap();
+        site.pages[0].head.og_image = Some("assets/images/wide.png".to_string());
+        site.pages[0].head.og_image_width = Some(11);
+        site.pages[0].head.og_image_height = Some(11);
+        let html =
+            super::render_page_html_with_chrome(&r, &site.pages[0], "", "", &site, Some(&tmp))
+                .unwrap();
+        assert!(html.contains("property=\"og:image:width\" content=\"640\""));
+        assert!(html.contains("property=\"og:image:height\" content=\"480\""));
+        assert!(html.contains("property=\"og:image:type\" content=\"image/png\""));
+        std::fs::remove_dir_all(&tmp).ok();
+
+        site.pages[0].nodes.clear();
+        site.pages[0].head.og_image = None;
+        site.pages[0].head.og_image_alt = None;
+        site.pages[0].head.og_image_width = None;
+        site.pages[0].head.og_image_height = None;
+        let html =
+            super::render_page_html_with_chrome(&r, &site.pages[0], "", "", &site, None).unwrap();
+        assert!(html.contains(
+            "property=\"og:image\" content=\"https://ex.com/assets/images/og-default.png\""
+        ));
+        assert!(html.contains("property=\"og:image:alt\" content=\"Preview of this website.\""));
+        assert!(html.contains("name=\"twitter:image:alt\" content=\"Preview of this website.\""));
     }
 
     fn page_with_image(dark: Option<&str>, link: Option<&str>) -> crate::model::Page {

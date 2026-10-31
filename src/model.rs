@@ -29,6 +29,36 @@ pub struct Site {
     /// Nested slugs like `blog/entry` always create folders.
     #[serde(default, skip_serializing_if = "is_false")]
     pub pretty_urls: bool,
+    /// Share image used when a page has no OG image and no hero image.
+    #[serde(
+        default = "default_og_image_path",
+        skip_serializing_if = "is_default_og_image_path"
+    )]
+    pub default_og_image: String,
+    /// Alt text used when a page and its hero leave the share-image alt empty.
+    #[serde(
+        default = "default_og_image_alt_text",
+        skip_serializing_if = "is_default_og_image_alt"
+    )]
+    pub default_og_image_alt: String,
+    /// Pixel width used when the share image file cannot be read and the page has no width.
+    #[serde(
+        default = "default_og_image_width",
+        skip_serializing_if = "is_default_og_image_width"
+    )]
+    pub default_og_image_width: u32,
+    /// Pixel height used when the share image file cannot be read and the page has no height.
+    #[serde(
+        default = "default_og_image_height",
+        skip_serializing_if = "is_default_og_image_height"
+    )]
+    pub default_og_image_height: u32,
+    /// `twitter:card` when a page does not override it.
+    #[serde(
+        default = "default_twitter_card",
+        skip_serializing_if = "is_default_twitter_card"
+    )]
+    pub default_twitter_card: TwitterCard,
 }
 
 fn is_false(v: &bool) -> bool {
@@ -37,6 +67,75 @@ fn is_false(v: &bool) -> bool {
 
 fn default_lang() -> String {
     "en".to_string()
+}
+
+/// Path stored for the site share image when a page has nothing of its own.
+pub const DEFAULT_OG_IMAGE: &str = "/assets/images/og-default.png";
+/// Sentence used when no page, hero, or site alt is set.
+pub const DEFAULT_OG_IMAGE_ALT: &str = "Preview of this website.";
+pub const DEFAULT_OG_IMAGE_WIDTH: u32 = 1200;
+pub const DEFAULT_OG_IMAGE_HEIGHT: u32 = 630;
+
+fn default_og_image_path() -> String {
+    DEFAULT_OG_IMAGE.to_string()
+}
+
+fn is_default_og_image_path(value: &str) -> bool {
+    value.trim().is_empty() || value.trim() == DEFAULT_OG_IMAGE
+}
+
+fn default_og_image_alt_text() -> String {
+    DEFAULT_OG_IMAGE_ALT.to_string()
+}
+
+fn is_default_og_image_alt(value: &str) -> bool {
+    value.trim().is_empty() || value.trim() == DEFAULT_OG_IMAGE_ALT
+}
+
+fn default_og_image_width() -> u32 {
+    DEFAULT_OG_IMAGE_WIDTH
+}
+
+fn is_default_og_image_width(value: &u32) -> bool {
+    *value == DEFAULT_OG_IMAGE_WIDTH
+}
+
+fn default_og_image_height() -> u32 {
+    DEFAULT_OG_IMAGE_HEIGHT
+}
+
+fn is_default_og_image_height(value: &u32) -> bool {
+    *value == DEFAULT_OG_IMAGE_HEIGHT
+}
+
+fn default_twitter_card() -> TwitterCard {
+    TwitterCard::SummaryLargeImage
+}
+
+fn is_default_twitter_card(value: &TwitterCard) -> bool {
+    *value == TwitterCard::SummaryLargeImage
+}
+
+fn nonempty(value: Option<&str>) -> Option<&str> {
+    value.map(str::trim).filter(|v| !v.is_empty())
+}
+
+/// First hero whose resolved media is an image. Video and oEmbed do not count.
+fn page_hero_image(page: &Page) -> Option<(String, String)> {
+    for node in &page.nodes {
+        let PageNode::Hero(hero) = node else {
+            continue;
+        };
+        let Media::Image { url, alt } = hero.resolved_media() else {
+            continue;
+        };
+        let url = url.trim();
+        if url.is_empty() {
+            continue;
+        }
+        return Some((url.to_string(), alt.trim().to_string()));
+    }
+    None
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -818,6 +917,18 @@ pub struct DdHead {
     pub og_title: Option<String>,
     pub og_description: Option<String>,
     pub og_image: Option<String>,
+    /// Overrides the hero alt and the site default. Empty keeps the fallback live.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub og_image_alt: Option<String>,
+    /// Used only when the share image file cannot be read at export.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub og_image_width: Option<u32>,
+    /// Used only when the share image file cannot be read at export.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub og_image_height: Option<u32>,
+    /// Overrides the site Twitter card. Empty uses `Site::default_twitter_card`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub twitter_card: Option<TwitterCard>,
 }
 
 impl DdHead {
@@ -1594,6 +1705,30 @@ pub enum RobotsDirective {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TwitterCard {
+    #[serde(rename = "summary")]
+    Summary,
+    #[serde(rename = "summary_large_image")]
+    SummaryLargeImage,
+}
+
+impl TwitterCard {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            TwitterCard::Summary => "summary",
+            TwitterCard::SummaryLargeImage => "summary_large_image",
+        }
+    }
+}
+
+/// Stored share-image URL and alt before export turns the URL absolute.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ShareImageSource {
+    pub url: String,
+    pub alt: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SchemaType {
     WebPage,
     Article,
@@ -1607,6 +1742,54 @@ pub enum SchemaType {
 }
 
 impl Site {
+    pub fn effective_default_og_image(&self) -> String {
+        let value = self.default_og_image.trim();
+        if value.is_empty() {
+            DEFAULT_OG_IMAGE.to_string()
+        } else {
+            value.to_string()
+        }
+    }
+
+    pub fn effective_default_og_image_alt(&self) -> String {
+        let value = self.default_og_image_alt.trim();
+        if value.is_empty() {
+            DEFAULT_OG_IMAGE_ALT.to_string()
+        } else {
+            value.to_string()
+        }
+    }
+
+    pub fn effective_og_image_width(&self) -> u32 {
+        if self.default_og_image_width == 0 {
+            DEFAULT_OG_IMAGE_WIDTH
+        } else {
+            self.default_og_image_width
+        }
+    }
+
+    pub fn effective_og_image_height(&self) -> u32 {
+        if self.default_og_image_height == 0 {
+            DEFAULT_OG_IMAGE_HEIGHT
+        } else {
+            self.default_og_image_height
+        }
+    }
+
+    /// Page OG image, else the first hero image, else the site default.
+    pub fn share_image_source(&self, page: &Page) -> ShareImageSource {
+        let hero = page_hero_image(page);
+        let url = nonempty(page.head.og_image.as_deref())
+            .map(str::to_string)
+            .or_else(|| hero.as_ref().map(|(url, _)| url.clone()))
+            .unwrap_or_else(|| self.effective_default_og_image());
+        let alt = nonempty(page.head.og_image_alt.as_deref())
+            .map(str::to_string)
+            .or_else(|| hero.and_then(|(_, alt)| nonempty(Some(alt.as_str())).map(str::to_string)))
+            .unwrap_or_else(|| self.effective_default_og_image_alt());
+        ShareImageSource { url, alt }
+    }
+
     pub fn starter() -> Self {
         Self {
             schema_version: 1,
@@ -1697,6 +1880,11 @@ impl Site {
             lang: default_lang(),
             ga_measurement_id: None,
             pretty_urls: false,
+            default_og_image: default_og_image_path(),
+            default_og_image_alt: default_og_image_alt_text(),
+            default_og_image_width: default_og_image_width(),
+            default_og_image_height: default_og_image_height(),
+            default_twitter_card: default_twitter_card(),
             pages: vec![Page {
                 id: "page-home".to_string(),
                 slug: "index".to_string(),
@@ -1711,6 +1899,10 @@ impl Site {
                     og_title: None,
                     og_description: None,
                     og_image: None,
+                    og_image_alt: None,
+                    og_image_width: None,
+                    og_image_height: None,
+                    twitter_card: None,
                 },
                 nodes: vec![
                     PageNode::Hero(DdHero {
@@ -1817,6 +2009,10 @@ impl Page {
                 og_title: None,
                 og_description: None,
                 og_image: None,
+                og_image_alt: None,
+                og_image_width: None,
+                og_image_height: None,
+                twitter_card: None,
             },
             nodes,
         }
@@ -2325,6 +2521,10 @@ mod tests {
             og_title: None,
             og_description: None,
             og_image: None,
+            og_image_alt: None,
+            og_image_width: None,
+            og_image_height: None,
+            twitter_card: None,
         };
         assert_eq!(head.html_title(), "Brands");
         head.meta_title = Some("  ".to_string());
@@ -2348,7 +2548,67 @@ mod tests {
         let head: DdHead = serde_json::from_str(raw).expect("legacy head should load");
         assert_eq!(head.title, "Home");
         assert!(head.meta_title.is_none());
+        assert!(head.og_image_alt.is_none());
+        assert!(head.og_image_width.is_none());
+        assert!(head.twitter_card.is_none());
         assert_eq!(head.html_title(), "Home");
+    }
+
+    #[test]
+    fn share_image_uses_page_then_hero_then_site_default() {
+        let mut site = Site::starter();
+        let page = &site.pages[0];
+        let chosen = site.share_image_source(page);
+        assert_eq!(chosen.url, "assets/images/hero.jpg");
+        assert_eq!(chosen.alt, "Decorative hero");
+
+        site.pages[0].head.og_image = Some(" assets/images/og.jpg ".into());
+        site.pages[0].head.og_image_alt = Some(" Custom share text. ".into());
+        let chosen = site.share_image_source(&site.pages[0]);
+        assert_eq!(chosen.url, "assets/images/og.jpg");
+        assert_eq!(chosen.alt, "Custom share text.");
+
+        site.pages[0].head.og_image = None;
+        site.pages[0].head.og_image_alt = None;
+        if let PageNode::Hero(hero) = &mut site.pages[0].nodes[0] {
+            hero.media = Media::LocalVideo {
+                lg_mp4: "/assets/video/hero.mp4".into(),
+                sm_mp4: None,
+                poster: Some("/assets/images/poster.jpg".into()),
+                name: "Hero".into(),
+                loop_playback: false,
+                autoplay: false,
+            };
+            hero.parent_image_url.clear();
+        }
+        let chosen = site.share_image_source(&site.pages[0]);
+        assert_eq!(chosen.url, DEFAULT_OG_IMAGE);
+        assert_eq!(chosen.alt, DEFAULT_OG_IMAGE_ALT);
+
+        site.default_og_image = "https://cdn.example/share.webp".into();
+        site.default_og_image_alt = "A custom site sentence.".into();
+        let chosen = site.share_image_source(&site.pages[0]);
+        assert_eq!(chosen.url, "https://cdn.example/share.webp");
+        assert_eq!(chosen.alt, "A custom site sentence.");
+    }
+
+    #[test]
+    fn legacy_site_json_gets_share_image_defaults() {
+        let raw = r##"{
+            "schema_version": 1,
+            "id": "s",
+            "name": "n",
+            "theme": {"primary_color":"#000000","secondary_color":"#000000","tertiary_color":"#000000","support_color":"#000000"},
+            "header": {"id":"h","custom_css":null,"alert":null,"sections":[]},
+            "footer": {"id":"f","custom_css":null,"sections":[]},
+            "pages": []
+        }"##;
+        let site: Site = serde_json::from_str(raw).expect("legacy site");
+        assert_eq!(site.effective_default_og_image(), DEFAULT_OG_IMAGE);
+        assert_eq!(site.effective_default_og_image_alt(), DEFAULT_OG_IMAGE_ALT);
+        assert_eq!(site.effective_og_image_width(), DEFAULT_OG_IMAGE_WIDTH);
+        assert_eq!(site.effective_og_image_height(), DEFAULT_OG_IMAGE_HEIGHT);
+        assert_eq!(site.default_twitter_card, TwitterCard::SummaryLargeImage);
     }
 
     #[test]

@@ -942,6 +942,12 @@ pub fn validate_site_with_root(site: &Site, root: Option<&std::path::Path>) -> V
             );
         }
     }
+    check_local_image(
+        root,
+        "site default_og_image",
+        &site.effective_default_og_image(),
+        &mut errors,
+    );
     collect_region_image_refs(&site.header.sections, "header", root, &mut errors);
     collect_region_image_refs(&site.footer.sections, "footer", root, &mut errors);
     errors
@@ -967,6 +973,10 @@ fn collect_region_image_refs(
             og_title: None,
             og_description: None,
             og_image: None,
+            og_image_alt: None,
+            og_image_width: None,
+            og_image_height: None,
+            twitter_card: None,
         },
         nodes: Vec::new(),
     };
@@ -1338,6 +1348,7 @@ mod tests {
         let imgs = tmp.join("source").join("images");
         std::fs::create_dir_all(&imgs).unwrap();
         std::fs::write(imgs.join("hero.jpg"), b"fake").unwrap();
+        std::fs::write(imgs.join("og-default.png"), b"fake").unwrap();
 
         let mut site = Site::starter();
         if let PageNode::Hero(hero) = &mut site.pages[0].nodes[0] {

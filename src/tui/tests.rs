@@ -3551,6 +3551,61 @@ fn page_head_modal_empty_og_does_not_copy_meta_on_save() {
 }
 
 #[test]
+fn page_head_share_fields_stay_empty_until_set() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    open_page_head_form(&mut app);
+    match &app.modal {
+        Some(Modal::FormEdit { state, .. }) => {
+            assert_eq!(state.get("og_image_alt"), "");
+            assert_eq!(state.get("og_image_width"), "");
+            assert_eq!(state.get("og_image_height"), "");
+            assert_eq!(state.get("twitter_card"), "site default");
+        }
+        _ => panic!("expected FormEdit"),
+    }
+    if let Some(Modal::FormEdit { state, .. }) = &mut app.modal {
+        state.set("og_image_alt", "A plain sentence about the photo.");
+        state.set("og_image_width", "640");
+        state.set("og_image_height", "480");
+        state.set("twitter_card", "summary");
+    }
+    send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
+    let head = &app.site.pages[0].head;
+    assert_eq!(
+        head.og_image_alt.as_deref(),
+        Some("A plain sentence about the photo.")
+    );
+    assert_eq!(head.og_image_width, Some(640));
+    assert_eq!(head.og_image_height, Some(480));
+    assert_eq!(head.twitter_card, Some(crate::model::TwitterCard::Summary));
+    assert!(head.og_image.is_none());
+}
+
+#[test]
+fn page_head_rejects_a_non_numeric_og_image_width() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    open_page_head_form(&mut app);
+    if let Some(Modal::FormEdit { state, .. }) = &mut app.modal {
+        state.set("og_image_width", "wide");
+    }
+    send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
+    assert!(app.modal.is_some(), "invalid width keeps the form open");
+    assert!(app.site.pages[0].head.og_image_width.is_none());
+}
+
+#[test]
 fn open_validation_modal_on_clean_starter_pushes_success_toast_and_no_modal() {
     let mut app = App::new(
         Site::starter(),
@@ -3774,6 +3829,7 @@ fn begin_export_flow_with_saved_export_dir_commits_directly() {
     let imgs = tmp.join("source").join("images");
     std::fs::create_dir_all(&imgs).unwrap();
     std::fs::write(imgs.join("hero.jpg"), b"fake").unwrap();
+    std::fs::write(imgs.join("og-default.png"), b"fake").unwrap();
     let grunt_css = tmp.join("web").join("assets").join("css");
     std::fs::create_dir_all(&grunt_css).unwrap();
     std::fs::write(grunt_css.join("style.min.css"), b"/* grunt */").unwrap();
@@ -3813,6 +3869,7 @@ fn export_dir_outside_the_site_does_not_write() {
     let imgs = tmp.join("source").join("images");
     std::fs::create_dir_all(&imgs).unwrap();
     std::fs::write(imgs.join("hero.jpg"), b"fake").unwrap();
+    std::fs::write(imgs.join("og-default.png"), b"fake").unwrap();
     let json_path = tmp.join("site.json");
     let mut app = App::new(
         Site::starter(),
@@ -3872,6 +3929,7 @@ fn export_dir_symlink_outside_the_site_does_not_write() {
     let imgs = tmp.join("source").join("images");
     std::fs::create_dir_all(&imgs).unwrap();
     std::fs::write(imgs.join("hero.jpg"), b"fake").unwrap();
+    std::fs::write(imgs.join("og-default.png"), b"fake").unwrap();
     std::fs::create_dir_all(&outside).unwrap();
     std::os::unix::fs::symlink(&outside, tmp.join("web")).unwrap();
     let mut app = App::new(
@@ -3919,6 +3977,7 @@ fn bare_site_json_name_exports_into_the_working_directory() {
     if let PageNode::Hero(hero) = &mut app.site.pages[0].nodes[0] {
         hero.parent_image_url = "https://example.com/hero.jpg".to_string();
     }
+    app.site.default_og_image = "https://example.com/og.png".to_string();
     app.site.export_dir = Some(rel.clone());
     app.begin_export_flow();
     let out = std::path::PathBuf::from(&rel);
@@ -6664,6 +6723,52 @@ fn site_form_save_writes_ga_measurement_id() {
     }
     send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
     assert_eq!(app.site.ga_measurement_id.as_deref(), Some("G-ABC123"));
+}
+
+#[test]
+fn site_form_saves_share_image_defaults() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    app.selected_region = SelectedRegion::Site;
+    app.sync_tree_row_with_selection();
+    send_key(&mut app, KeyCode::Enter, KeyModifiers::NONE);
+    if let Some(Modal::FormEdit { state, .. }) = &mut app.modal {
+        assert_eq!(
+            state.get("default_og_image"),
+            "/assets/images/og-default.png"
+        );
+        assert_eq!(
+            state.get("default_og_image_alt"),
+            "Preview of this website."
+        );
+        assert_eq!(state.get("default_og_image_width"), "1200");
+        assert_eq!(state.get("default_og_image_height"), "630");
+        assert_eq!(state.get("default_twitter_card"), "summary_large_image");
+        state.set("default_og_image", "https://cdn.example/share.png");
+        state.set("default_og_image_alt", "The studio mark on a dark field.");
+        state.set("default_og_image_width", "1000");
+        state.set("default_og_image_height", "500");
+        state.set("default_twitter_card", "summary");
+    } else {
+        panic!("expected Site settings FormEdit");
+    }
+    send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
+    assert_eq!(app.site.default_og_image, "https://cdn.example/share.png");
+    assert_eq!(
+        app.site.default_og_image_alt,
+        "The studio mark on a dark field."
+    );
+    assert_eq!(app.site.default_og_image_width, 1000);
+    assert_eq!(app.site.default_og_image_height, 500);
+    assert_eq!(
+        app.site.default_twitter_card,
+        crate::model::TwitterCard::Summary
+    );
 }
 
 #[test]
