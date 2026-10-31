@@ -533,6 +533,11 @@ impl App {
                     self.render_theme_editor(frame, editor);
                 }
             }
+            Some(Overlay::Theme { .. }) if self.theme_picker.is_some() => {
+                if let Some(picker) = &self.theme_picker {
+                    self.render_theme_picker(frame, picker);
+                }
+            }
             Some(Overlay::Theme { scroll }) => {
                 let area = centered_rect(80, 80, frame.area());
                 frame.render_widget(Clear, area);
@@ -642,6 +647,49 @@ impl App {
         }
     }
 
+    fn render_theme_picker(&self, frame: &mut ratatui::Frame, picker: &ldnddev_theme::ThemePicker) {
+        use ldnddev_theme::PickerRow;
+        let area = centered_rect(70, 80, frame.area());
+        frame.render_widget(Clear, area);
+        let mut lines = vec![
+            Line::from(format!(
+                "Save: {} (Tab)    Enter apply    e edit colors    s save    Esc revert",
+                picker.save_target.label()
+            )),
+            Line::from(""),
+        ];
+        let view_h = area.height.saturating_sub(5) as usize;
+        for (idx, row) in picker
+            .rows
+            .iter()
+            .enumerate()
+            .skip(picker.scroll)
+            .take(view_h.max(1))
+        {
+            let (label, detail) = match row {
+                PickerRow::Follow { name } => ("Follow desktop".to_string(), name.clone()),
+                PickerRow::Theme(theme) => (theme.name.clone(), theme.mode.label().to_string()),
+                PickerRow::Custom => ("Custom".to_string(), "built-in".to_string()),
+            };
+            let cursor = if idx == picker.selected { ">" } else { " " };
+            lines.push(Line::from(format!("{cursor} {label:<22} {detail}")));
+        }
+        frame.render_widget(
+            Paragraph::new(lines).block(
+                Block::default()
+                    .title("F2 Themes")
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(self.theme.border_active))
+                    .style(
+                        Style::default()
+                            .bg(self.theme.modal_background)
+                            .fg(self.theme.modal_text),
+                    ),
+            ),
+            area,
+        );
+    }
+
     fn render_theme_editor(&self, frame: &mut ratatui::Frame, editor: &ldnddev_theme::ThemeEditor) {
         use ldnddev_theme::{ThemeEditorRow, theme_editor_rows};
         let area = centered_rect(80, 80, frame.area());
@@ -649,9 +697,14 @@ impl App {
         let rows = theme_editor_rows(&editor.fields);
         let channel = ["R", "G", "B"][editor.channel.min(2)];
         let target = editor.save_target.label().to_uppercase();
+        let esc = if self.theme_picker.is_some() {
+            "Esc back"
+        } else {
+            "Esc revert"
+        };
         let mut lines = vec![
             Line::from(format!(
-                "Save: {target} (Tab)   Channel: {channel} ([/])   Y save   R reset   Esc revert"
+                "Save: {target} (Tab)   Channel: {channel} ([/])   Y save   R reset   {esc}"
             )),
             Line::from(if editor.editing_hex {
                 format!("Hex: {}█", editor.hex_draft)

@@ -113,7 +113,10 @@ pub(crate) fn build_help_text(theme: &AppTheme, width: usize) -> Text<'static> {
         "Global",
         &[
             ("F1", "Open/close this help"),
-            ("F2", "Open/close theme source + color details (F2:Theme)"),
+            (
+                "F2",
+                "Open/close Omarchy themes (Enter apply, e edit, s save)",
+            ),
             ("F3", "Validate site (shows errors in a modal)"),
             (
                 "F4",

@@ -1,60 +1,8 @@
-# dd_siteforge TUI Theme Configuration
-# Lookup order (per LDNDDEV_TUI_VISUAL_STANDARD.md):
-# 1. ./dd_siteforge_theme.yml (local override)
-# 2. ~/.config/ldnddev/dd_siteforge_theme.yml (global)
-# 3. Built-in defaults inside the app
-#
-# All files must declare:
-# version: 1
-#
-# Optional top-level header_quotes (non-empty list replaces built-in taglines):
-# header_quotes:
-#   - "Your first override."
-#   - "Second override."
-#
-# Colors follow the canonical tokens. Do not invent new ones.
-
 version: 1
-
-# header_quotes: []   # uncomment + populate to customize the rotating header banner
-colors:
-  # Core backgrounds (dd_framework neutrals dark)
-  base_background: "#0F1114"       # Main app background
-  body_background: "#2A2D31"       # Panel/sidebar background
-  modal_background: "#1C1E21"      # Popup/modal background
-
-  # Text colors (dd_framework text roles dark)
-  text_primary: "#F5F6F7"                  # Primary text
-  text_secondary: "#9EA3AA"              # Secondary/muted text
-  text_labels: "#FFAF46"              # Default state for labels
-  text_active_focus: "#64B4F5"                # Active state for labels
-  modal_labels: "#64B4F5"           # Popup/modal Label text
-  modal_text: "#F5F6F7"           # Popup/modal Primary text
-  modal_header: "#64B4F5"         # Section headers inside modals (e.g. F1 help cards)
-
-  # Selection
-  selected_background: "#0F1114"   # Selected row background
-
-  # Borders (dd_framework support dark)
-  border_default: "#F5F6F7"        # Default borders
-  border_active: "#64B4F5"         # Active section highlight
-  scrollbar: "#FFA087"             # Scrollbar color
-  scrollbar_hover: "#64B4F5"             # Scrollbar hover color
-
-  # Input field colors (lavender for focus, blue for default)
-  input_border_default: "#F5F6F7"         # Default input border
-  input_border_focus: "#64B4F5"           # Focused input border
-  input_text_default: "#F5F6F7"         # Default input border
-  input_text_focus: "#64B4F5"           # Focused input border
-  cursor: "#64B4F5"                     # Cursor color
-
-  # Semantic colors (dd_framework status dark)
-  success: "#82e0aa"               # Success
-  warning: "#f5c469"               # Warning
-  error: "#e57373"                 # Error
-  info: "#5dade2"                  # Info
-
-  # folder / file / link colors
-  folders: "#64B4F5"
-  files: "#FFAF46"
-  links: "#FFA087"
+omarchy: retro-82
+header_quotes:
+  - "Drafts are just commits that lost their nerve."
+  - "Saved. Probably. Hopefully. Definitely. (It saved.)."
+  - "This post is live, which means it's officially out of your hands."
+  - "Scheduled for later — future you can deal with the typos."
+  - "Deleted. We won't talk about it again. (We both saw it.)"

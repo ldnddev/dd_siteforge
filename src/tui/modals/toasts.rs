@@ -22,60 +22,32 @@ impl App {
     }
 
     pub(in crate::tui) fn render_toasts(&self, frame: &mut ratatui::Frame, area: Rect) {
-        if self.toasts.is_empty() {
-            return;
-        }
-        let toast_w: u16 = 60;
-        let gap: u16 = 1;
-        let max_width = area.width.saturating_sub(2);
-        let width = toast_w.min(max_width);
-        if width < 10 {
-            return;
-        }
-        let right_x = area.x + area.width.saturating_sub(width + 1);
-        let toast_h: u16 = 3;
-        let mut y = area.y + area.height.saturating_sub(toast_h);
-        for toast in self.toasts.iter().rev() {
-            if y + toast_h > area.y + area.height {
-                break;
-            }
-            let rect = Rect {
-                x: right_x,
-                y,
-                width,
-                height: toast_h,
-            };
-            let (glyph, accent) = match toast.level {
-                ToastLevel::Success => ("✓", self.theme.success),
-                ToastLevel::Info => ("ℹ", self.theme.info),
-                ToastLevel::Warning => ("⚠", self.theme.warning),
-                ToastLevel::Error => ("✗", self.theme.error),
-            };
-            frame.render_widget(Clear, rect);
-            let block = Block::default()
-                .borders(Borders::ALL)
-                .style(Style::default().bg(self.theme.modal_background))
-                .border_style(Style::default().fg(accent));
-            let inner_x = rect.x + 2;
-            let inner_y = rect.y + 1;
-            let inner_w = rect.width.saturating_sub(4);
-            frame.render_widget(block, rect);
-            let text = format!("{} {}", glyph, toast.message);
-            let body = Paragraph::new(text)
-                .style(Style::default().fg(accent).bg(self.theme.modal_background));
-            frame.render_widget(
-                body,
-                Rect {
-                    x: inner_x,
-                    y: inner_y,
-                    width: inner_w,
-                    height: 1,
+        let lines: Vec<crate::tui::toast_chrome::ToastLine> = self
+            .toasts
+            .iter()
+            .map(|toast| crate::tui::toast_chrome::ToastLine {
+                kind: match toast.level {
+                    ToastLevel::Success => crate::tui::toast_chrome::ToastKind::Success,
+                    ToastLevel::Info => crate::tui::toast_chrome::ToastKind::Info,
+                    ToastLevel::Warning => crate::tui::toast_chrome::ToastKind::Warning,
+                    ToastLevel::Error => crate::tui::toast_chrome::ToastKind::Error,
                 },
-            );
-            if y < area.y + toast_h + gap {
-                break;
-            }
-            y = y.saturating_sub(toast_h + gap);
-        }
+                message: toast.message.as_str(),
+            })
+            .collect();
+        let _ = crate::tui::toast_chrome::render_toast_stack(
+            frame,
+            area,
+            &lines,
+            crate::tui::toast_chrome::ToastPaint {
+                modal_background: self.theme.modal_background,
+                text: self.theme.text_primary,
+                success: self.theme.success,
+                info: self.theme.info,
+                warning: self.theme.warning,
+                error: self.theme.error,
+            },
+            0,
+        );
     }
 }

@@ -1,5 +1,7 @@
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
+use ldnddev_theme::{OmarchyPaths, ParseMode, ThemeSource, apply_omarchy, load_from_str};
 use ratatui::style::{Color, Style};
 use serde::Deserialize;
 
@@ -48,18 +50,20 @@ pub(crate) struct AppTheme {
     pub(crate) app_shell: Style,
     pub(crate) active_border: Style,
     pub(crate) header_quotes: Vec<String>,
+    pub(crate) omarchy: Option<ldnddev_theme::OmarchyChoice>,
+    pub(crate) overrides: BTreeSet<String>,
 }
 
 #[derive(Debug, Deserialize)]
-pub(crate) struct ThemeFile {
+struct ThemeHeader {
     #[serde(default)]
     version: Option<u32>,
-    #[serde(default)]
-    header_quotes: Vec<String>,
-    colors: PaletteFile,
 }
 
+const THEME_FILENAME: &str = "dd_siteforge_theme.yml";
+
 #[derive(Debug, Deserialize)]
+#[cfg(test)]
 struct PaletteFile {
     // Core backgrounds
     base_background: String,
@@ -112,14 +116,29 @@ struct PaletteFile {
 
 impl AppTheme {
     pub(crate) fn load() -> (Self, String, Option<String>) {
-        let candidates: Vec<(PathBuf, &'static str)> = {
-            let mut c = vec![(PathBuf::from("dd_siteforge_theme.yml"), "local")];
-            if let Some(home) = std::env::var_os("HOME") {
-                let base = Path::new(&home).join(".config").join("ldnddev");
-                c.push((base.join("dd_siteforge_theme.yml"), "global"));
-            }
-            c
-        };
+        let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        Self::load_from(&cwd, ldnddev_theme::default_config_home().as_deref())
+    }
+
+    pub(crate) fn load_from(
+        project_root: &Path,
+        config_home: Option<&Path>,
+    ) -> (Self, String, Option<String>) {
+        Self::load_resolved(project_root, config_home, &OmarchyPaths::system())
+    }
+
+    pub(crate) fn load_resolved(
+        project_root: &Path,
+        config_home: Option<&Path>,
+        omarchy: &OmarchyPaths,
+    ) -> (Self, String, Option<String>) {
+        let mut candidates = vec![(project_root.join(THEME_FILENAME), "local")];
+        if let Some(home) = config_home {
+            candidates.push((
+                ldnddev_theme::global_theme_path(home, THEME_FILENAME),
+                "global",
+            ));
+        }
 
         let mut warning: Option<String> = None;
 
@@ -134,8 +153,8 @@ impl AppTheme {
                     continue;
                 }
             };
-            let theme_file: ThemeFile = match serde_yaml::from_str(&raw) {
-                Ok(f) => f,
+            let header: ThemeHeader = match serde_yaml::from_str(&raw) {
+                Ok(header) => header,
                 Err(e) => {
                     warning = Some(format!("invalid theme file '{}': {}", path.display(), e));
                     continue;
@@ -143,7 +162,7 @@ impl AppTheme {
             };
 
             // Strict version enforcement per LDNDDEV_TUI_VISUAL_STANDARD.md
-            match theme_file.version {
+            match header.version {
                 Some(1) => {}
                 Some(v) => {
                     warning = Some(format!(
@@ -162,29 +181,30 @@ impl AppTheme {
                 }
             }
 
-            let quotes = if !theme_file.header_quotes.is_empty() {
-                theme_file.header_quotes
-            } else {
-                default_header_quotes()
+            let source = match src {
+                "local" => ThemeSource::Local,
+                "global" => ThemeSource::Global,
+                _ => ThemeSource::Default,
             };
-
-            match Self::from_palette(theme_file.colors, quotes) {
-                Ok(t) => return (t, src.to_string(), warning),
+            match load_from_str(&raw, ParseMode::Lenient, source) {
+                Ok(mut palette) => {
+                    promote_legacy_color_aliases(&raw, &mut palette);
+                    return finish_palette(palette, src, omarchy, warning);
+                }
                 Err(e) => {
                     warning = Some(format!(
                         "theme '{}' color parse error: {}; using defaults",
                         path.display(),
                         e
                     ));
-                    continue;
                 }
             }
         }
 
-        // Built-in fallback
         (Self::default(), "default".to_string(), warning)
     }
 
+    #[cfg(test)]
     fn from_palette(p: PaletteFile, header_quotes: Vec<String>) -> anyhow::Result<Self> {
         // Core backgrounds
         let base_background = parse_hex_color(p.base_background.as_str())?;
@@ -299,8 +319,111 @@ impl AppTheme {
             app_shell,
             active_border,
             header_quotes,
+            omarchy: None,
+            overrides: BTreeSet::new(),
         })
     }
+}
+
+fn finish_palette(
+    palette: ldnddev_theme::Palette,
+    source_label: &str,
+    omarchy: &OmarchyPaths,
+    warning: Option<String>,
+) -> (AppTheme, String, Option<String>) {
+    match apply_omarchy(&palette, omarchy) {
+        Ok(resolved) => (
+            theme_from_palette(resolved),
+            source_label.to_string(),
+            warning,
+        ),
+        Err(err) => (
+            AppTheme::default(),
+            "default".to_string(),
+            Some(format!(
+                "omarchy theme failed ({err}); using built-in defaults"
+            )),
+        ),
+    }
+}
+
+fn theme_from_palette(mut palette: ldnddev_theme::Palette) -> AppTheme {
+    palette.ensure_extras(extra_theme_fields());
+    let mut theme = AppTheme::default();
+    let apply = |slot: &mut Color, key: &str| {
+        if let Some(rgb) = palette.get(key) {
+            *slot = rgb_to_color(rgb);
+        }
+    };
+    apply(&mut theme.base_background, "base_background");
+    apply(&mut theme.body_background, "body_background");
+    apply(&mut theme.modal_background, "modal_background");
+    apply(&mut theme.text_primary, "text_primary");
+    apply(&mut theme.text_secondary, "text_secondary");
+    apply(&mut theme.text_disabled, "text_disabled");
+    apply(&mut theme.text_inverse, "text_inverse");
+    apply(&mut theme.text_labels, "text_labels");
+    apply(&mut theme.text_active_focus, "text_active_focus");
+    apply(&mut theme.modal_labels, "modal_labels");
+    apply(&mut theme.modal_text, "modal_text");
+    apply(&mut theme.modal_header, "modal_header");
+    apply(&mut theme.border, "border_default");
+    apply(&mut theme.border_active, "border_active");
+    apply(&mut theme.input_border_default, "input_border_default");
+    apply(&mut theme.input_border_focus, "input_border_focus");
+    apply(&mut theme.input_text_default, "input_text_default");
+    apply(&mut theme.input_text_focus, "input_text_focus");
+    apply(&mut theme.cursor, "cursor");
+    apply(&mut theme.scrollbar, "scrollbar");
+    apply(&mut theme.scrollbar_hover, "scrollbar_hover");
+    apply(&mut theme.selected_background, "selected_background");
+    apply(&mut theme.selection, "selection");
+    apply(&mut theme.success, "success");
+    apply(&mut theme.warning, "warning");
+    apply(&mut theme.error, "error");
+    apply(&mut theme.info, "info");
+    apply(&mut theme.folders, "folders");
+    apply(&mut theme.files, "files");
+    apply(&mut theme.links, "links");
+    if !palette.header_quotes.is_empty() {
+        theme.header_quotes = palette.header_quotes;
+    }
+    theme.omarchy = palette.omarchy;
+    theme.overrides = palette.overrides;
+    theme.app_shell = Style::default()
+        .bg(theme.base_background)
+        .fg(theme.text_primary);
+    theme.active_border = Style::default().fg(theme.border_active);
+    theme
+}
+
+/// Old theme files used `text`, `subtext0`, and `input_default` / `input_focus`.
+fn promote_legacy_color_aliases(raw: &str, palette: &mut ldnddev_theme::Palette) {
+    let Ok(value) = serde_yaml::from_str::<serde_yaml::Value>(raw) else {
+        return;
+    };
+    let Some(colors) = value.get("colors").and_then(|c| c.as_mapping()) else {
+        return;
+    };
+    let present = |key: &str| colors.contains_key(serde_yaml::Value::from(key));
+    let copy = |palette: &mut ldnddev_theme::Palette, from: &str, to: &str| {
+        if present(to) || !present(from) {
+            return;
+        }
+        let Some(rgb) = palette.get(from) else {
+            return;
+        };
+        palette.set(to, rgb);
+        if palette.omarchy.is_some() {
+            palette.overrides.insert(to.to_string());
+        }
+    };
+    copy(palette, "text", "text_primary");
+    copy(palette, "subtext0", "text_secondary");
+    copy(palette, "input_default", "input_border_default");
+    copy(palette, "input_default", "input_text_default");
+    copy(palette, "input_focus", "input_border_focus");
+    copy(palette, "input_focus", "input_text_focus");
 }
 
 impl Default for AppTheme {
@@ -343,6 +466,8 @@ impl Default for AppTheme {
                 .fg(Color::Rgb(245, 246, 247)),
             active_border: Style::default().fg(border_focus),
             header_quotes: default_header_quotes(),
+            omarchy: None,
+            overrides: BTreeSet::new(),
         }
     }
 }
@@ -414,6 +539,8 @@ fn color_to_rgb(color: Color) -> ldnddev_theme::Rgb {
 pub(crate) fn palette_from_theme(theme: &AppTheme) -> ldnddev_theme::Palette {
     let mut palette = ldnddev_theme::Palette::builtin();
     palette.header_quotes = theme.header_quotes.clone();
+    palette.omarchy = theme.omarchy.clone();
+    palette.overrides = theme.overrides.clone();
     for (key, color) in [
         ("base_background", theme.base_background),
         ("body_background", theme.body_background),
@@ -547,6 +674,8 @@ pub(crate) fn apply_palette(theme: &mut AppTheme, palette: &ldnddev_theme::Palet
     theme.app_shell = Style::default()
         .bg(theme.base_background)
         .fg(theme.text_primary);
+    theme.omarchy = palette.omarchy.clone();
+    theme.overrides = palette.overrides.clone();
 }
 
 #[cfg(test)]
@@ -602,5 +731,115 @@ mod tests {
         assert_eq!(color_to_hex(theme.text_disabled), "#a0a4a8");
         assert_eq!(color_to_hex(theme.selection), "#2060a0");
         assert_eq!(color_to_hex(AppTheme::default().border_active), "#64b4f5");
+    }
+
+    fn temp_dir(label: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "dd_siteforge_{label}_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        dir
+    }
+
+    #[test]
+    fn shipped_theme_file_loads_without_warning() {
+        let (theme, source, warning) = AppTheme::load_resolved(
+            Path::new(env!("CARGO_MANIFEST_DIR")),
+            None,
+            &ldnddev_theme::OmarchyPaths::from_root(Path::new("/nonexistent/dd_siteforge_omarchy")),
+        );
+        assert!(warning.is_none(), "{warning:?}");
+        assert_eq!(source, "local");
+        assert_eq!(
+            color_to_hex(theme.base_background).to_ascii_uppercase(),
+            "#0F1114"
+        );
+        assert!(theme.omarchy.is_none());
+    }
+
+    #[test]
+    fn missing_local_and_global_is_builtin() {
+        let project = temp_dir("theme_missing");
+        let config = temp_dir("theme_config");
+        let (theme, source, warning) =
+            AppTheme::load_resolved(&project, Some(&config), &OmarchyPaths::system());
+        assert!(warning.is_none());
+        assert_eq!(source, "default");
+        assert_eq!(
+            color_to_hex(theme.base_background).to_ascii_uppercase(),
+            "#0F1114"
+        );
+        let _ = std::fs::remove_dir_all(project);
+        let _ = std::fs::remove_dir_all(config);
+    }
+
+    #[test]
+    fn omarchy_link_maps_colors_and_keeps_override() {
+        let project = temp_dir("theme_link");
+        let root = temp_dir("theme_omarchy");
+        let src = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("crates/ldnddev_theme/tests/fixtures/omarchy/tokyo-night/colors.toml");
+        std::fs::create_dir_all(root.join("stock/tokyo-night")).expect("mkdir");
+        std::fs::copy(&src, root.join("stock/tokyo-night/colors.toml")).expect("copy");
+        std::fs::write(
+            project.join(THEME_FILENAME),
+            "version: 1\nomarchy: tokyo-night\ncolors:\n  text_labels: \"#ABCDEF\"\n",
+        )
+        .expect("yaml");
+        let (theme, source, warning) = AppTheme::load_resolved(
+            &project,
+            None,
+            &ldnddev_theme::OmarchyPaths::from_root(&root),
+        );
+        assert!(warning.is_none(), "{warning:?}");
+        assert_eq!(source, "local");
+        assert_eq!(
+            color_to_hex(theme.body_background).to_ascii_uppercase(),
+            "#1A1B26"
+        );
+        assert_eq!(
+            color_to_hex(theme.text_labels).to_ascii_uppercase(),
+            "#ABCDEF"
+        );
+        assert_eq!(
+            theme.omarchy,
+            Some(ldnddev_theme::OmarchyChoice::Theme("tokyo-night".into()))
+        );
+        assert!(theme.overrides.contains("text_labels"));
+        let round = palette_from_theme(&theme);
+        assert_eq!(round.omarchy, theme.omarchy);
+        assert!(round.overrides.contains("text_labels"));
+        let _ = std::fs::remove_dir_all(project);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn missing_omarchy_theme_uses_builtin_with_warning() {
+        let project = temp_dir("theme_bad_link");
+        let root = temp_dir("theme_bad_root");
+        std::fs::write(
+            project.join(THEME_FILENAME),
+            "version: 1\nomarchy: missing-theme\n",
+        )
+        .expect("yaml");
+        let (theme, source, warning) = AppTheme::load_resolved(
+            &project,
+            None,
+            &ldnddev_theme::OmarchyPaths::from_root(&root),
+        );
+        let warning = warning.unwrap_or_default();
+        assert!(warning.contains("omarchy theme failed"), "{warning}");
+        assert_eq!(source, "default");
+        assert_eq!(
+            color_to_hex(theme.base_background).to_ascii_uppercase(),
+            "#0F1114"
+        );
+        let _ = std::fs::remove_dir_all(project);
+        let _ = std::fs::remove_dir_all(root);
     }
 }

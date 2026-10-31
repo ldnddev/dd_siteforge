@@ -50,6 +50,7 @@ mod scrollbar;
 #[cfg(test)]
 mod tests;
 mod theme;
+mod toast_chrome;
 mod tree;
 mod util;
 
@@ -227,6 +228,11 @@ pub(super) struct App {
     component_kind: ComponentKind,
     overlay: Option<Overlay>,
     theme_editor: Option<ldnddev_theme::ThemeEditor>,
+    theme_picker: Option<ldnddev_theme::ThemePicker>,
+    /// Host Omarchy theme directories. Tests point this at a missing root.
+    omarchy_paths: ldnddev_theme::OmarchyPaths,
+    /// `theme.name` plus colors mtime when the live link is `follow`.
+    follow_stamp: Option<String>,
     /// Maximum legal overlay scroll, recomputed every render from the
     /// current overlay area + line count so key/wheel handlers can clamp.
     overlay_scroll_max: u16,
@@ -289,6 +295,20 @@ impl App {
         let last_saved_json = serde_json::to_string(&site).unwrap_or_default();
 
         let header_copy = choose_header_copy(&theme.header_quotes);
+        // Test builds hide the host Omarchy install so F2 opens the hex editor.
+        let omarchy_paths = if cfg!(test) {
+            ldnddev_theme::OmarchyPaths::from_root(std::path::Path::new(
+                "/nonexistent/dd_siteforge_omarchy",
+            ))
+        } else {
+            ldnddev_theme::OmarchyPaths::system()
+        };
+        let follow_stamp = match &theme.omarchy {
+            Some(ldnddev_theme::OmarchyChoice::Follow) => {
+                ldnddev_theme::follow_stamp(&omarchy_paths)
+            }
+            _ => None,
+        };
 
         let mut app = Self {
             site,
@@ -339,6 +359,9 @@ impl App {
             component_kind: ComponentKind::Banner,
             overlay: None,
             theme_editor: None,
+            theme_picker: None,
+            omarchy_paths,
+            follow_stamp,
             overlay_scroll_max: 0,
             theme_status,
             modal_field_areas: std::cell::RefCell::new(Vec::new()),

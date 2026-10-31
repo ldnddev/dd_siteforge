@@ -3751,6 +3751,63 @@ fn f2_opens_and_closes_with_f2_and_esc() {
 }
 
 #[test]
+fn f2_lists_omarchy_themes_and_esc_reverts() {
+    let dir = std::env::temp_dir().join(format!(
+        "dd_siteforge_omarchy_f2_{}_{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos()
+    ));
+    let src = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("crates/ldnddev_theme/tests/fixtures/omarchy/tokyo-night/colors.toml");
+    std::fs::create_dir_all(dir.join("stock/tokyo-night")).expect("mkdir");
+    std::fs::copy(&src, dir.join("stock/tokyo-night/colors.toml")).expect("copy");
+    std::fs::create_dir_all(dir.join("state/theme")).expect("state");
+    std::fs::write(dir.join("state/theme.name"), "tokyo-night\n").expect("name");
+    std::fs::copy(&src, dir.join("state/theme/colors.toml")).expect("current");
+
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    app.omarchy_paths = ldnddev_theme::OmarchyPaths::from_root(&dir);
+    let before = color_to_hex(app.theme.body_background);
+    send_key(&mut app, KeyCode::F(2), KeyModifiers::NONE);
+    assert!(matches!(app.overlay, Some(Overlay::Theme { .. })));
+    assert!(app.theme_picker.is_some());
+    assert!(app.theme_editor.is_none());
+    let picker = app.theme_picker.as_ref().expect("picker");
+    assert!(matches!(
+        picker.rows[picker.selected],
+        ldnddev_theme::PickerRow::Custom
+    ));
+    send_key(&mut app, KeyCode::Enter, KeyModifiers::NONE);
+    assert_eq!(color_to_hex(app.theme.body_background), before);
+    send_key(&mut app, KeyCode::Char('g'), KeyModifiers::NONE);
+    send_key(&mut app, KeyCode::Enter, KeyModifiers::NONE);
+    assert_eq!(
+        color_to_hex(app.theme.body_background).to_ascii_uppercase(),
+        "#1A1B26"
+    );
+    send_key(&mut app, KeyCode::Char('e'), KeyModifiers::NONE);
+    assert!(app.theme_editor.is_some());
+    assert!(app.theme_picker.is_some());
+    send_key(&mut app, KeyCode::Esc, KeyModifiers::NONE);
+    assert!(matches!(app.overlay, Some(Overlay::Theme { .. })));
+    assert!(app.theme_editor.is_none());
+    assert!(app.theme_picker.is_some());
+    send_key(&mut app, KeyCode::Esc, KeyModifiers::NONE);
+    assert!(app.overlay.is_none());
+    assert_eq!(color_to_hex(app.theme.body_background), before);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn f2_scroll_keys_and_wheel_update_theme_scroll() {
     let mut app = App::new(
         Site::starter(),

@@ -111,6 +111,9 @@ impl App {
     }
 
     pub(super) fn handle_event(&mut self, evt: Event) -> anyhow::Result<bool> {
+        if matches!(evt, Event::FocusGained) {
+            return Ok(self.refresh_followed_theme());
+        }
         if App::is_idle_event(&evt) {
             if let Event::Mouse(m) = &evt {
                 if matches!(m.kind, MouseEventKind::Up(_)) {
@@ -121,30 +124,65 @@ impl App {
             return Ok(false);
         }
 
-        // Overlay sits above modal + paused FormEdit. Esc/F1/F2 close only
-        // the overlay; they must not drop ImagePicker or the paused form.
+        // Overlay sits above modal + paused FormEdit. F1/F2 close it.
+        // Theme Esc stays inside the picker or editor so the list can remain.
         if self.overlay.is_some() {
-            if matches!(
-                &evt,
-                Event::Key(k) if matches!(k.code, KeyCode::F(1) | KeyCode::F(2) | KeyCode::Esc)
-            ) {
-                if matches!(self.overlay, Some(Overlay::Theme { .. })) {
-                    if let Some(mut editor) = self.theme_editor.take() {
-                        editor.revert();
-                        super::theme::apply_palette(&mut self.theme, &editor.palette);
+            if let Event::Key(k) = &evt {
+                match k.code {
+                    KeyCode::F(1) => {
+                        if matches!(self.overlay, Some(Overlay::Theme { .. })) {
+                            self.close_theme(true);
+                        } else {
+                            self.overlay = None;
+                        }
+                        return Ok(false);
                     }
+                    KeyCode::F(2) => {
+                        if matches!(self.overlay, Some(Overlay::Theme { .. })) {
+                            self.open_theme_ui();
+                        } else {
+                            self.overlay = None;
+                        }
+                        return Ok(false);
+                    }
+                    KeyCode::Esc
+                        if matches!(self.overlay, Some(Overlay::Theme { .. }))
+                            && self.theme_editor.is_none()
+                            && self.theme_picker.is_none() =>
+                    {
+                        self.close_theme(true);
+                        return Ok(false);
+                    }
+                    KeyCode::Esc if !matches!(self.overlay, Some(Overlay::Theme { .. })) => {
+                        self.overlay = None;
+                        return Ok(false);
+                    }
+                    _ => {}
                 }
-                self.overlay = None;
-                return Ok(false);
             }
 
-            if matches!(self.overlay, Some(Overlay::Theme { .. })) {
-                if let Event::Key(k) = &evt {
-                    if let Some(ek) = map_siteforge_editor_key(k) {
-                        self.dispatch_theme_editor(ek, k.modifiers.contains(KeyModifiers::SHIFT));
+            if matches!(self.overlay, Some(Overlay::Theme { .. }))
+                && (self.theme_editor.is_some() || self.theme_picker.is_some())
+            {
+                match &evt {
+                    Event::Key(k) => {
+                        if let Some(ek) = map_siteforge_editor_key(k) {
+                            let shift = k.modifiers.contains(KeyModifiers::SHIFT);
+                            if self.theme_editor.is_some() {
+                                self.dispatch_theme_editor(ek, shift);
+                            } else {
+                                self.dispatch_theme_picker(ek);
+                            }
+                        }
                     }
-                    return Ok(false);
+                    Event::Mouse(m) => match m.kind {
+                        MouseEventKind::ScrollUp => self.scroll_theme(-1),
+                        MouseEventKind::ScrollDown => self.scroll_theme(1),
+                        _ => {}
+                    },
+                    _ => {}
                 }
+                return Ok(false);
             }
 
             let (track, drag_kind) = match &self.overlay {
@@ -236,11 +274,7 @@ impl App {
                         false
                     }
                     KeyCode::F(2) => {
-                        self.theme_editor = Some(ldnddev_theme::ThemeEditor::new(
-                            super::theme::palette_from_theme(&self.theme),
-                            super::theme::extra_theme_fields(),
-                        ));
-                        self.overlay = Some(Overlay::Theme { scroll: 0 });
+                        self.open_theme_ui();
                         false
                     }
                     KeyCode::F(3) => {
@@ -684,6 +718,177 @@ impl App {
         self.selected_sidebar_section = SidebarSection::Layouts;
     }
 
+    /// Re-read `omarchy: follow` when the desktop theme file changes.
+    /// Leaves the startup tagline alone.
+    pub(in crate::tui) fn refresh_followed_theme(&mut self) -> bool {
+        if matches!(self.overlay, Some(Overlay::Theme { .. })) {
+            return false;
+        }
+        if !matches!(
+            self.theme.omarchy,
+            Some(ldnddev_theme::OmarchyChoice::Follow)
+        ) {
+            return false;
+        }
+        let stamp = ldnddev_theme::follow_stamp(&self.omarchy_paths);
+        if stamp == self.follow_stamp {
+            return false;
+        }
+        let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+        let (theme, source, warning) = super::theme::AppTheme::load_resolved(
+            &cwd,
+            ldnddev_theme::default_config_home().as_deref(),
+            &self.omarchy_paths,
+        );
+        let header_quotes = self.theme.header_quotes.clone();
+        self.follow_stamp = stamp;
+        self.theme = theme;
+        self.theme.header_quotes = header_quotes;
+        self.theme_source = source;
+        if let Some(msg) = warning {
+            self.theme_status = Some(msg.clone());
+            self.push_toast(ToastLevel::Warning, msg);
+        }
+        true
+    }
+
+    pub(in crate::tui) fn open_theme_ui(&mut self) {
+        if matches!(self.overlay, Some(Overlay::Theme { .. })) {
+            self.close_theme(true);
+            return;
+        }
+        let palette = super::theme::palette_from_theme(&self.theme);
+        let picker = ldnddev_theme::ThemePicker::new(
+            palette.clone(),
+            super::theme::extra_theme_fields(),
+            self.omarchy_paths.clone(),
+        );
+        if picker.lists_omarchy() {
+            self.theme_picker = Some(picker);
+            self.theme_editor = None;
+        } else {
+            self.theme_picker = None;
+            self.theme_editor = Some(ldnddev_theme::ThemeEditor::new(
+                palette,
+                super::theme::extra_theme_fields(),
+            ));
+        }
+        self.overlay = Some(Overlay::Theme { scroll: 0 });
+    }
+
+    fn close_theme(&mut self, revert: bool) {
+        if revert {
+            if let Some(picker) = self.theme_picker.as_ref() {
+                let palette = picker.revert_palette();
+                super::theme::apply_palette(&mut self.theme, &palette);
+            } else if let Some(mut editor) = self.theme_editor.take() {
+                editor.revert();
+                super::theme::apply_palette(&mut self.theme, &editor.palette);
+            }
+        }
+        self.theme_picker = None;
+        self.theme_editor = None;
+        self.overlay = None;
+    }
+
+    fn scroll_theme(&mut self, delta: i32) {
+        if let Some(editor) = self.theme_editor.as_mut() {
+            let next = editor.selected as i32 + delta;
+            editor.select(next.max(0) as usize);
+            return;
+        }
+        if let Some(picker) = self.theme_picker.as_mut() {
+            let next = picker.selected as i32 + delta;
+            picker.select(next.max(0) as usize);
+        }
+    }
+
+    fn dispatch_theme_picker(&mut self, ek: ldnddev_theme::EditorKey) {
+        let outcome = {
+            let Some(picker) = self.theme_picker.as_mut() else {
+                return;
+            };
+            picker.handle(ek)
+        };
+        match outcome {
+            ldnddev_theme::PickerOutcome::Applied => {
+                if let Some(picker) = &self.theme_picker {
+                    super::theme::apply_palette(&mut self.theme, &picker.palette);
+                }
+            }
+            ldnddev_theme::PickerOutcome::EditColors => {
+                let Some(picker) = self.theme_picker.as_ref() else {
+                    return;
+                };
+                let mut editor = ldnddev_theme::ThemeEditor::new(
+                    picker.palette.clone(),
+                    super::theme::extra_theme_fields(),
+                );
+                editor.save_target = picker.save_target;
+                self.theme_editor = Some(editor);
+            }
+            ldnddev_theme::PickerOutcome::RequestSave => {
+                let saved = self
+                    .theme_picker
+                    .as_ref()
+                    .map(|picker| (picker.palette.clone(), picker.save_target));
+                if let Some((palette, target)) = saved {
+                    self.save_theme_palette(&palette, target);
+                }
+            }
+            ldnddev_theme::PickerOutcome::Error(msg) => {
+                self.push_toast(ToastLevel::Error, msg);
+            }
+            ldnddev_theme::PickerOutcome::Closed { .. } => self.close_theme(true),
+            ldnddev_theme::PickerOutcome::None => {}
+        }
+    }
+
+    fn save_theme_palette(
+        &mut self,
+        palette: &ldnddev_theme::Palette,
+        target: ldnddev_theme::ThemeSaveTarget,
+    ) {
+        let root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+        let fields = self
+            .theme_editor
+            .as_ref()
+            .map(|editor| editor.fields.clone())
+            .unwrap_or_else(|| {
+                let mut fields = ldnddev_theme::COLOR_FIELDS.to_vec();
+                for extra in super::theme::extra_theme_fields() {
+                    if !fields.iter().any(|field| field.key == extra.key) {
+                        fields.push(*extra);
+                    }
+                }
+                fields
+            });
+        match ldnddev_theme::save_theme(
+            palette,
+            &root,
+            "dd_siteforge_theme.yml",
+            target,
+            ldnddev_theme::default_config_home().as_deref(),
+            &fields,
+        ) {
+            Ok(path) => {
+                super::theme::apply_palette(&mut self.theme, palette);
+                self.theme_source = target.label().to_string();
+                self.follow_stamp = ldnddev_theme::follow_stamp(&self.omarchy_paths);
+                self.theme_editor = None;
+                self.theme_picker = None;
+                self.overlay = None;
+                self.push_toast(
+                    ToastLevel::Success,
+                    format!("Theme saved ({})", path.display()),
+                );
+            }
+            Err(err) => {
+                self.push_toast(ToastLevel::Error, format!("Theme save failed: {err}"));
+            }
+        }
+    }
+
     fn dispatch_theme_editor(&mut self, ek: ldnddev_theme::EditorKey, shift: bool) {
         let outcome = {
             let Some(editor) = self.theme_editor.as_mut() else {
@@ -694,37 +899,37 @@ impl App {
         match outcome {
             ldnddev_theme::EditorOutcome::PaletteChanged => {
                 if let Some(editor) = &self.theme_editor {
+                    if let Some(picker) = self.theme_picker.as_mut() {
+                        picker.palette = editor.palette.clone();
+                        picker.save_target = editor.save_target;
+                    }
                     super::theme::apply_palette(&mut self.theme, &editor.palette);
                 }
             }
             ldnddev_theme::EditorOutcome::RequestSave => {
-                if let Some(editor) = &self.theme_editor {
-                    let root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-                    if ldnddev_theme::save_theme(
-                        &editor.palette,
-                        &root,
-                        "dd_siteforge_theme.yml",
-                        editor.save_target,
-                        ldnddev_theme::default_config_home().as_deref(),
-                        &editor.fields,
-                    )
-                    .is_ok()
-                    {
-                        super::theme::apply_palette(&mut self.theme, &editor.palette);
-                        self.theme_source = editor.save_target.label().to_string();
-                        self.theme_editor = None;
-                        self.overlay = None;
-                    }
+                if let Some(editor) = self.theme_editor.as_ref() {
+                    let palette = editor.palette.clone();
+                    let target = editor.save_target;
+                    self.save_theme_palette(&palette, target);
                 }
             }
             ldnddev_theme::EditorOutcome::Closed { .. } => {
-                if let Some(mut editor) = self.theme_editor.take() {
-                    editor.revert();
-                    super::theme::apply_palette(&mut self.theme, &editor.palette);
+                if self.theme_picker.is_some() {
+                    if let Some(editor) = self.theme_editor.take() {
+                        if let Some(picker) = self.theme_picker.as_mut() {
+                            picker.palette = editor.palette.clone();
+                            picker.save_target = editor.save_target;
+                        }
+                        super::theme::apply_palette(&mut self.theme, &editor.palette);
+                    }
+                } else {
+                    self.close_theme(true);
                 }
-                self.overlay = None;
             }
-            ldnddev_theme::EditorOutcome::HexError(_) | ldnddev_theme::EditorOutcome::None => {}
+            ldnddev_theme::EditorOutcome::HexError(msg) => {
+                self.push_toast(ToastLevel::Error, msg);
+            }
+            ldnddev_theme::EditorOutcome::None => {}
         }
     }
 }

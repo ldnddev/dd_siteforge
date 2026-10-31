@@ -102,13 +102,7 @@ impl App {
             PaletteCommand::Help => {
                 self.overlay = Some(Overlay::Help { scroll: 0 });
             }
-            PaletteCommand::Theme => {
-                self.theme_editor = Some(ldnddev_theme::ThemeEditor::new(
-                    super::theme::palette_from_theme(&self.theme),
-                    super::theme::extra_theme_fields(),
-                ));
-                self.overlay = Some(Overlay::Theme { scroll: 0 });
-            }
+            PaletteCommand::Theme => self.open_theme_ui(),
             PaletteCommand::Find => self.open_find(),
             PaletteCommand::Insert => self.open_component_picker(),
             PaletteCommand::AddPage => {

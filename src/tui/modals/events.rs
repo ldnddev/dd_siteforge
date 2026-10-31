@@ -139,7 +139,7 @@ impl App {
                 return Some(ModalResult::Continue);
             }
             if key.code == KeyCode::F(2) {
-                self.overlay = Some(Overlay::Theme { scroll: 0 });
+                self.open_theme_ui();
                 return Some(ModalResult::Continue);
             }
             let key = *key;
