@@ -440,8 +440,6 @@ mod tests {
                     "custom": "",
                     "blurb": "",
                     "sections_html": "",
-                    "has_socials": false,
-                    "socials": [],
                     "copyright": "c"
                 }),
             )

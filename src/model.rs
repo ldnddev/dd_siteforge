@@ -891,12 +891,6 @@ pub struct DdFooter {
     pub blurb: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub copyright: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub social_linkedin: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub social_x: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub social_github: Option<String>,
     #[serde(default)]
     pub sections: Vec<DdSection>,
 }
@@ -1853,9 +1847,6 @@ impl Site {
                 custom_css: None,
                 blurb: None,
                 copyright: None,
-                social_linkedin: None,
-                social_x: None,
-                social_github: None,
                 sections: vec![DdSection {
                     id: "footer-section-1".to_string(),
                     section_title: None,
@@ -3084,7 +3075,13 @@ mod tests {
                     "support_color": "#000000"
                 },
                 "header": { "id": "h", "sections": [] },
-                "footer": { "id": "f", "sections": [] },
+                "footer": {
+                    "id": "f",
+                    "sections": [],
+                    "social_linkedin": "https://www.linkedin.com/in/example",
+                    "social_x": "https://x.com/example",
+                    "social_github": "https://github.com/example"
+                },
                 "pages": []
             }"##,
         )
@@ -3093,7 +3090,11 @@ mod tests {
         assert!(site.header.cta_url.is_none());
         assert!(site.header.banner.is_none());
         assert!(site.footer.blurb.is_none());
-        assert!(site.footer.social_github.is_none());
+        let saved = serde_json::to_string(&site.footer).unwrap();
+        assert!(
+            !saved.contains("social_"),
+            "old social URL fields stay out of saved footer JSON: {saved}"
+        );
     }
 
     #[test]

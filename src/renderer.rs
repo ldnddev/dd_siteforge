@@ -266,28 +266,12 @@ pub(crate) fn render_footer(
                 format!("© {} {}", copyright_year(), name)
             }
         });
-    let mut socials = Vec::new();
-    for (url, label, icon) in [
-        (footer.social_linkedin.as_deref(), "LinkedIn", "fa-linkedin"),
-        (footer.social_x.as_deref(), "X", "fa-x-twitter"),
-        (footer.social_github.as_deref(), "GitHub", "fa-github"),
-    ] {
-        if let Some(url) = url.map(crate::model::safe_href).filter(|s| !s.is_empty()) {
-            socials.push(json!({
-                "url": url,
-                "label": label,
-                "icon": icon,
-            }));
-        }
-    }
     r.render(
         "dd-footer",
         &json!({
             "custom": custom,
             "blurb": blurb,
             "sections_html": sections_html,
-            "has_socials": !socials.is_empty(),
-            "socials": socials,
             "copyright": copyright,
         }),
     )
@@ -2193,6 +2177,29 @@ mod tests {
     }
 
     #[test]
+    fn hero_omits_blank_subtitle() {
+        use crate::model::PageNode;
+        let mut site = Site::starter();
+        let PageNode::Hero(hero) = &mut site.pages[0].nodes[0] else {
+            panic!("expected hero");
+        };
+        hero.parent_subtitle = "   ".to_string();
+        let html = render_page_html(&site.pages[0]).expect("hero should render");
+        assert!(html.contains("<h1>Build with dd-framework</h1>"), "{html}");
+        assert!(!html.contains("dd-hero__subtitle"), "{html}");
+
+        let PageNode::Hero(hero) = &mut site.pages[0].nodes[0] else {
+            panic!("expected hero");
+        };
+        hero.parent_subtitle = "A short line".to_string();
+        let html = render_page_html(&site.pages[0]).expect("hero should render");
+        assert!(
+            html.contains("<div class=\"dd-hero__subtitle\"><strong>A short line</strong></div>"),
+            "{html}"
+        );
+    }
+
+    #[test]
     fn cta_renders_authored_button_styles() {
         use crate::model::{
             ButtonStyle, CardLinkTarget, CtaClass, DdCta, DdLink, Page, PageNode, SalAnimation,
@@ -2734,14 +2741,13 @@ mod tests {
     }
 
     #[test]
-    fn header_cta_banner_footer_socials_and_ga4_render() {
+    fn header_cta_banner_footer_and_ga4_render() {
         let mut site = Site::starter();
         site.header.cta_url = Some("/contact.html".to_string());
         site.header.cta_label = Some("Contact us".to_string());
         site.header.banner = Some("Office closed Friday".to_string());
         site.footer.blurb = Some("Hello\nworld".to_string());
         site.footer.copyright = Some("© Custom Co".to_string());
-        site.footer.social_github = Some("https://github.com/ldnddev".to_string());
         site.ga_measurement_id = Some("G-ABC123".to_string());
         let r = crate::templates::Renderer::bundled_only().unwrap();
         let header = super::render_header(&r, &site.header).unwrap();
@@ -2755,9 +2761,8 @@ mod tests {
         );
         assert!(footer.contains("Hello<br>world"), "{footer}");
         assert!(footer.contains("© Custom Co"), "{footer}");
-        assert!(footer.contains("fa-github"), "{footer}");
-        assert!(footer.contains("aria-label=\"Social\""), "{footer}");
-        assert!(!footer.contains("fa-linkedin"), "{footer}");
+        assert!(!footer.contains("aria-label=\"Social\""), "{footer}");
+        assert!(!footer.contains("fa-github"), "{footer}");
 
         let html =
             super::render_page_html_with_chrome(&r, &site.pages[0], &header, &footer, &site, None)

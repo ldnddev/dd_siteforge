@@ -403,7 +403,6 @@ fn blueprint_content_lines_skipping(
     width: usize,
 ) -> Vec<String> {
     let mut lines = Vec::new();
-    let mut socials: Vec<&str> = Vec::new();
     for field in state.form.fields {
         if skip_ids.contains(&field.id) {
             continue;
@@ -462,23 +461,10 @@ fn blueprint_content_lines_skipping(
                 }
                 push_content_line(&mut lines, field.id, state.get(field.id), width);
             }
-            _ if matches!(field.id, "social_linkedin" | "social_x" | "social_github") => {
-                if !state.get(field.id).trim().is_empty() {
-                    socials.push(match field.id {
-                        "social_linkedin" => "LinkedIn",
-                        "social_x" => "X",
-                        "social_github" => "GitHub",
-                        _ => field.id,
-                    });
-                }
-            }
             _ => {
                 push_content_line(&mut lines, field.id, state.get(field.id), width);
             }
         }
-    }
-    if !socials.is_empty() {
-        lines.push(format!("social: {}", socials.join(", ")));
     }
     lines
 }

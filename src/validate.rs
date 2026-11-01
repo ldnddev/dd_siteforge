@@ -842,19 +842,6 @@ fn validate_footer(footer: &crate::model::DdFooter, errors: &mut Vec<String>) {
     if footer.sections.is_empty() {
         errors.push("site.footer must have at least one section.".to_string());
     }
-    for (label, url) in [
-        ("LinkedIn", footer.social_linkedin.as_deref()),
-        ("X", footer.social_x.as_deref()),
-        ("GitHub", footer.social_github.as_deref()),
-    ] {
-        if let Some(url) = url.map(str::trim).filter(|s| !s.is_empty()) {
-            if !is_valid_url(url) {
-                errors.push(format!(
-                    "site.footer {label} URL '{url}' is not a valid URL."
-                ));
-            }
-        }
-    }
     let mut chrome_ids = std::collections::HashSet::new();
     for section in &footer.sections {
         if !section.id.trim().is_empty() && !chrome_ids.insert(section.id.clone()) {
@@ -1164,13 +1151,6 @@ mod tests {
             "expected CTA URL error, got {errors:?}"
         );
         site.header.cta_url = Some("/contact.html".to_string());
-        site.footer.social_github = Some("java\nscript:alert(1)".to_string());
-        let errors = validate_site(&site);
-        assert!(
-            errors.iter().any(|e| e.contains("GitHub")),
-            "expected GitHub URL error, got {errors:?}"
-        );
-        site.footer.social_github = Some("https://github.com/ldnddev".to_string());
         let errors = validate_site(&site);
         assert!(
             errors.iter().all(|e| !e.contains("URL")),
@@ -1257,6 +1237,16 @@ mod tests {
                 .all(|e| !e.contains("missing required fields")),
             "bundled required-field wording is gone, got {errors:?}"
         );
+    }
+
+    #[test]
+    fn hero_subtitle_is_optional() {
+        let baseline = validate_site(&Site::starter());
+        let mut site = Site::starter();
+        if let PageNode::Hero(hero) = &mut site.pages[0].nodes[0] {
+            hero.parent_subtitle = "  ".into();
+        }
+        assert_eq!(validate_site(&site), baseline);
     }
 
     #[test]

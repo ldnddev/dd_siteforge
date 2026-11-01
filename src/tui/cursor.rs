@@ -1449,9 +1449,6 @@ fn apply_footer_values(footer: &mut crate::model::DdFooter, state: &EditFormStat
     footer.custom_css = if css.is_empty() { None } else { Some(css) };
     footer.blurb = opt_trimmed(state.get("blurb"));
     footer.copyright = opt_trimmed(state.get("copyright"));
-    footer.social_linkedin = opt_trimmed(state.get("social_linkedin"));
-    footer.social_x = opt_trimmed(state.get("social_x"));
-    footer.social_github = opt_trimmed(state.get("social_github"));
     Ok(())
 }
 
@@ -1580,15 +1577,6 @@ pub fn footer_to_form_state(footer: &crate::model::DdFooter) -> EditFormState {
     s.set("custom_css", footer.custom_css.clone().unwrap_or_default());
     s.set("blurb", footer.blurb.clone().unwrap_or_default());
     s.set("copyright", footer.copyright.clone().unwrap_or_default());
-    s.set(
-        "social_linkedin",
-        footer.social_linkedin.clone().unwrap_or_default(),
-    );
-    s.set("social_x", footer.social_x.clone().unwrap_or_default());
-    s.set(
-        "social_github",
-        footer.social_github.clone().unwrap_or_default(),
-    );
     s
 }
 

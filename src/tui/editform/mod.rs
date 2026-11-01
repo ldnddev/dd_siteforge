@@ -628,7 +628,7 @@ mod tests {
         );
 
         let mut hero = EditFormState::new(&HERO_FORM);
-        hero.set("parent_subtitle", "Sub");
+        hero.set("parent_subtitle", "   ");
         hero.set("media_kind", "none");
         hero.set("parent_image_class", "");
         let ids: Vec<_> = hero
@@ -645,6 +645,18 @@ mod tests {
             .map(|(_, id, _)| id)
             .collect();
         assert_eq!(ids, vec!["items"]);
+    }
+
+    #[test]
+    fn copyright_field_tells_authors_to_use_the_year_token() {
+        let label = FOOTER_FORM
+            .fields
+            .iter()
+            .find(|field| field.id == "copyright")
+            .map(|field| field.label)
+            .expect("copyright field");
+        assert!(label.contains("enter the year as [[YYYY]]"), "{label}");
+        assert!(label.contains("dynamically replaced"), "{label}");
     }
 
     #[test]
