@@ -73,7 +73,7 @@ jobs:
           tar: unix
           zip: none
           checksum: sha256
-          include: LICENSE,dd_siteforge_theme.yml
+          include: LICENSE,dd_siteforge_theme.yml,source/favicon/web-app-manifest-512x512.png
           locked: true
           build-tool: cargo
           ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', github.event.inputs.tag) || github.ref }}

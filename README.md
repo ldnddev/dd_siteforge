@@ -14,10 +14,12 @@ Picks the Linux or macOS binary for this machine (x86_64 or aarch64) from GitHub
 curl -fsSL https://raw.githubusercontent.com/ldnddev/dd_siteforge/master/install.sh | bash
 ```
 
-Installs `$HOME/.local/bin/dd_siteforge` and writes the default theme to `$HOME/.config/ldnddev/dd_siteforge_theme.yml` only when that file is missing. Pin a version with `--version`, or override `PREFIX` / `BIN_DIR` / `CONFIG_DIR`.
+Installs `$HOME/.local/bin/dd_siteforge` and writes the default theme to `$HOME/.config/ldnddev/dd_siteforge_theme.yml` only when that file is missing. On Linux it also writes `${XDG_DATA_HOME:-$HOME/.local/share}/applications/dd_siteforge.desktop` (`Terminal=true`) so the TUI shows in the application menu, and copies the icon when the package includes `source/favicon/web-app-manifest-512x512.png`. A prefix outside `$HOME` uses `$PREFIX/share/applications`. Pin a version with `--version`, or override `PREFIX` / `BIN_DIR` / `CONFIG_DIR` / `XDG_DATA_HOME`.
+
+`./install.sh uninstall` removes the binary, the theme file, the desktop launcher, and the installed icon. It leaves `~/.config/ldnddev/dd_siteforge/` (session and scaffold) in place. Use the same `PREFIX`, `BIN_DIR`, `CONFIG_DIR`, and `XDG_DATA_HOME` as the install.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ldnddev/dd_siteforge/master/install.sh | bash -s -- --version v1.31.0
+curl -fsSL https://raw.githubusercontent.com/ldnddev/dd_siteforge/master/install.sh | bash -s -- --version v1.31.1
 curl -fsSL https://raw.githubusercontent.com/ldnddev/dd_siteforge/master/install.sh | bash -s -- uninstall
 ```
 

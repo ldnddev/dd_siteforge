@@ -10,20 +10,30 @@
 #   ./install.sh install          # same as above
 #   ./install.sh --from-release   # always download the matching GitHub Release
 #   ./install.sh --from-source    # always cargo-build (clone only)
-#   ./install.sh uninstall        # remove the binary + theme + config dir if empty
+#   ./install.sh uninstall        # remove the binary, theme, launcher, and icon
 #   ./install.sh --help           # this help
 #
+# On Linux, install writes a desktop launcher so the TUI shows in the
+# application menu (Terminal=true). A prefix under $HOME publishes it in
+# ${XDG_DATA_HOME:-$HOME/.local/share}/applications. Any other prefix uses
+# $PREFIX/share/applications. The icon is copied when this package includes
+# source/favicon/web-app-manifest-512x512.png.
+#
 # Pin a version or override locations:
-#   VERSION=v1.31.0                # default: latest GitHub Release
+#   VERSION=v1.31.1                # default: latest GitHub Release
 #   PREFIX=$HOME/.local           # binary lives at $PREFIX/bin/dd_siteforge
 #   CONFIG_DIR=$HOME/.config/ldnddev
+#   XDG_DATA_HOME=...             # launcher and icon live under here when set
 #   TARGET=x86_64-unknown-linux-musl   # skip auto-detect
 #
 # Piped extras:
-#   curl -fsSL … | bash -s -- --version v1.31.0
+#   curl -fsSL … | bash -s -- --version v1.31.1
 #   curl -fsSL … | bash -s -- uninstall
 #
-# Re-run safe: existing themes are left alone on install; the binary is overwritten.
+# Re-run safe: existing themes are left alone on install; the binary and
+# launcher are overwritten. Uninstall removes the binary, the theme file,
+# the desktop launcher, and the installed icon. It leaves
+# $CONFIG_DIR/dd_siteforge/ (session and scaffold) in place.
 # The Grunt/source/Lando/DDEV kit is embedded in the binary and seeded by
 # `dd_siteforge init-site`. Optional house overlay: `dd_siteforge init-scaffold --global`.
 
@@ -69,16 +79,22 @@ Usage:
   ./install.sh install          same as above
   ./install.sh --from-release   always download the matching GitHub Release
   ./install.sh --from-source    always cargo-build (clone only)
-  ./install.sh uninstall        remove the binary + theme + empty config dir
+  ./install.sh uninstall        remove the binary, theme, launcher, and icon
   ./install.sh --help           this help
 
+On Linux the install also writes a desktop launcher (Terminal=true) so the
+TUI shows in the application menu. Uninstall removes that launcher and the
+installed icon. Session and scaffold files under the config dir stay.
+Pass the same PREFIX, BIN_DIR, CONFIG_DIR, and XDG_DATA_HOME you used
+to install.
+
 Override defaults via env vars:
-  VERSION=v1.31.0                pin a release (default: latest)
+  VERSION=v1.31.1                pin a release (default: latest)
   PREFIX=$HOME/.local           binary lives at $PREFIX/bin/dd_siteforge
-  BIN_DIR, CONFIG_DIR, TARGET, GITHUB_REPO
+  BIN_DIR, CONFIG_DIR, XDG_DATA_HOME, TARGET, GITHUB_REPO
 
 Piped extras:
-  curl -fsSL … | bash -s -- --version v1.31.0
+  curl -fsSL … | bash -s -- --version v1.31.1
   curl -fsSL … | bash -s -- uninstall
 EOF
 }
@@ -138,7 +154,7 @@ detect_target() {
 }
 
 normalize_version() {
-    # Empty → latest. Accept "1.31.0" or "v1.31.0".
+    # Empty → latest. Accept "1.31.1" or "v1.31.1".
     if [ -z "$VERSION" ] || [ "$VERSION" = "latest" ]; then
         VERSION=""
         return 0
@@ -243,6 +259,132 @@ warn_path() {
     esac
 }
 
+# Desktop menus search XDG_DATA_HOME, then the system data dirs.
+# A prefix under $HOME still publishes the launcher where the session looks.
+data_dir() {
+    if [ -n "${XDG_DATA_HOME:-}" ]; then
+        printf '%s\n' "$XDG_DATA_HOME"
+        return 0
+    fi
+    case "$PREFIX" in
+        "$HOME"|"$HOME"/*)
+            printf '%s/.local/share\n' "$HOME"
+            ;;
+        *)
+            printf '%s/share\n' "$PREFIX"
+            ;;
+    esac
+}
+
+apps_dir() {
+    printf '%s/applications\n' "$(data_dir)"
+}
+
+icon_path() {
+    printf '%s/icons/hicolor/512x512/apps/%s.png\n' "$(data_dir)" "$BIN_NAME"
+}
+
+# Quote one Exec argument. A literal % is %%.
+desktop_quote() {
+    local s=$1
+    case "$s" in
+        *$'\n'*) red "Desktop path contains a newline"; exit 1 ;;
+    esac
+    s=${s//\\/\\\\}
+    s=${s//\"/\\\"}
+    s=${s//\`/\\\`}
+    s=${s//\$/\\\$}
+    s=${s//%/%%}
+    printf '"%s"' "$s"
+}
+
+is_png() {
+    local magic
+    magic="$(od -An -t x1 -N 8 -- "$1" 2>/dev/null | tr -d ' \n')"
+    [ "$magic" = "89504e470d0a1a0a" ]
+}
+
+# Copy the brand mark when this package has one. Returns 0 when the icon
+# is installed at icon_path, 1 when the package has no PNG.
+install_icon() {
+    local search_dir="${1:-}" src=""
+    local dest
+    dest="$(icon_path)"
+
+    if in_repo; then
+        local local_icon
+        local_icon="$(repo_root)/source/favicon/web-app-manifest-512x512.png"
+        if [ -f "$local_icon" ]; then
+            src="$local_icon"
+        fi
+    fi
+    if [ -z "$src" ] && [ -n "$search_dir" ] && [ -d "$search_dir" ]; then
+        src="$(find "$search_dir" -type f -name 'web-app-manifest-512x512.png' 2>/dev/null | head -n 1 || true)"
+    fi
+    if [ -z "$src" ]; then
+        yellow "No icon in this package — the launcher uses the menu's default icon."
+        return 1
+    fi
+    if ! is_png "$src"; then
+        yellow "Icon at $src is not a PNG — the launcher uses the menu's default icon."
+        return 1
+    fi
+
+    mkdir -p "$(dirname "$dest")"
+    install_file 0644 "$src" "$dest"
+    green "Installed icon → $dest"
+    return 0
+}
+
+write_desktop() {
+    local dest=$1 bin=$2 icon=${3:-}
+    local exec_q
+    exec_q="$(desktop_quote "$bin")"
+    {
+        printf '%s\n' "[Desktop Entry]"
+        printf '%s\n' "Type=Application"
+        printf '%s\n' "Version=1.0"
+        printf '%s\n' "Name=${BIN_NAME}"
+        printf '%s\n' "GenericName=Site editor"
+        printf '%s\n' "Comment=Edit a static site in the terminal"
+        printf '%s\n' "Exec=${exec_q}"
+        printf '%s\n' "TryExec=${bin}"
+        printf '%s\n' "Terminal=true"
+        printf '%s\n' "Categories=Development;"
+        printf '%s\n' "Keywords=site;cms;html;static;tui;"
+        printf '%s\n' "StartupNotify=false"
+        if [ -n "$icon" ]; then
+            printf '%s\n' "Icon=${icon}"
+        fi
+    } >"$dest"
+    chmod 644 "$dest"
+}
+
+install_launcher() {
+    local search_dir="${1:-}"
+    case "$(uname -s)" in
+        Linux) ;;
+        *)
+            yellow "Desktop launcher is written on Linux. Skipped on $(uname -s)."
+            return 0
+            ;;
+    esac
+
+    local dir dest bin icon=""
+    dir="$(apps_dir)"
+    dest="$dir/${BIN_NAME}.desktop"
+    bin="$BIN_DIR/$BIN_NAME"
+    mkdir -p "$dir"
+    if install_icon "$search_dir"; then
+        icon="$(icon_path)"
+    fi
+    write_desktop "$dest" "$bin" "$icon"
+    green "Launcher $dest"
+    if command -v update-desktop-database >/dev/null 2>&1; then
+        update-desktop-database "$dir" >/dev/null 2>&1 || true
+    fi
+}
+
 install_theme_if_absent() {
     local src="$1"
     mkdir -p "$CONFIG_DIR"
@@ -260,6 +402,7 @@ install_theme_if_absent() {
 }
 
 finish_ok() {
+    install_launcher "${1:-}"
     warn_path
     green ""
     green "Done. Try:  $BIN_NAME --help"
@@ -354,7 +497,7 @@ do_install_from_release() {
         theme_src="$(find "$tmp" -type f -name "$THEME_FILE" | head -n 1 || true)"
     fi
     install_theme_if_absent "${theme_src:-}"
-    finish_ok
+    finish_ok "$tmp"
 }
 
 do_install() {
@@ -382,28 +525,37 @@ do_install() {
 do_uninstall() {
     local bin_dst="$BIN_DIR/$BIN_NAME"
     local theme_dst="$CONFIG_DIR/$THEME_FILE"
+    local desktop_dst icon_dst
+    desktop_dst="$(apps_dir)/${BIN_NAME}.desktop"
+    icon_dst="$(icon_path)"
     local removed_any=0
+    local path
 
-    if [ -f "$bin_dst" ] || [ -L "$bin_dst" ]; then
-        rm -f "$bin_dst"
-        green "Removed $bin_dst"
-        removed_any=1
-    else
-        yellow "No binary at $bin_dst"
-    fi
-
-    if [ -f "$theme_dst" ] || [ -L "$theme_dst" ]; then
-        rm -f "$theme_dst"
-        green "Removed $theme_dst"
-        removed_any=1
-    else
-        yellow "No theme at $theme_dst"
-    fi
+    for path in "$bin_dst" "$theme_dst" "$desktop_dst" "$icon_dst"; do
+        if [ -f "$path" ] || [ -L "$path" ]; then
+            rm -f -- "$path"
+            green "Removed $path"
+            removed_any=1
+        else
+            yellow "Not installed: $path"
+        fi
+    done
 
     # Remove config dir only if empty (don't clobber other tools' files)
-    if [ -d "$CONFIG_DIR" ] && [ -z "$(ls -A "$CONFIG_DIR")" ]; then
+    if [ -d "$CONFIG_DIR" ] && [ -z "$(ls -A "$CONFIG_DIR" 2>/dev/null)" ]; then
         rmdir "$CONFIG_DIR"
         green "Removed empty $CONFIG_DIR"
+    fi
+
+    local apps session_dir
+    apps="$(apps_dir)"
+    if command -v update-desktop-database >/dev/null 2>&1 && [ -d "$apps" ]; then
+        update-desktop-database "$apps" >/dev/null 2>&1 || true
+    fi
+
+    session_dir="$CONFIG_DIR/$BIN_NAME"
+    if [ -d "$session_dir" ]; then
+        yellow "Left $session_dir in place (session and scaffold, not written by this installer)."
     fi
 
     if [ "$removed_any" -eq 0 ]; then
@@ -415,18 +567,20 @@ do_uninstall() {
 }
 
 # ---- dispatch ---------------------------------------------------------------
+main() {
 cmd="install"
 mode="auto"
 
 while [ $# -gt 0 ]; do
     case "$1" in
         install)            cmd="install"; shift ;;
-        uninstall|remove)   cmd="uninstall"; shift ;;
+        uninstall|remove|--uninstall)
+                            cmd="uninstall"; shift ;;
         --from-source)      mode="source"; shift ;;
         --from-release|--binary)
                             mode="release"; shift ;;
         --version)
-            [ $# -ge 2 ] || { red "--version needs a value (e.g. v1.31.0)"; exit 1; }
+            [ $# -ge 2 ] || { red "--version needs a value (e.g. v1.31.1)"; exit 1; }
             VERSION="$2"
             shift 2
             ;;
@@ -459,3 +613,8 @@ case "$cmd" in
     uninstall) do_uninstall ;;
     *) red "Unknown command: $cmd"; usage; exit 1 ;;
 esac
+}
+
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+    main "$@"
+fi
