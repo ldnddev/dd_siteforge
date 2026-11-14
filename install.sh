@@ -20,14 +20,14 @@
 # source/favicon/web-app-manifest-512x512.png.
 #
 # Pin a version or override locations:
-#   VERSION=v1.31.1                # default: latest GitHub Release
+#   VERSION=v1.31.2                # default: latest GitHub Release
 #   PREFIX=$HOME/.local           # binary lives at $PREFIX/bin/dd_siteforge
 #   CONFIG_DIR=$HOME/.config/ldnddev
 #   XDG_DATA_HOME=...             # launcher and icon live under here when set
 #   TARGET=x86_64-unknown-linux-musl   # skip auto-detect
 #
 # Piped extras:
-#   curl -fsSL … | bash -s -- --version v1.31.1
+#   curl -fsSL … | bash -s -- --version v1.31.2
 #   curl -fsSL … | bash -s -- uninstall
 #
 # Re-run safe: existing themes are left alone on install; the binary and
@@ -89,12 +89,12 @@ Pass the same PREFIX, BIN_DIR, CONFIG_DIR, and XDG_DATA_HOME you used
 to install.
 
 Override defaults via env vars:
-  VERSION=v1.31.1                pin a release (default: latest)
+  VERSION=v1.31.2                pin a release (default: latest)
   PREFIX=$HOME/.local           binary lives at $PREFIX/bin/dd_siteforge
   BIN_DIR, CONFIG_DIR, XDG_DATA_HOME, TARGET, GITHUB_REPO
 
 Piped extras:
-  curl -fsSL … | bash -s -- --version v1.31.1
+  curl -fsSL … | bash -s -- --version v1.31.2
   curl -fsSL … | bash -s -- uninstall
 EOF
 }
@@ -154,7 +154,7 @@ detect_target() {
 }
 
 normalize_version() {
-    # Empty → latest. Accept "1.31.1" or "v1.31.1".
+    # Empty → latest. Accept "1.31.2" or "v1.31.2".
     if [ -z "$VERSION" ] || [ "$VERSION" = "latest" ]; then
         VERSION=""
         return 0
@@ -580,7 +580,7 @@ while [ $# -gt 0 ]; do
         --from-release|--binary)
                             mode="release"; shift ;;
         --version)
-            [ $# -ge 2 ] || { red "--version needs a value (e.g. v1.31.1)"; exit 1; }
+            [ $# -ge 2 ] || { red "--version needs a value (e.g. v1.31.2)"; exit 1; }
             VERSION="$2"
             shift 2
             ;;
@@ -615,6 +615,8 @@ case "$cmd" in
 esac
 }
 
-if [ "${BASH_SOURCE[0]}" = "$0" ]; then
-    main "$@"
-fi
+# Run when executed as a file or via `curl | bash`. Skip when sourced.
+# Under `set -u`, a pipe leaves BASH_SOURCE[0] unset (or set to bash / a fd path).
+case "${BASH_SOURCE[0]:-$0}" in
+    "$0"|bash|sh|-|/dev/fd/*|/proc/self/fd/*) main "$@" ;;
+esac

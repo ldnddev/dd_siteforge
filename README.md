@@ -19,7 +19,7 @@ Installs `$HOME/.local/bin/dd_siteforge` and writes the default theme to `$HOME/
 `./install.sh uninstall` removes the binary, the theme file, the desktop launcher, and the installed icon. It leaves `~/.config/ldnddev/dd_siteforge/` (session and scaffold) in place. Use the same `PREFIX`, `BIN_DIR`, `CONFIG_DIR`, and `XDG_DATA_HOME` as the install.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ldnddev/dd_siteforge/master/install.sh | bash -s -- --version v1.31.1
+curl -fsSL https://raw.githubusercontent.com/ldnddev/dd_siteforge/master/install.sh | bash -s -- --version v1.31.2
 curl -fsSL https://raw.githubusercontent.com/ldnddev/dd_siteforge/master/install.sh | bash -s -- uninstall
 ```
 
