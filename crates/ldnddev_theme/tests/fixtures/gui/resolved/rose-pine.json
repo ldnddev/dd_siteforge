@@ -2,7 +2,7 @@
  "theme": "rose-pine",
  "mode": "light",
  "fixture": "golden test fixture for crates/ldnddev_theme runtime resolution; not shipped",
- "primary_button": "filled",
+ "primary_button": "outlined",
  "on_surface_base": {
   "status.info": "status.info-text",
   "preview.state.building": "status.info-text"

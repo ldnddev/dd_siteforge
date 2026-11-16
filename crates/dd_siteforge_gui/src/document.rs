@@ -4,15 +4,25 @@
 //! part of the site model, so the bytes match a TUI save of the same `Site`.
 
 use std::path::PathBuf;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use dd_siteforge_core::model::Site;
 use dd_siteforge_core::storage::{
-    ContentHash, SiteSave, checkpoint_overwriting, checkpoint_site, load_site_with_hash,
-    save_site_checked,
+    ContentHash, SiteSave, checkpoint_overwriting, checkpoint_path, checkpoint_site,
+    load_site_with_hash, save_site, save_site_checked,
 };
 
 pub const AUTOSAVE_AFTER: Duration = Duration::from_secs(2);
+/// One persistent failure, then a pause, instead of a toast on every tick.
+pub const AUTOSAVE_BACKOFF: Duration = Duration::from_secs(8);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SavePhase {
+    Saved,
+    Unsaved,
+    Saving,
+    Failed,
+}
 
 #[derive(Debug)]
 pub struct Document {
@@ -24,11 +34,16 @@ pub struct Document {
     /// The file on disk is not the one we last read. Autosave will not write.
     pub conflict: bool,
     pub notice: Option<String>,
+    pub save_error: Option<String>,
+    pub saving: bool,
+    pub saved_at: SystemTime,
+    pub retry_after: Option<Instant>,
 }
 
 impl Document {
     pub fn load(path: PathBuf) -> anyhow::Result<Self> {
         let (site, hash) = load_site_with_hash(&path)?;
+        let saved_at = file_mtime(&path);
         Ok(Self {
             site,
             path,
@@ -37,7 +52,67 @@ impl Document {
             dirty_since: None,
             conflict: false,
             notice: None,
+            save_error: None,
+            saving: false,
+            saved_at,
+            retry_after: None,
         })
+    }
+
+    pub fn phase(&self) -> SavePhase {
+        if self.saving {
+            SavePhase::Saving
+        } else if self.save_error.is_some() {
+            SavePhase::Failed
+        } else if self.dirty {
+            SavePhase::Unsaved
+        } else {
+            SavePhase::Saved
+        }
+    }
+
+    /// Status-bar copy for the four designed states.
+    pub fn indicator_text(&self) -> String {
+        match self.phase() {
+            SavePhase::Saved => format!("Saved {}", clock_label(self.saved_at)),
+            SavePhase::Unsaved => "Unsaved changes".to_string(),
+            SavePhase::Saving => "Saving…".to_string(),
+            SavePhase::Failed => "Autosave failed · Retry".to_string(),
+        }
+    }
+
+    pub fn mark_dirty(&mut self) {
+        if !self.dirty {
+            self.dirty_since = Some(Instant::now());
+        }
+        self.dirty = true;
+        self.saving = false;
+    }
+    pub fn show_phase(&mut self, phase: SavePhase) {
+        match phase {
+            SavePhase::Saved => {
+                self.dirty = false;
+                self.dirty_since = None;
+                self.saving = false;
+                self.save_error = None;
+                self.saved_at = SystemTime::now();
+            }
+            SavePhase::Unsaved => {
+                self.dirty = true;
+                self.dirty_since = Some(Instant::now());
+                self.saving = false;
+                self.save_error = None;
+            }
+            SavePhase::Saving => {
+                self.saving = true;
+                self.save_error = None;
+            }
+            SavePhase::Failed => {
+                self.dirty = true;
+                self.saving = false;
+                self.save_error = Some("disk full".to_string());
+            }
+        }
     }
 
     /// Phase 3's inspector calls this. The autosave tests cover it until then.
@@ -61,25 +136,49 @@ impl Document {
         if now.duration_since(since) < AUTOSAVE_AFTER {
             return false;
         }
+        if let Some(after) = self.retry_after {
+            if self.save_error.is_some() && now < after {
+                return false;
+            }
+        }
+        self.saving = true;
         match save_site_checked(&self.path, &self.site, self.hash) {
             Ok(SiteSave::Written { hash }) => {
+                self.saving = false;
                 self.hash = Some(hash);
                 self.dirty = false;
                 self.dirty_since = None;
+                self.save_error = None;
+                self.retry_after = None;
+                self.saved_at = SystemTime::now();
                 self.notice = Some("Saved".to_string());
                 true
             }
             Ok(SiteSave::Conflict { .. }) => {
+                self.saving = false;
                 self.conflict = true;
                 self.notice =
                     Some("Changed on disk. Not overwritten. Reload, or keep yours.".to_string());
                 true
             }
             Err(err) => {
+                self.saving = false;
+                self.save_error = Some(err.to_string());
+                self.retry_after = Some(now + AUTOSAVE_BACKOFF);
                 self.notice = Some(format!("Autosave failed: {err}"));
                 true
             }
         }
+    }
+
+    /// Banner Retry. Clears the backoff and writes now.
+    pub fn retry_save(&mut self) -> bool {
+        self.retry_after = None;
+        self.dirty_since = Some(Instant::now() - AUTOSAVE_AFTER);
+        if !self.dirty {
+            self.dirty = true;
+        }
+        self.autosave(Instant::now())
     }
 
     /// Ctrl+S. The first press while the file is in conflict keeps ours.
@@ -134,8 +233,55 @@ impl Document {
         self.dirty = false;
         self.dirty_since = None;
         self.conflict = false;
+        self.saving = false;
+        self.save_error = None;
+        self.retry_after = None;
+        self.saved_at = SystemTime::now();
         self.notice = Some(notice);
     }
+
+    /// Replace `site.json` with the checkpoint bytes, parsed and written through
+    /// `save_site` so the atomic rename stays in core.
+    pub fn restore_backup(&mut self) -> anyhow::Result<()> {
+        let backup = checkpoint_path(&self.path);
+        let text = std::fs::read_to_string(&backup)
+            .map_err(|err| anyhow::anyhow!("failed to read site JSON: {err}"))?;
+        let site: Site = serde_json::from_str(&text)
+            .map_err(|err| anyhow::anyhow!("failed to parse site JSON: {err}"))?;
+        save_site(&self.path, &site)?;
+        let (site, hash) = load_site_with_hash(&self.path)?;
+        self.site = site;
+        self.note_saved(
+            hash,
+            format!("Restored {} from checkpoint.", self.path.display()),
+        );
+        Ok(())
+    }
+}
+
+fn file_mtime(path: &std::path::Path) -> SystemTime {
+    std::fs::metadata(path)
+        .and_then(|meta| meta.modified())
+        .unwrap_or_else(|_| SystemTime::now())
+}
+
+pub fn clock_label(time: SystemTime) -> String {
+    let local = chrono::DateTime::<chrono::Local>::from(time);
+    let hour = local.format("%I").to_string();
+    let hour = hour.trim_start_matches('0');
+    let hour = if hour.is_empty() { "0" } else { hour };
+    format!("{hour}:{} {}", local.format("%M"), local.format("%p"))
+}
+
+pub fn backup_stamp(time: SystemTime) -> String {
+    let local = chrono::DateTime::<chrono::Local>::from(time);
+    let day = local.format("%e").to_string();
+    format!(
+        "{} {}, {}",
+        local.format("%b"),
+        day.trim(),
+        clock_label(time)
+    )
 }
 
 #[cfg(test)]
