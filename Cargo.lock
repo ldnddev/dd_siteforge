@@ -1586,6 +1586,7 @@ dependencies = [
  "gpui-pre",
  "gpui-pre-macros",
  "gpui-pre-platform",
+ "image",
  "ldnddev_theme",
  "serde",
  "serde_json",

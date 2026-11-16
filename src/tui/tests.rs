@@ -7694,3 +7694,170 @@ fn mouse_leave_clears_a_filled_required_outline_and_keeps_an_empty_one() {
     assert_eq!(form_focused_field_id(&app), Some("slug"));
     assert_eq!(app.form_invalid_field_ids, vec!["title".to_string()]);
 }
+
+/// One script through the TUI `App` and the GUI headless editor.
+/// The saved files match, and opening either file in the other UI
+/// does not change the validation list.
+#[test]
+fn tui_and_gui_same_edits_same_bytes_and_cross_open() {
+    let start = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    )
+    .site
+    .clone();
+    let tui_site = tui_parity_site(start.clone());
+    let gui_site = gui_parity_site(start);
+
+    let dir = std::env::temp_dir().join(format!("dd-siteforge-parity-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let tui_path = dir.join("tui.json");
+    let gui_path = dir.join("gui.json");
+    dd_siteforge_core::storage::save_site(&tui_path, &tui_site).unwrap();
+    dd_siteforge_core::storage::save_site(&gui_path, &gui_site).unwrap();
+    let tui_bytes = std::fs::read(&tui_path).unwrap();
+    let gui_bytes = std::fs::read(&gui_path).unwrap();
+    assert_eq!(
+        tui_bytes, gui_bytes,
+        "same edits must write the same site.json"
+    );
+
+    let root = dir.as_path();
+    let loaded_gui = dd_siteforge_core::storage::load_site(&gui_path).unwrap();
+    let before = dd_siteforge_core::validate::validate_site_with_root(&loaded_gui, Some(root));
+    let opened = App::new(
+        loaded_gui,
+        Some(gui_path.clone()),
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    let after = dd_siteforge_core::validate::validate_site_with_root(&opened.site, Some(root));
+    assert_eq!(
+        before, after,
+        "opening a GUI save in the TUI changes validation"
+    );
+
+    let mut loaded_tui = dd_siteforge_core::storage::load_site(&tui_path).unwrap();
+    let before = dd_siteforge_core::validate::validate_site_with_root(&loaded_tui, Some(root));
+    dd_siteforge_core::edits::ensure_section_ids(&mut loaded_tui);
+    let _ = dd_siteforge_core::gui_edit::GuiEdit::new();
+    let after = dd_siteforge_core::validate::validate_site_with_root(&loaded_tui, Some(root));
+    assert_eq!(
+        before, after,
+        "opening a TUI save in the GUI changes validation"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+fn tui_parity_site(site: Site) -> Site {
+    let mut app = App::new(site, None, AppTheme::default(), "default".to_string(), None);
+    app.selected_page = 0;
+    app.selected_node = 1;
+    app.selected_column = 0;
+    app.selected_component = 0;
+    app.component_kind = ComponentKind::Headline;
+    app.insert_selected_component_kind();
+    app.component_kind = ComponentKind::Card;
+    app.insert_selected_component_kind();
+    let rows = app.build_page_tree_rows();
+    let row_idx = rows
+        .iter()
+        .position(|row| {
+            matches!(
+                row.kind,
+                TreeRowKind::Component {
+                    node_idx: 1,
+                    column_idx: 0,
+                    component_idx: 1,
+                    ..
+                }
+            )
+        })
+        .expect("card row");
+    app.selected_tree_row = row_idx;
+    app.apply_tree_row_selection(rows[row_idx]);
+    app.move_selected_row(-1);
+    open_form_edit_on_page_component(&mut app);
+    if let Some(Modal::FormEdit { state, .. }) = &mut app.modal {
+        state.set("parent_width", "dd-u-1-1");
+        let index = state
+            .form
+            .fields
+            .iter()
+            .position(|field| field.id == "items")
+            .unwrap();
+        state.focused_field = index;
+    }
+    send_key(&mut app, KeyCode::Char('A'), KeyModifiers::SHIFT);
+    send_key(&mut app, KeyCode::Char('A'), KeyModifiers::SHIFT);
+    send_key(&mut app, KeyCode::Char('j'), KeyModifiers::SHIFT);
+    send_key(&mut app, KeyCode::Char('X'), KeyModifiers::SHIFT);
+    send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
+    app.selected_node = 1;
+    app.add_column();
+    app.push_undo();
+    app.delete_page_component(1, 0, 0);
+    app.undo_last();
+    app.site.clone()
+}
+
+fn gui_parity_site(mut site: Site) -> Site {
+    use dd_siteforge_core::component_kind::InsertRegion;
+    use dd_siteforge_core::cursor::{Cursor, component_to_form_state};
+    use dd_siteforge_core::gui_edit::GuiEdit;
+    use dd_siteforge_core::model::PageNode;
+
+    let mut edit = GuiEdit::new();
+    edit.insert_component(
+        &mut site,
+        0,
+        1,
+        0,
+        0,
+        ComponentKind::Headline,
+        InsertRegion::Page,
+    )
+    .unwrap();
+    edit.insert_component(
+        &mut site,
+        0,
+        1,
+        0,
+        0,
+        ComponentKind::Card,
+        InsertRegion::Page,
+    )
+    .unwrap();
+    edit.move_component(&mut site, 0, 1, 0, 1, -1).unwrap();
+    let component = match &site.pages[0].nodes[1] {
+        PageNode::Section(section) => section.columns[0].components[0].clone(),
+        _ => panic!("section"),
+    };
+    edit.open(
+        "card",
+        Cursor::PageComponent {
+            page: 0,
+            node: 1,
+            col: 0,
+            comp: 0,
+            items: Vec::new(),
+        },
+        component_to_form_state(&component).unwrap(),
+    );
+    edit.set_field("parent_width", "dd-u-1-1");
+    edit.focus_field("items");
+    edit.add_item();
+    edit.add_item();
+    edit.move_item(true);
+    edit.remove_item();
+    edit.commit(&mut site);
+    edit.add_column(&mut site, 0, 1).unwrap();
+    edit.delete_component(&mut site, 0, 1, 0, 0).unwrap();
+    edit.undo(&mut site).unwrap();
+    site
+}

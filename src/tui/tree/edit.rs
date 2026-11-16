@@ -245,21 +245,30 @@ impl App {
         component_idx: usize,
     ) {
         let new_selected = {
-            let Some(page) = self.current_page_mut() else {
-                return;
-            };
-            let Some(PageNode::Section(section)) = page.nodes.get_mut(node_idx) else {
-                self.push_toast(ToastLevel::Warning, "Selected row is not a section.");
-                return;
-            };
-            let Some(col) = section.columns.get_mut(column_idx) else {
-                return;
-            };
-            if component_idx >= col.components.len() {
+            let page_idx = self.selected_page;
+            if let Err(message) = dd_siteforge_core::edits::remove_page_component(
+                &mut self.site,
+                page_idx,
+                node_idx,
+                column_idx,
+                component_idx,
+            ) {
+                if message == "Selected row is not a section." {
+                    self.push_toast(ToastLevel::Warning, message);
+                }
                 return;
             }
-            col.components.remove(component_idx);
-            component_idx.min(col.components.len().saturating_sub(1))
+            let len = self
+                .current_page()
+                .nodes
+                .get(node_idx)
+                .and_then(|node| match node {
+                    PageNode::Section(section) => section.columns.get(column_idx),
+                    _ => None,
+                })
+                .map(|col| col.components.len())
+                .unwrap_or(0);
+            component_idx.min(len.saturating_sub(1))
         };
         self.selected_node = node_idx;
         self.selected_column = column_idx;
@@ -959,15 +968,20 @@ impl App {
                     return;
                 }
                 self.push_undo();
-                let page = self.current_page_mut().unwrap();
-                let PageNode::Section(section) = &mut page.nodes[node_idx] else {
-                    self.undo_stack.pop();
-                    return;
+                let dest = match dd_siteforge_core::edits::move_page_component(
+                    &mut self.site,
+                    self.selected_page,
+                    node_idx,
+                    column_idx,
+                    component_idx,
+                    delta,
+                ) {
+                    Ok(dest) => dest,
+                    Err(_) => {
+                        self.undo_stack.pop();
+                        return;
+                    }
                 };
-                section.columns[column_idx]
-                    .components
-                    .swap(component_idx, dest as usize);
-                let dest = dest as usize;
                 self.selected_component = dest;
                 self.push_toast(ToastLevel::Info, "Moved component.");
                 self.snap_tree_row_to_kind(moved_tree_row_kind(kind, dest));

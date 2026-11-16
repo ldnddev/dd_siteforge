@@ -1,6 +1,7 @@
 //! dd_siteforge GUI. Phase 2 shell on the phase 1 load, save, and theme path.
 
 mod document;
+mod images;
 mod keys;
 mod new_site;
 mod paint;

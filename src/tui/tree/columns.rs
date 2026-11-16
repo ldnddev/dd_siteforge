@@ -46,16 +46,7 @@ impl App {
 
         self.mutate_selected_section(
             |section| {
-                normalize_section_columns(section);
-                let id = dd_siteforge_core::model::next_column_id(
-                    &section.id,
-                    section.columns.iter().map(|c| c.id.as_str()),
-                );
-                section.columns.push(SectionColumn {
-                    id,
-                    width_class: "dd-u-1-1".to_string(),
-                    components: Vec::new(),
-                });
+                dd_siteforge_core::edits::push_column(section);
             },
             "Added column to section.",
         );

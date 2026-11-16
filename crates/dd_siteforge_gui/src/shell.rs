@@ -3,6 +3,11 @@
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
+use dd_siteforge_core::component_kind::{ComponentKind, InsertRegion};
+use dd_siteforge_core::controls::MarkdownInsert;
+use dd_siteforge_core::cursor::Cursor;
+use dd_siteforge_core::editform::SubChange;
+use dd_siteforge_core::gui_edit::{Commit, GuiEdit};
 use dd_siteforge_core::model::{Page, PageTemplate, Site};
 use dd_siteforge_core::session;
 use dd_siteforge_core::storage::{self, checkpoint_path};
@@ -19,8 +24,9 @@ use crate::new_site::{self, CreatedSite};
 use crate::paint::{self, token};
 use crate::present::{
     FieldChrome, InspTab, InspectorView, OutlineRow, SideRow, SideTarget, Target, WelcomeAction,
-    WelcomeRow, column_layout, default_target, inspector, load_error_message, outline_caption,
-    outline_rows, sidebar_rows, status_meta, title_crumb, welcome_rows,
+    WelcomeRow, column_layout, default_target, form_state, inspector, inspector_draft,
+    load_error_message, outline_caption, outline_rows, sidebar_rows, status_meta, title_crumb,
+    welcome_rows,
 };
 use crate::preview;
 use crate::settings::GuiSettings;
@@ -52,6 +58,19 @@ impl ShellOptions {
             overlay: None,
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Zone {
+    Sidebar,
+    Outline,
+    Inspector,
+}
+
+struct ShrinkOffer {
+    source: PathBuf,
+    field_id: String,
+    long_edge: u32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -118,6 +137,14 @@ pub struct Shell {
     pub redo_handled: bool,
     /// Last window width, so key toggles use the same width as the title-bar buttons.
     last_width: f32,
+    edit: GuiEdit,
+    zone: Zone,
+    rename: Option<String>,
+    insert_open: bool,
+    insert_query: String,
+    insert_index: usize,
+    shrink: Option<ShrinkOffer>,
+    drag_arm: Option<Target>,
     last_theme_check: Instant,
     awaiting_choose: bool,
     awaiting_save_as: bool,
@@ -175,6 +202,14 @@ impl Shell {
             quit: false,
             redo_handled: false,
             last_width: 1280.0,
+            edit: GuiEdit::new(),
+            zone: Zone::Outline,
+            rename: None,
+            insert_open: false,
+            insert_query: String::new(),
+            insert_index: 0,
+            shrink: None,
+            drag_arm: None,
             last_theme_check: Instant::now(),
             awaiting_choose: false,
             awaiting_save_as: false,
@@ -323,12 +358,14 @@ impl Shell {
                         if !row.detail.is_empty() {
                             lines.push(row.detail.clone());
                         }
-                        if row.issues > 0 {
+                        let issues = row.issues + usize::from(self.draft_issue(&row.target));
+                        if issues > 0 {
                             lines.push(format!(
                                 "{} issue{}",
-                                row.issues,
-                                if row.issues == 1 { "" } else { "s" }
+                                issues,
+                                if issues == 1 { "" } else { "s" }
                             ));
+                            lines.push("Issue".to_string());
                         }
                         if !row.columns.is_empty() {
                             let shares = row
@@ -379,6 +416,16 @@ impl Shell {
                             if let Some(error) = &field.error {
                                 lines.push(error.clone());
                             }
+                            if field.toolbar {
+                                lines.push("H2".to_string());
+                                lines.push("B".to_string());
+                                lines.push("I".to_string());
+                                lines.push("Link".to_string());
+                                lines.push("List".to_string());
+                            }
+                        }
+                        if let Some(back) = &view.back {
+                            lines.push(back.clone());
                         }
                     }
                     lines.push(status_meta(&doc.site, &self.region, self.page_index));
@@ -465,6 +512,37 @@ impl Shell {
             // Width-specific tooltips are added by `dock_notes` from render.
         }
         lines.extend(self.dock_notes(self.last_width));
+        if self.insert_open {
+            lines.push("Insert block…".to_string());
+            lines
+                .push("Type to filter | Up/Down: select | Enter: insert | Esc: cancel".to_string());
+            for kind in self.filtered_kinds() {
+                lines.push(dd_siteforge_core::edits::insert_group(kind).to_string());
+                lines.push(kind.label().to_string());
+            }
+            let after = self
+                .edit
+                .last_insert
+                .map(|kind| kind.label())
+                .unwrap_or("the selection");
+            lines.push(format!("Enter inserts after {after} · 24 kinds"));
+        }
+        if let Some(title) = &self.rename {
+            lines.push("Rename page. Edit and press Enter.".to_string());
+            lines.push(title.clone());
+        }
+        if let Some(offer) = &self.shrink {
+            lines.push(format!(
+                "This image is {} px on the long edge.",
+                offer.long_edge
+            ));
+            lines.push("Copy as-is".to_string());
+            lines.push("Shrink to 2560".to_string());
+        }
+        if self.edit.delete_toast.is_some() {
+            lines.push("Undo".to_string());
+            lines.push("Ctrl Z".to_string());
+        }
         lines.extend(self.toasts.iter().cloned());
         if !self.preview_note.is_empty() {
             lines.push(self.preview_note.clone());
@@ -539,6 +617,9 @@ impl Shell {
         }
         if self.switcher {
             self.key_switcher(&key);
+            return;
+        }
+        if self.screen == Screen::Editor && self.edit_key(&key) {
             return;
         }
         match key.as_str() {
@@ -965,14 +1046,27 @@ impl Shell {
     }
 
     fn redo(&mut self) {
-        // Phase 3 owns the undo stack. Ctrl+R is redo here, not preview refresh.
-        self.redo_handled = true;
+        self.redo_edit();
     }
 
     fn checkpoint(&mut self) {
-        if let Some(doc) = self.document.as_mut() {
-            doc.checkpoint();
+        let Some(doc) = self.document.as_mut() else {
+            return;
+        };
+        if self.edit.active_key().is_some() {
+            match self.edit.commit(&mut doc.site) {
+                Commit::Blocked(message) | Commit::Failed(message) => {
+                    self.toast(message);
+                    return;
+                }
+                Commit::ItemSaved => {
+                    self.toast("Item saved — editing parent.");
+                    return;
+                }
+                Commit::Applied => doc.mark_dirty(),
+            }
         }
+        doc.checkpoint();
         self.take_notice();
     }
 
@@ -1102,7 +1196,7 @@ impl Shell {
             self.quit_now();
             return;
         };
-        if doc.phase() == SavePhase::Failed {
+        if self.edit.has_invalid() || doc.phase() == SavePhase::Failed {
             self.quit_dialog = true;
             return;
         }
@@ -1242,6 +1336,7 @@ impl Shell {
         if matches!(row.target, SideTarget::Folder) {
             return;
         }
+        self.zone = Zone::Sidebar;
         self.sidebar_index = index;
         self.region = row.target.clone();
         if let SideTarget::Page(page) = row.target {
@@ -1254,6 +1349,8 @@ impl Shell {
     }
 
     pub fn select_outline(&mut self, index: usize) {
+        self.leave_draft();
+        self.zone = Zone::Outline;
         self.outline_index = index;
         self.activate_outline();
         self.remember_selection();
@@ -1316,6 +1413,26 @@ impl Shell {
             .collect()
     }
 
+    fn draft_issue(&self, target: &Target) -> bool {
+        let Some(cursor) = current_cursor(&self.region, self.page_index, target) else {
+            return false;
+        };
+        self.edit
+            .draft(&format!("{cursor:?}"))
+            .is_some_and(|draft| !draft.invalid.is_empty())
+    }
+
+    fn outline_with_draft_issues(&self) -> Option<Vec<crate::present::OutlineRow>> {
+        let doc = self.document.as_ref()?;
+        let mut rows = outline_rows(&doc.site, &self.region, self.page_index);
+        for row in &mut rows {
+            if self.draft_issue(&row.target) {
+                row.issues += 1;
+            }
+        }
+        Some(rows)
+    }
+
     fn inspector_view(&self) -> InspectorView {
         let Some(doc) = &self.document else {
             return InspectorView {
@@ -1325,8 +1442,16 @@ impl Shell {
                 tabs: Vec::new(),
                 fields: Vec::new(),
                 empty: true,
+                back: None,
             };
         };
+        let crumb =
+            crate::present::breadcrumb(&doc.site, &self.region, self.page_index, &self.target);
+        if self.zone == Zone::Inspector {
+            if let Some(draft) = self.edit.active() {
+                return inspector_draft(&draft.state, crumb, self.tab, self.edit.back_label());
+            }
+        }
         inspector(
             &doc.site,
             &self.region,
@@ -1435,6 +1560,646 @@ impl Shell {
         .detach();
     }
 
+    fn edit_key(&mut self, key: &str) -> bool {
+        if self.shrink.is_some() {
+            match key {
+                "escape" => self.shrink = None,
+                "enter" | "s" => self.finish_shrink(false),
+                "2" => self.finish_shrink(true),
+                _ => {}
+            }
+            return true;
+        }
+        if self.rename.is_some() {
+            match key {
+                "escape" => self.rename = None,
+                "enter" => self.commit_rename(),
+                "backspace" => {
+                    if let Some(text) = self.rename.as_mut() {
+                        text.pop();
+                    }
+                }
+                other if is_text(other) => {
+                    if let Some(text) = self.rename.as_mut() {
+                        text.push_str(other);
+                    }
+                }
+                _ => {}
+            }
+            return true;
+        }
+        if self.insert_open {
+            self.insert_key(key);
+            return true;
+        }
+        match key {
+            "ctrl-z" => {
+                self.undo_edit();
+                true
+            }
+            "ctrl-shift-z" => {
+                self.redo_edit();
+                true
+            }
+            keys::REDO_KEY => {
+                self.redo_edit();
+                true
+            }
+            "ctrl-s" => {
+                self.checkpoint();
+                true
+            }
+            "ctrl-e" if self.zone == Zone::Inspector => {
+                let _ = self.edit.toggle_expanded();
+                true
+            }
+            "ctrl-i" | "/" if self.zone != Zone::Inspector => {
+                self.open_insert();
+                true
+            }
+            "r" if self.zone != Zone::Inspector => {
+                self.begin_rename();
+                true
+            }
+            "delete" if self.zone == Zone::Outline => {
+                self.delete_selection();
+                true
+            }
+            "backspace" if self.zone == Zone::Outline => {
+                self.delete_selection();
+                true
+            }
+            "shift-j" if self.zone == Zone::Outline => {
+                self.move_selection(1);
+                true
+            }
+            "shift-k" if self.zone == Zone::Outline => {
+                self.move_selection(-1);
+                true
+            }
+            "enter" if self.zone == Zone::Outline => {
+                self.enter_inspector();
+                true
+            }
+            "escape" if self.zone == Zone::Inspector => {
+                self.escape_inspector();
+                true
+            }
+            "ctrl-1" => {
+                self.zone = Zone::Sidebar;
+                true
+            }
+            "ctrl-2" => {
+                self.zone = Zone::Outline;
+                true
+            }
+            _ if self.zone == Zone::Inspector => self.inspector_key(key),
+            _ => false,
+        }
+    }
+
+    fn inspector_key(&mut self, key: &str) -> bool {
+        use dd_siteforge_core::editform::FieldKind;
+        match key {
+            "tab" | "down" | "j" => {
+                self.edit.focus_next();
+                true
+            }
+            "shift-tab" | "up" | "k" => {
+                self.edit.focus_prev();
+                true
+            }
+            "left" => {
+                self.edit.cycle_enum(false);
+                true
+            }
+            "right" => {
+                self.edit.cycle_enum(true);
+                true
+            }
+            "shift-a" => {
+                let change = self.edit.add_item();
+                self.toast_sub(change);
+                true
+            }
+            "shift-x" => {
+                let change = self.edit.remove_item();
+                self.toast_sub(change);
+                true
+            }
+            "shift-j" => {
+                let change = self.edit.move_item(true);
+                self.toast_sub(change);
+                true
+            }
+            "shift-k" => {
+                let change = self.edit.move_item(false);
+                self.toast_sub(change);
+                true
+            }
+            "enter" => {
+                let kind = self
+                    .edit
+                    .active()
+                    .and_then(|draft| draft.state.focused())
+                    .map(|field| std::mem::discriminant(&field.kind));
+                let subform = self.edit.active().and_then(|draft| {
+                    draft
+                        .state
+                        .focused()
+                        .map(|field| matches!(field.kind, FieldKind::SubForm { .. }))
+                });
+                let textarea = self.edit.active().and_then(|draft| {
+                    draft
+                        .state
+                        .focused()
+                        .map(|field| matches!(field.kind, FieldKind::Textarea { .. }))
+                });
+                let _ = kind;
+                if subform == Some(true) {
+                    if self.edit.drill().is_ok() {
+                        self.toast("Editing item. Ctrl+S returns to parent.");
+                    }
+                } else if textarea == Some(true) {
+                    let _ = self.edit.type_char('\n');
+                } else {
+                    self.edit.focus_next();
+                }
+                true
+            }
+            "backspace" => {
+                let _ = self.edit.backspace_field();
+                true
+            }
+            "ctrl-o" => {
+                self.browse_focused_image();
+                true
+            }
+            other if is_text(other) => {
+                if let Some(ch) = other.chars().next() {
+                    let _ = self.edit.type_char(ch);
+                }
+                true
+            }
+            _ => false,
+        }
+    }
+
+    fn toast_sub(&mut self, change: SubChange) {
+        let message = match change {
+            SubChange::Added => "Item added.",
+            SubChange::Removed => "Item removed.",
+            SubChange::MovedDown => "Moved item down.",
+            SubChange::MovedUp => "Moved item up.",
+            SubChange::AtMax(max) => {
+                self.toast(format!("Maximum {max} item(s)."));
+                return;
+            }
+            SubChange::AtMin(min) => {
+                self.toast(format!("Must keep at least {min} item(s)."));
+                return;
+            }
+            SubChange::Ignored => return,
+        };
+        self.toast(message);
+    }
+
+    fn leave_draft(&mut self) {
+        if self.edit.active_key().is_none() {
+            return;
+        }
+        let Some(doc) = self.document.as_mut() else {
+            return;
+        };
+        match self.edit.leave(&mut doc.site) {
+            Commit::Applied => doc.mark_dirty(),
+            Commit::Blocked(message) => self.toast(message),
+            Commit::Failed(message) => self.toast(message),
+            Commit::ItemSaved => self.toast("Item saved — editing parent."),
+        }
+    }
+
+    fn enter_inspector(&mut self) {
+        self.activate_outline();
+        self.zone = Zone::Inspector;
+        self.open_current_draft();
+    }
+
+    pub fn focus_inspector(&mut self) {
+        self.enter_inspector();
+    }
+
+    fn open_current_draft(&mut self) {
+        let Some(doc) = &self.document else {
+            return;
+        };
+        let Some(cursor) = current_cursor(&self.region, self.page_index, &self.target) else {
+            return;
+        };
+        let key = match self.target {
+            Target::Column { node, column } => {
+                format!("column:{}:{node}:{column}", self.page_index)
+            }
+            Target::RegionColumn { section, column } => {
+                format!("region-column:{section}:{column}")
+            }
+            _ => format!("{cursor:?}"),
+        };
+        if self.edit.activate(&key) {
+            return;
+        }
+        let source = match self.target {
+            Target::Column { node, .. } => Target::Section(node),
+            Target::RegionColumn { section, .. } => Target::RegionSection(section),
+            _ => self.target.clone(),
+        };
+        let Some(state) = form_state(&doc.site, &self.region, self.page_index, &source) else {
+            return;
+        };
+        self.edit.open(key, cursor, state);
+        if let Target::Column { column, .. } | Target::RegionColumn { column, .. } = self.target {
+            self.edit.focus_field("columns");
+            self.edit.select_item(column);
+            let _ = self.edit.drill();
+        }
+    }
+
+    fn escape_inspector(&mut self) {
+        let expanded = self.edit.active().is_some_and(|draft| draft.expanded);
+        let drilled = self.edit.back_label().is_some();
+        if !self.edit.discard() {
+            self.zone = Zone::Outline;
+            return;
+        }
+        if expanded {
+            return;
+        }
+        if drilled {
+            self.toast("Item edit cancelled.");
+            return;
+        }
+        self.zone = Zone::Outline;
+    }
+
+    fn undo_edit(&mut self) {
+        let Some(doc) = self.document.as_mut() else {
+            return;
+        };
+        match self.edit.undo(&mut doc.site) {
+            Ok(message) => {
+                doc.mark_dirty();
+                self.toast(message);
+            }
+            Err(message) => self.toast(message),
+        }
+    }
+
+    fn redo_edit(&mut self) {
+        self.redo_handled = true;
+        let Some(doc) = self.document.as_mut() else {
+            return;
+        };
+        match self.edit.redo(&mut doc.site) {
+            Ok(message) => {
+                doc.mark_dirty();
+                self.toast(message);
+            }
+            Err(message) => self.toast(message),
+        }
+    }
+
+    fn open_insert(&mut self) {
+        self.insert_open = true;
+        self.insert_query.clear();
+        self.insert_index = 0;
+    }
+
+    fn insert_key(&mut self, key: &str) {
+        let kinds = self.filtered_kinds();
+        match key {
+            "escape" => {
+                self.insert_open = false;
+                self.toast("Component picker cancelled.");
+            }
+            "up" | "k" if self.insert_index > 0 => self.insert_index -= 1,
+            "down" | "j" if self.insert_index + 1 < kinds.len() => self.insert_index += 1,
+            "enter" => self.commit_insert(&kinds),
+            "backspace" => {
+                self.insert_query.pop();
+                self.insert_index = 0;
+            }
+            other if is_text(other) => {
+                self.insert_query.push_str(other);
+                self.insert_index = 0;
+            }
+            _ => {}
+        }
+    }
+
+    fn filtered_kinds(&self) -> Vec<ComponentKind> {
+        let region = match self.region {
+            SideTarget::Header => InsertRegion::Header,
+            SideTarget::Footer => InsertRegion::Footer,
+            SideTarget::Site => InsertRegion::Site,
+            _ => InsertRegion::Page,
+        };
+        let query = self.insert_query.to_ascii_lowercase();
+        ComponentKind::all()
+            .iter()
+            .copied()
+            .filter(|kind| kind.allowed_in(region))
+            .filter(|kind| query.is_empty() || kind.label().contains(&query))
+            .collect()
+    }
+
+    fn commit_insert(&mut self, kinds: &[ComponentKind]) {
+        let Some(kind) = kinds.get(self.insert_index).copied() else {
+            self.toast("No component selected.");
+            self.insert_open = false;
+            return;
+        };
+        let (page, node, column, component) = self.insert_place();
+        let region = match self.region {
+            SideTarget::Header => InsertRegion::Header,
+            SideTarget::Footer => InsertRegion::Footer,
+            SideTarget::Site => InsertRegion::Site,
+            _ => InsertRegion::Page,
+        };
+        let Some(doc) = self.document.as_mut() else {
+            return;
+        };
+        match self
+            .edit
+            .insert_component(&mut doc.site, page, node, column, component, kind, region)
+        {
+            Ok(message) => {
+                doc.mark_dirty();
+                self.toast(message);
+                self.insert_open = false;
+            }
+            Err(message) => {
+                self.toast(message);
+                self.insert_open = false;
+            }
+        }
+    }
+
+    fn insert_place(&self) -> (usize, usize, usize, usize) {
+        let page = self.page_index;
+        match self.target {
+            Target::Component {
+                node,
+                column,
+                component,
+            } => (page, node, column, component),
+            Target::Section(node) | Target::Hero(node) => (page, node, 0, 0),
+            Target::Column { node, column } => (page, node, column, 0),
+            _ => (page, 0, 0, 0),
+        }
+    }
+
+    fn delete_selection(&mut self) {
+        let Target::Component {
+            node,
+            column,
+            component,
+        } = self.target
+        else {
+            self.toast("Nothing selected to delete.");
+            return;
+        };
+        let page = self.page_index;
+        let Some(doc) = self.document.as_mut() else {
+            return;
+        };
+        match self
+            .edit
+            .delete_component(&mut doc.site, page, node, column, component)
+        {
+            Ok(message) => {
+                doc.mark_dirty();
+                self.toast(message);
+            }
+            Err(message) => self.toast(message),
+        }
+    }
+
+    fn move_selection(&mut self, delta: isize) {
+        let Target::Component {
+            node,
+            column,
+            component,
+        } = self.target
+        else {
+            return;
+        };
+        let page = self.page_index;
+        let Some(doc) = self.document.as_mut() else {
+            return;
+        };
+        match self
+            .edit
+            .move_component(&mut doc.site, page, node, column, component, delta)
+        {
+            Ok(dest) => {
+                doc.mark_dirty();
+                self.target = Target::Component {
+                    node,
+                    column,
+                    component: dest,
+                };
+                self.toast("Moved component.");
+            }
+            Err(_) => {}
+        }
+    }
+
+    fn finish_row_drag(&mut self, target: Target) {
+        let Some(from) = self.drag_arm.take() else {
+            return;
+        };
+        let (
+            Target::Component {
+                node,
+                column,
+                component,
+            },
+            Target::Component {
+                node: to_node,
+                column: to_column,
+                component: to,
+            },
+        ) = (from, target)
+        else {
+            return;
+        };
+        if node != to_node || column != to_column || component == to {
+            return;
+        }
+        self.target = Target::Component {
+            node,
+            column,
+            component,
+        };
+        self.drag_component_to(to);
+    }
+
+    pub fn drag_component_to(&mut self, to: usize) {
+        let Target::Component {
+            node,
+            column,
+            component,
+        } = self.target
+        else {
+            return;
+        };
+        let page = self.page_index;
+        let Some(doc) = self.document.as_mut() else {
+            return;
+        };
+        if let Ok(dest) = self
+            .edit
+            .drag_component(&mut doc.site, page, node, column, component, to)
+        {
+            doc.mark_dirty();
+            self.target = Target::Component {
+                node,
+                column,
+                component: dest,
+            };
+        }
+    }
+
+    pub fn drag_collection_to(&mut self, from: usize, to: usize) {
+        if self.edit.drag_item(from, to) {
+            self.toast("Moved item.");
+        }
+    }
+
+    fn begin_rename(&mut self) {
+        if !matches!(self.region, SideTarget::Page(_)) {
+            return;
+        }
+        let title = self
+            .document
+            .as_ref()
+            .and_then(|doc| doc.site.pages.get(self.page_index))
+            .map(|page| page.head.title.clone())
+            .unwrap_or_default();
+        self.rename = Some(title);
+        self.toast("Rename page. Edit and press Enter.");
+    }
+
+    fn commit_rename(&mut self) {
+        let Some(title) = self.rename.clone() else {
+            return;
+        };
+        let page = self.page_index;
+        let Some(doc) = self.document.as_mut() else {
+            return;
+        };
+        match self.edit.rename_page_at(&mut doc.site, page, &title) {
+            Ok(message) => {
+                doc.mark_dirty();
+                self.rename = None;
+                self.toast(message);
+            }
+            Err(message) => self.toast(message),
+        }
+    }
+
+    pub fn rename_page_to(&mut self, title: &str) {
+        self.rename = Some(title.to_string());
+        self.commit_rename();
+    }
+
+    fn browse_focused_image(&mut self) {
+        let Some(draft) = self.edit.active() else {
+            return;
+        };
+        let Some(field) = draft.state.focused() else {
+            return;
+        };
+        if !field.id.contains("image") && !field.id.contains("poster") && !field.id.contains("mp4")
+        {
+            return;
+        }
+        let id = field.id.to_string();
+        self.toast(format!("Browse… {id}"));
+    }
+
+    /// Portal and drag-and-drop both land here. A large raster asks before shrinking.
+    pub fn import_dropped(&mut self, path: PathBuf, downscale: Option<bool>) {
+        let Some(field_id) = self.focused_import_field() else {
+            self.toast("Pick an image field first.");
+            return;
+        };
+        let bytes = match std::fs::read(&path) {
+            Ok(bytes) => bytes,
+            Err(err) => {
+                self.toast(format!("Source folder not found: {err}"));
+                return;
+            }
+        };
+        if downscale.is_none() {
+            if let Some(edge) = crate::images::long_edge(&bytes) {
+                if edge > crate::images::LONG_EDGE {
+                    self.shrink = Some(ShrinkOffer {
+                        source: path,
+                        field_id,
+                        long_edge: edge,
+                    });
+                    return;
+                }
+            }
+        }
+        self.write_import(&path, field_id, downscale.unwrap_or(false));
+    }
+
+    fn finish_shrink(&mut self, downscale: bool) {
+        let Some(offer) = self.shrink.take() else {
+            return;
+        };
+        self.write_import(&offer.source, offer.field_id, downscale);
+    }
+
+    fn write_import(&mut self, path: &Path, field_id: String, downscale: bool) {
+        let Some(doc) = &self.document else {
+            return;
+        };
+        let dir = crate::images::images_dir(&doc.path);
+        match crate::images::import_path(path, &dir, downscale) {
+            Ok(imported) => {
+                if self.edit.set_field(&field_id, imported.stored.clone()) {
+                    self.toast(format!("Picked: {}", imported.stored));
+                }
+            }
+            Err(err) => self.toast(format!("Save failed: {err}")),
+        }
+    }
+
+    fn focused_import_field(&self) -> Option<String> {
+        let field = self.edit.active()?.state.focused()?;
+        (field.id.contains("image") || field.id.contains("poster") || field.id.contains("mp4"))
+            .then(|| field.id.to_string())
+    }
+
+    pub fn set_field_value(&mut self, id: &str, value: &str) -> bool {
+        self.edit.set_field(id, value)
+    }
+
+    pub fn focus_field_id(&mut self, id: &str) -> bool {
+        self.edit.focus_field(id)
+    }
+
+    pub fn insert_markdown(&mut self, which: MarkdownInsert) -> bool {
+        self.edit.insert_markdown(which)
+    }
+
+    pub fn undo_depth(&self) -> usize {
+        self.edit.undo_len()
+    }
+
     fn portal_folder(&mut self, cx: &mut Context<Self>) {
         if !self.quit_runtime {
             return;
@@ -1503,10 +2268,7 @@ impl Render for Shell {
             .map(|doc| doc.indicator_text())
             .unwrap_or_default();
         let title = self.title_name();
-        let outline = self
-            .document
-            .as_ref()
-            .map(|doc| outline_rows(&doc.site, &self.region, self.page_index));
+        let outline = self.outline_with_draft_issues();
         let sidebar = self
             .document
             .as_ref()
@@ -1604,6 +2366,12 @@ impl Render for Shell {
             .track_focus(&self.focus)
             .on_key_down(cx.listener(|shell, event: &KeyDownEvent, _, cx| {
                 shell.on_key_down(event, cx);
+                cx.notify();
+            }))
+            .on_drop(cx.listener(|shell, paths: &gpui::ExternalPaths, _, cx| {
+                if let Some(path) = paths.paths().first().cloned() {
+                    shell.import_dropped(path, None);
+                }
                 cx.notify();
             }))
             .size_full()
@@ -2243,8 +3011,11 @@ fn sidebar_view(
                             row.bg(selected_bg).border_l_2().border_color(accent)
                         })
                         .child(format!("{mark}{} {badges}", row.label))
-                        .on_click(cx.listener(move |shell, _: &ClickEvent, _, cx| {
+                        .on_click(cx.listener(move |shell, event: &ClickEvent, _, cx| {
                             shell.select_sidebar(index);
+                            if event.click_count() >= 2 {
+                                shell.begin_rename();
+                            }
                             cx.notify();
                         }))
                 })),
@@ -2310,6 +3081,8 @@ fn outline_view(
                         border_card,
                         border_active,
                     );
+                    let drag_target = row.target.clone();
+                    let drag_target_up = drag_target.clone();
                     div()
                         .id(("outline", index))
                         .when(row.columns.is_empty(), |card| {
@@ -2335,6 +3108,19 @@ fn outline_view(
                             )))
                         })
                         .when(grid.is_some(), |card| card.child(grid.unwrap()))
+                        .on_mouse_down(
+                            gpui::MouseButton::Left,
+                            cx.listener(move |shell, _, _, _| {
+                                shell.drag_arm = Some(drag_target.clone());
+                            }),
+                        )
+                        .on_mouse_up(
+                            gpui::MouseButton::Left,
+                            cx.listener(move |shell, _, _, cx| {
+                                shell.finish_row_drag(drag_target_up.clone());
+                                cx.notify();
+                            }),
+                        )
                         .on_click(cx.listener(move |shell, _: &ClickEvent, _, cx| {
                             shell.select_outline(index);
                             cx.notify();
@@ -2525,6 +3311,19 @@ fn field_view(
                 .text_color(value_color)
                 .child(field.value.clone()),
         )
+        .when(field.toolbar, |col| {
+            // S7: insert buttons only. The preview eye is not drawn.
+            col.child(
+                div()
+                    .flex()
+                    .gap(px(4.0))
+                    .child("H2")
+                    .child("B")
+                    .child("I")
+                    .child("Link")
+                    .child("List"),
+            )
+        })
         .when(field.meta.is_some(), |col| {
             col.child(
                 div()
@@ -2927,26 +3726,63 @@ fn backup_note(path: &Path) -> Option<String> {
 }
 
 fn ensure_section_ids(site: &mut Site) {
-    for page in &mut site.pages {
-        let mut used = std::collections::HashSet::new();
-        let mut next_idx = 1usize;
-        for node in &mut page.nodes {
-            let dd_siteforge_core::model::PageNode::Section(section) = node else {
-                continue;
-            };
-            let current = section.id.trim().to_string();
-            if !current.is_empty() && used.insert(current) {
-                continue;
-            }
-            loop {
-                let candidate = format!("section-{next_idx}");
-                next_idx += 1;
-                if used.insert(candidate.clone()) {
-                    section.id = candidate;
-                    break;
-                }
-            }
+    dd_siteforge_core::edits::ensure_section_ids(site);
+}
+
+fn current_cursor(region: &SideTarget, page: usize, target: &Target) -> Option<Cursor> {
+    match target {
+        Target::SiteSettings => Some(Cursor::Site),
+        Target::PageHead => Some(Cursor::PageHead { page }),
+        Target::Hero(node) => Some(Cursor::PageHero { page, node: *node }),
+        Target::Section(node) | Target::Column { node, .. } => {
+            Some(Cursor::PageSection { page, node: *node })
         }
+        Target::Component {
+            node,
+            column,
+            component,
+        } => Some(Cursor::PageComponent {
+            page,
+            node: *node,
+            col: *column,
+            comp: *component,
+            items: Vec::new(),
+        }),
+        Target::RegionRoot => match region {
+            SideTarget::Header => Some(Cursor::HeaderRoot),
+            SideTarget::Footer => Some(Cursor::FooterRoot),
+            _ => None,
+        },
+        Target::HeaderAlert => Some(Cursor::HeaderAlert),
+        Target::RegionSection(index) => match region {
+            SideTarget::Header => Some(Cursor::HeaderSection { sec: *index }),
+            SideTarget::Footer => Some(Cursor::FooterSection { sec: *index }),
+            _ => None,
+        },
+        Target::RegionColumn { section, .. } => match region {
+            SideTarget::Header => Some(Cursor::HeaderSection { sec: *section }),
+            SideTarget::Footer => Some(Cursor::FooterSection { sec: *section }),
+            _ => None,
+        },
+        Target::RegionComponent {
+            section,
+            column,
+            component,
+        } => match region {
+            SideTarget::Header => Some(Cursor::HeaderComponent {
+                sec: *section,
+                col: *column,
+                comp: *component,
+                items: Vec::new(),
+            }),
+            SideTarget::Footer => Some(Cursor::FooterComponent {
+                sec: *section,
+                col: *column,
+                comp: *component,
+                items: Vec::new(),
+            }),
+            _ => None,
+        },
     }
 }
 

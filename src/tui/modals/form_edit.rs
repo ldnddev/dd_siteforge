@@ -203,66 +203,43 @@ impl App {
                 && !key.modifiers.contains(KeyModifiers::CONTROL);
             match key.code {
                 KeyCode::Char('A') => {
-                    let max_items = match state.form.fields[focused_idx].kind {
-                        editform::FieldKind::SubForm { max_items, .. } => max_items,
-                        _ => None,
-                    };
-                    let items_len = state.sub_state.get(field_id).map(|v| v.len()).unwrap_or(0);
-                    if max_items.is_some_and(|max| items_len >= max) {
-                        self.push_toast(
-                            ToastLevel::Warning,
-                            format!("Maximum {} item(s).", max_items.unwrap()),
-                        );
-                        return Some(ModalResult::Continue);
-                    }
-                    if let Some(new_item) = state.new_sub_item(field_id) {
-                        let items = state.sub_state.entry(field_id.to_string()).or_default();
-                        let selected = state.selected_sub_item.get(field_id).copied().unwrap_or(0);
-                        let insert_at = if items.is_empty() {
-                            0
-                        } else {
-                            (selected + 1).min(items.len())
-                        };
-                        items.insert(insert_at, new_item);
-                        state
-                            .selected_sub_item
-                            .insert(field_id.to_string(), insert_at);
-                        self.push_toast(ToastLevel::Success, "Item added.");
+                    match state.add_selected_sub_item(field_id) {
+                        editform::SubChange::Added => {
+                            self.push_toast(ToastLevel::Success, "Item added.");
+                        }
+                        editform::SubChange::AtMax(max) => {
+                            self.push_toast(ToastLevel::Warning, format!("Maximum {max} item(s)."));
+                        }
+                        _ => {}
                     }
                     return Some(ModalResult::Continue);
                 }
                 KeyCode::Char('X') => {
-                    let min_items = match state.form.fields[focused_idx].kind {
-                        editform::FieldKind::SubForm { min_items, .. } => min_items,
-                        _ => 0,
-                    };
-                    let items = state.sub_state.entry(field_id.to_string()).or_default();
-                    if items.len() > min_items {
-                        let selected = state.selected_sub_item.get(field_id).copied().unwrap_or(0);
-                        if selected < items.len() {
-                            items.remove(selected);
-                            let new_sel = selected.min(items.len().saturating_sub(1));
-                            state
-                                .selected_sub_item
-                                .insert(field_id.to_string(), new_sel);
+                    match state.remove_selected_sub_item(field_id) {
+                        editform::SubChange::Removed => {
                             self.push_toast(ToastLevel::Info, "Item removed.");
                         }
-                    } else {
-                        self.push_toast(
-                            ToastLevel::Warning,
-                            format!("Must keep at least {min_items} item(s)."),
-                        );
+                        editform::SubChange::AtMin(min_items) => {
+                            self.push_toast(
+                                ToastLevel::Warning,
+                                format!("Must keep at least {min_items} item(s)."),
+                            );
+                        }
+                        _ => {}
                     }
                     return Some(ModalResult::Continue);
                 }
                 KeyCode::Char('j' | 'J') if shift => {
-                    if move_subform_selection(state, field_id, true) {
+                    if state.move_selected_sub_item(field_id, true)
+                        == editform::SubChange::MovedDown
+                    {
                         self.push_toast(ToastLevel::Success, "Moved item down.");
                     }
                     return Some(ModalResult::Continue);
                 }
                 KeyCode::Char('k' | 'K') if shift => {
-                    if move_subform_selection(state, field_id, false) {
+                    if state.move_selected_sub_item(field_id, false) == editform::SubChange::MovedUp
+                    {
                         self.push_toast(ToastLevel::Success, "Moved item up.");
                     }
                     return Some(ModalResult::Continue);
@@ -899,33 +876,4 @@ fn edit_form_text(
     state.set(field_id, new);
     *cursor_pos = pos;
     *selection_anchor = None;
-}
-
-/// Swap the highlighted subform item with its next or previous sibling.
-/// The highlight stays on the moved item. The ends do not wrap.
-fn move_subform_selection(state: &mut editform::EditFormState, field_id: &str, down: bool) -> bool {
-    let selected = state.selected_sub_item.get(field_id).copied().unwrap_or(0);
-    let len = state
-        .sub_state
-        .get(field_id)
-        .map(|items| items.len())
-        .unwrap_or(0);
-    if len < 2 || selected >= len {
-        return false;
-    }
-    let dest = if down {
-        selected + 1
-    } else {
-        selected.wrapping_sub(1)
-    };
-    if dest >= len {
-        return false;
-    }
-    state
-        .sub_state
-        .get_mut(field_id)
-        .expect("subform items")
-        .swap(selected, dest);
-    state.selected_sub_item.insert(field_id.to_string(), dest);
-    true
 }

@@ -309,6 +309,118 @@ impl EditFormState {
         let field_id = field.id;
         self.set(field_id, new_value);
     }
+
+    /// Add a subform item after the highlighted one. Same rules as the TUI `A` key.
+    pub fn add_selected_sub_item(&mut self, field_id: &str) -> SubChange {
+        let Some(field) = self.form.fields.iter().find(|field| field.id == field_id) else {
+            return SubChange::Ignored;
+        };
+        let FieldKind::SubForm { max_items, .. } = field.kind else {
+            return SubChange::Ignored;
+        };
+        let items_len = self
+            .sub_state
+            .get(field_id)
+            .map(|items| items.len())
+            .unwrap_or(0);
+        if let Some(max) = max_items {
+            if items_len >= max {
+                return SubChange::AtMax(max);
+            }
+        }
+        let Some(new_item) = self.new_sub_item(field_id) else {
+            return SubChange::Ignored;
+        };
+        let items = self.sub_state.entry(field_id.to_string()).or_default();
+        let selected = self.selected_sub_item.get(field_id).copied().unwrap_or(0);
+        let insert_at = if items.is_empty() {
+            0
+        } else {
+            (selected + 1).min(items.len())
+        };
+        items.insert(insert_at, new_item);
+        self.selected_sub_item
+            .insert(field_id.to_string(), insert_at);
+        SubChange::Added
+    }
+
+    /// Remove the highlighted subform item. Same rules as the TUI `X` key.
+    pub fn remove_selected_sub_item(&mut self, field_id: &str) -> SubChange {
+        let Some(field) = self.form.fields.iter().find(|field| field.id == field_id) else {
+            return SubChange::Ignored;
+        };
+        let FieldKind::SubForm { min_items, .. } = field.kind else {
+            return SubChange::Ignored;
+        };
+        let items = self.sub_state.entry(field_id.to_string()).or_default();
+        if items.len() > min_items {
+            let selected = self.selected_sub_item.get(field_id).copied().unwrap_or(0);
+            if selected < items.len() {
+                items.remove(selected);
+                let new_sel = selected.min(items.len().saturating_sub(1));
+                self.selected_sub_item.insert(field_id.to_string(), new_sel);
+                return SubChange::Removed;
+            }
+        }
+        SubChange::AtMin(min_items)
+    }
+
+    /// Swap the highlighted item with its neighbor. The highlight follows it.
+    pub fn move_selected_sub_item(&mut self, field_id: &str, down: bool) -> SubChange {
+        let selected = self.selected_sub_item.get(field_id).copied().unwrap_or(0);
+        let len = self
+            .sub_state
+            .get(field_id)
+            .map(|items| items.len())
+            .unwrap_or(0);
+        if len < 2 || selected >= len {
+            return SubChange::Ignored;
+        }
+        let dest = if down {
+            selected + 1
+        } else {
+            selected.wrapping_sub(1)
+        };
+        if dest >= len {
+            return SubChange::Ignored;
+        }
+        self.sub_state
+            .get_mut(field_id)
+            .expect("subform items")
+            .swap(selected, dest);
+        self.selected_sub_item.insert(field_id.to_string(), dest);
+        if down {
+            SubChange::MovedDown
+        } else {
+            SubChange::MovedUp
+        }
+    }
+
+    /// Move a subform item from `from` to `to`. Drag uses this; keys swap one step.
+    pub fn drag_sub_item(&mut self, field_id: &str, from: usize, to: usize) -> bool {
+        let Some(items) = self.sub_state.get_mut(field_id) else {
+            return false;
+        };
+        if from >= items.len() || to >= items.len() || from == to {
+            return false;
+        }
+        let item = items.remove(from);
+        items.insert(to, item);
+        self.selected_sub_item.insert(field_id.to_string(), to);
+        true
+    }
+}
+
+/// Result of a collection add, remove, or move. Toasts stay in the frontend.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SubChange {
+    Added,
+    Removed,
+    MovedDown,
+    MovedUp,
+    AtMax(usize),
+    AtMin(usize),
+    Ignored,
 }
 
 // Shared option lists reused by several forms.
