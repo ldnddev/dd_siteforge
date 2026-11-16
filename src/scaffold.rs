@@ -1,7 +1,9 @@
 //! Bundled build kit (Grunt, source/, Lando, DDEV) seeded on init.
 //!
 //! Canonical copy lives in the binary. `~/.config/ldnddev/dd_siteforge/` is an
-//! optional per-file overlay. Existing project files are left alone unless
+//! optional per-file overlay of kit paths only (`Gruntfile.js`, `package.json`,
+//! `.lando.yml`, `.ddev/`, `source/`). Session state and other files in that
+//! directory are not copied. Existing project files are left alone unless
 //! `force`. Export never writes these files.
 
 use std::collections::BTreeMap;
@@ -152,7 +154,8 @@ fn merge_overlay(overlay: &Path, files: &mut BTreeMap<String, Vec<u8>>) -> anyho
     let mut extra = Vec::new();
     walk_files(overlay, overlay, &mut extra)?;
     for (rel, path) in extra {
-        if skip_rel(&rel) {
+        // The config dir is also the session store. Only kit paths merge.
+        if !overlay_kit_rel(&rel) || skip_rel(&rel) {
             continue;
         }
         let bytes = fs::read(&path)
@@ -160,6 +163,17 @@ fn merge_overlay(overlay: &Path, files: &mut BTreeMap<String, Vec<u8>>) -> anyho
         files.insert(rel, bytes);
     }
     Ok(())
+}
+
+/// House-overlay paths that belong in a new site.
+///
+/// `init-scaffold --global` writes the kit into the config directory. That
+/// directory also holds `session.json` and anything else the user put there.
+fn overlay_kit_rel(rel: &str) -> bool {
+    let r = rel.replace('\\', "/");
+    matches!(r.as_str(), "Gruntfile.js" | "package.json" | ".lando.yml")
+        || r.starts_with(".ddev/")
+        || r.starts_with("source/")
 }
 
 fn walk_files(root: &Path, dir: &Path, out: &mut Vec<(String, PathBuf)>) -> anyhow::Result<()> {
@@ -449,6 +463,65 @@ mod tests {
         assert!(report.written.iter().any(|p| p == "source/js/extra.js"));
         assert!(!root.join("source/images/secret.png").exists());
         assert!(!root.join("source/templates/dd-hero.hbs").exists());
+        fs::remove_dir_all(&overlay).ok();
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn overlay_copies_kit_customizations_and_skips_session_and_junk() {
+        let overlay = tmp("cfgmix");
+        fs::write(
+            overlay.join("session.json"),
+            "{\"recents\":[{\"path\":\"/secret/client\"}]}",
+        )
+        .unwrap();
+        fs::write(overlay.join("notes.txt"), "junk").unwrap();
+        fs::create_dir_all(overlay.join("cache")).unwrap();
+        fs::write(overlay.join("cache/state.bin"), b"nope").unwrap();
+        fs::write(overlay.join("Gruntfile.js"), "/* house */\n").unwrap();
+        fs::write(
+            overlay.join("package.json"),
+            "{\n  \"name\": \"from-overlay\",\n  \"description\": \"house kit\"\n}\n",
+        )
+        .unwrap();
+        fs::create_dir_all(overlay.join(".ddev/nginx")).unwrap();
+        fs::write(overlay.join(".ddev/nginx/extra.conf"), "sendfile on;\n").unwrap();
+        fs::create_dir_all(overlay.join("source/js")).unwrap();
+        fs::write(overlay.join("source/js/extra.js"), "console.log('x');\n").unwrap();
+        fs::create_dir_all(overlay.join("source/templates")).unwrap();
+        fs::write(overlay.join("source/templates/dd-hero.hbs"), "NO").unwrap();
+        fs::create_dir_all(overlay.join("source/images")).unwrap();
+        fs::write(overlay.join("source/images/secret.png"), b"nope").unwrap();
+
+        let root = tmp("cfgdest");
+        let report = seed(&root, Some("house"), Some(&overlay), false);
+
+        assert_eq!(
+            fs::read_to_string(root.join("Gruntfile.js")).unwrap(),
+            "/* house */\n"
+        );
+        let pkg: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(root.join("package.json")).unwrap()).unwrap();
+        assert_eq!(pkg["name"], "house");
+        assert_eq!(pkg["description"], "house kit");
+        assert_eq!(
+            fs::read_to_string(root.join(".ddev/nginx/extra.conf")).unwrap(),
+            "sendfile on;\n"
+        );
+        assert!(root.join("source/js/extra.js").is_file());
+        assert!(root.join(".lando.yml").is_file());
+        assert!(!root.join("session.json").exists());
+        assert!(!root.join("notes.txt").exists());
+        assert!(!root.join("cache").exists());
+        assert!(!root.join("source/templates/dd-hero.hbs").exists());
+        assert!(!root.join("source/images/secret.png").exists());
+        assert!(
+            !report
+                .written
+                .iter()
+                .any(|p| p == "session.json" || p == "notes.txt" || p.starts_with("cache/"))
+        );
+
         fs::remove_dir_all(&overlay).ok();
         fs::remove_dir_all(&root).ok();
     }

@@ -105,11 +105,13 @@ fn main() -> anyhow::Result<()> {
         Some(Command::Tui { path }) => launch_tui(path)?,
         Some(Command::InitSite { path, name }) => {
             let site = Site::starter();
-            save_site(&path, &site)
-                .with_context(|| format!("could not write starter site to '{}'", path))?;
             let root = site_root(&path);
+            // save_site writes a temp file next to site.json, so the folder
+            // has to exist before that write.
             fs::create_dir_all(&root)
                 .with_context(|| format!("could not create '{}'", root.display()))?;
+            save_site(&path, &site)
+                .with_context(|| format!("could not write starter site to '{}'", path))?;
             let slug = resolve_project_name(name.as_deref(), &root)?;
             let overlay = scaffold::overlay_if_present();
             let kit = scaffold::seed_scaffold(
