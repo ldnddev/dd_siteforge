@@ -229,15 +229,32 @@ fn golden_site_renders_read_only_tree_and_fields(cx: &mut TestAppContext) {
         assert!(text.contains("Build with dd-framework"), "{text}");
         assert!(text.contains("Content") || !text.contains("\nMedia\n") || text.contains("Media"));
         shell.select_sidebar_label("Header");
-        shell.select_outline_label("col 2");
         let text = shell.visible_text();
+        assert!(text.contains("column-row 18/24 3/24 3/24"), "{text}");
+        assert!(text.contains("col 1 dd-u-md-18-24 empty"), "{text}");
+        assert!(text.contains("Empty · / to add"), "{text}");
+        assert!(text.contains("col 2 dd-u-md-3-24 filled"), "{text}");
+        assert!(text.contains("col 3 dd-u-md-3-24 filled"), "{text}");
+        assert!(text.contains("dd-header-search"), "{text}");
+        assert!(text.contains("dd-header-menu"), "{text}");
+        assert_eq!(shell.column_row_mode(1920.0), "row");
+        // DESIGN-GAP: Screens 33/34 do not draw this row, so a narrow outline stacks it.
+        assert_eq!(shell.column_row_mode(960.0), "stack");
+        assert_eq!(shell.column_row_mode(720.0), "stack");
+        shell.select_column("col 2");
+        let text = shell.visible_text();
+        assert!(text.contains("col 2 dd-u-md-3-24 selected"), "{text}");
         assert!(text.contains("Column ID (section-prefixed)"), "{text}");
         assert!(text.contains("header-section-1-column-2"), "{text}");
         assert!(
             text.contains("dd-u-3-24 dd-u-sm-3-24 dd-u-md-3-24 dd-u-lg-4-24"),
             "{text}"
         );
-        assert!(text.contains("dd-header-search"), "{text}");
+        shell.select_sidebar_label("Footer");
+        let text = shell.visible_text();
+        assert!(text.contains("column-row 1/1"), "{text}");
+        assert!(text.contains("col 1 dd-u-1-1 empty"), "{text}");
+        assert_eq!(shell.column_row_mode(720.0), "row");
         assert_eq!(DOCK_TOGGLE_KEY, None);
         shell.handle_key("ctrl-b");
         assert!(shell.visible_text().contains("Header"));

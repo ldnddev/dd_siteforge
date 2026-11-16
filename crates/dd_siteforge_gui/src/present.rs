@@ -52,12 +52,27 @@ pub enum Target {
         section: usize,
         column: usize,
     },
+    /// Kept for a drilled column component. The column row selects the column.
+    #[allow(dead_code)]
     RegionComponent {
         section: usize,
         column: usize,
         component: usize,
     },
     SiteSettings,
+}
+
+/// One column in a header or footer grid (Screens 30, 31, 40).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ColumnCard {
+    pub target: Target,
+    pub label: String,
+    /// The `dd-u-md-*` class when present, otherwise the base `dd-u-*` class.
+    pub md_class: String,
+    pub parts: u32,
+    pub whole: u32,
+    pub empty: bool,
+    pub chips: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -67,6 +82,64 @@ pub struct OutlineRow {
     pub detail: String,
     pub depth: u32,
     pub issues: usize,
+    /// Header and footer sections draw these as one proportional row.
+    pub columns: Vec<ColumnCard>,
+}
+
+/// Screens 33 and 34 do not draw the header or footer column row.
+/// DESIGN-GAP: when the narrowest column would be under this width, the row stacks.
+pub const NARROW_COLUMN_MIN: f32 = 140.0;
+
+/// `row` keeps the drawn proportional grid. `stack` is the undesigned narrow fallback.
+pub fn column_layout(columns: &[ColumnCard], outline_width: f32) -> &'static str {
+    // DESIGN-GAP: Screens 33 and 34 do not say how this row behaves when narrow.
+    if columns.is_empty() || outline_width <= 0.0 {
+        return "row";
+    }
+    let whole: u32 = columns.iter().map(|column| column.parts).sum();
+    if whole == 0 {
+        return "row";
+    }
+    let narrowest = columns
+        .iter()
+        .map(|column| outline_width * (column.parts as f32) / (whole as f32))
+        .fold(f32::MAX, f32::min);
+    if narrowest < NARROW_COLUMN_MIN {
+        "stack"
+    } else {
+        "row"
+    }
+}
+
+/// Share used to size a column. Prefers `dd-u-md-*`, then a base `dd-u-N-M`.
+pub fn width_share(width_class: &str) -> (u32, u32, String) {
+    let tokens: Vec<&str> = width_class.split_whitespace().collect();
+    if let Some(token) = tokens
+        .iter()
+        .copied()
+        .find(|token| token.starts_with("dd-u-md-"))
+    {
+        if let Some((parts, whole)) = parse_ratio(token.trim_start_matches("dd-u-md-")) {
+            return (parts, whole, token.to_string());
+        }
+    }
+    if let Some(token) = tokens.iter().copied().find(|token| {
+        token
+            .strip_prefix("dd-u-")
+            .is_some_and(|rest| rest.chars().next().is_some_and(|ch| ch.is_ascii_digit()))
+    }) {
+        if let Some((parts, whole)) = parse_ratio(token.trim_start_matches("dd-u-")) {
+            return (parts, whole, token.to_string());
+        }
+    }
+    (1, 1, "dd-u-1-1".to_string())
+}
+
+fn parse_ratio(text: &str) -> Option<(u32, u32)> {
+    let (parts, whole) = text.split_once('-')?;
+    let parts: u32 = parts.parse().ok()?;
+    let whole: u32 = whole.parse().ok()?;
+    (whole > 0).then_some((parts, whole))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -262,6 +335,7 @@ pub fn outline_rows(site: &Site, target_region: &SideTarget, page_index: usize) 
             detail: site.name.clone(),
             depth: 0,
             issues: 0,
+            columns: Vec::new(),
         }],
         SideTarget::Header => region_rows(site, true),
         SideTarget::Footer => region_rows(site, false),
@@ -292,6 +366,7 @@ fn page_outline(site: &Site, index: usize) -> Vec<OutlineRow> {
         ),
         depth: 0,
         issues: 0,
+        columns: Vec::new(),
     });
     for (node_idx, node) in page.nodes.iter().enumerate() {
         match node {
@@ -303,6 +378,7 @@ fn page_outline(site: &Site, index: usize) -> Vec<OutlineRow> {
                     detail: hero.parent_title.clone(),
                     depth: 0,
                     issues: issue_count(&state),
+                    columns: Vec::new(),
                 });
             }
             PageNode::Section(section) => {
@@ -347,6 +423,7 @@ fn region_rows(site: &Site, header: bool) -> Vec<OutlineRow> {
             detail: cta,
             depth: 0,
             issues: 0,
+            columns: Vec::new(),
         });
         if site.header.alert.is_some() {
             rows.push(OutlineRow {
@@ -355,6 +432,7 @@ fn region_rows(site: &Site, header: bool) -> Vec<OutlineRow> {
                 detail: String::new(),
                 depth: 1,
                 issues: 0,
+                columns: Vec::new(),
             });
         }
         push_region_sections(&mut rows, &site.header.sections);
@@ -372,6 +450,7 @@ fn region_rows(site: &Site, header: bool) -> Vec<OutlineRow> {
             detail,
             depth: 0,
             issues: 0,
+            columns: Vec::new(),
         });
         push_region_sections(&mut rows, &site.footer.sections);
     }
@@ -380,25 +459,45 @@ fn region_rows(site: &Site, header: bool) -> Vec<OutlineRow> {
 
 fn push_region_sections(rows: &mut Vec<OutlineRow>, sections: &[DdSection]) {
     for (section_idx, section) in sections.iter().enumerate() {
-        rows.push(section_row(Target::RegionSection(section_idx), section, 0));
-        for (column_idx, column) in section.columns.iter().enumerate() {
-            rows.push(column_row(
-                Target::RegionColumn {
-                    section: section_idx,
-                    column: column_idx,
-                },
-                column_idx,
-                column,
-                1,
-            ));
-            push_components(rows, &column.components, 2, |component_idx| {
-                Target::RegionComponent {
-                    section: section_idx,
-                    column: column_idx,
-                    component: component_idx,
-                }
-            });
-        }
+        let mut row = section_row(Target::RegionSection(section_idx), section, 0);
+        row.columns = section
+            .columns
+            .iter()
+            .enumerate()
+            .map(|(column_idx, column)| {
+                column_card(
+                    Target::RegionColumn {
+                        section: section_idx,
+                        column: column_idx,
+                    },
+                    column_idx,
+                    column,
+                )
+            })
+            .collect();
+        rows.push(row);
+    }
+}
+
+fn column_card(target: Target, index: usize, column: &SectionColumn) -> ColumnCard {
+    let (parts, whole, md_class) = width_share(&column.width_class);
+    let chips = column
+        .components
+        .iter()
+        .map(|component| {
+            ComponentKind::from_section_component(component)
+                .label()
+                .to_string()
+        })
+        .collect::<Vec<_>>();
+    ColumnCard {
+        target,
+        label: format!("col {}", index + 1),
+        md_class,
+        parts,
+        whole,
+        empty: chips.is_empty(),
+        chips,
     }
 }
 
@@ -409,6 +508,7 @@ fn section_row(target: Target, section: &DdSection, depth: u32) -> OutlineRow {
         detail: section.section_title.clone().unwrap_or_default(),
         depth,
         issues: 0,
+        columns: Vec::new(),
     }
 }
 
@@ -419,6 +519,7 @@ fn column_row(target: Target, index: usize, column: &SectionColumn, depth: u32) 
         detail: column.width_class.clone(),
         depth,
         issues: 0,
+        columns: Vec::new(),
     }
 }
 
@@ -437,6 +538,7 @@ fn push_components(
             detail: String::new(),
             depth,
             issues: state.as_ref().map(issue_count).unwrap_or(0),
+            columns: Vec::new(),
         });
     }
 }

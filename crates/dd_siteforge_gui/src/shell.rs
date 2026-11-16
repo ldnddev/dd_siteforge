@@ -19,8 +19,8 @@ use crate::new_site::{self, CreatedSite};
 use crate::paint::{self, token};
 use crate::present::{
     FieldChrome, InspTab, InspectorView, OutlineRow, SideRow, SideTarget, Target, WelcomeAction,
-    WelcomeRow, default_target, inspector, load_error_message, outline_caption, outline_rows,
-    sidebar_rows, status_meta, title_crumb, welcome_rows,
+    WelcomeRow, column_layout, default_target, inspector, load_error_message, outline_caption,
+    outline_rows, sidebar_rows, status_meta, title_crumb, welcome_rows,
 };
 use crate::preview;
 use crate::settings::GuiSettings;
@@ -326,6 +326,29 @@ impl Shell {
                                 row.issues,
                                 if row.issues == 1 { "" } else { "s" }
                             ));
+                        }
+                        if !row.columns.is_empty() {
+                            let shares = row
+                                .columns
+                                .iter()
+                                .map(|column| format!("{}/{}", column.parts, column.whole))
+                                .collect::<Vec<_>>()
+                                .join(" ");
+                            lines.push(format!("column-row {shares}"));
+                            for column in &row.columns {
+                                let state = if column.target == self.target {
+                                    "selected"
+                                } else if column.empty {
+                                    "empty"
+                                } else {
+                                    "filled"
+                                };
+                                lines.push(format!("{} {} {state}", column.label, column.md_class));
+                                if column.empty {
+                                    lines.push("Empty · / to add".to_string());
+                                }
+                                lines.extend(column.chips.iter().cloned());
+                            }
                         }
                     }
                     let view = self.inspector_view();
@@ -967,6 +990,47 @@ impl Shell {
         }
     }
 
+    /// Select a header or footer column in the proportional row.
+    pub fn select_column(&mut self, label: &str) {
+        let Some(doc) = &self.document else { return };
+        let rows = outline_rows(&doc.site, &self.region, self.page_index);
+        let Some(column) = rows
+            .iter()
+            .flat_map(|row| row.columns.iter())
+            .find(|column| column.label == label)
+        else {
+            return;
+        };
+        self.target = column.target.clone();
+        self.tab = None;
+        self.remember_selection();
+    }
+
+    /// `row` or `stack` for the current region's column grids at a window width.
+    pub fn column_row_mode(&self, window_width: f32) -> &'static str {
+        let Some(doc) = &self.document else {
+            return "row";
+        };
+        let width = self.outline_content_width(window_width);
+        let rows = outline_rows(&doc.site, &self.region, self.page_index);
+        rows.iter()
+            .find(|row| !row.columns.is_empty())
+            .map(|row| crate::present::column_layout(&row.columns, width))
+            .unwrap_or("row")
+    }
+
+    fn outline_content_width(&self, window_width: f32) -> f32 {
+        let (sidebar, inspector) = self.docks(window_width);
+        let mut width = window_width;
+        if sidebar {
+            width -= 280.0;
+        }
+        if inspector {
+            width -= 360.0;
+        }
+        (width - 24.0).max(0.0)
+    }
+
     pub fn reload_from_disk(&mut self) {
         if let Some(doc) = self.document.as_mut() {
             if let Err(err) = doc.reload() {
@@ -1405,11 +1469,15 @@ impl Render for Shell {
         let info_fill = token(theme, "status.info-subtle");
         let info = token(theme, "status.info");
         let border = token(theme, "border.subtle");
+        let border_card = token(theme, "border.card");
+        let border_active = token(theme, "border.active");
         let raised = token(theme, "surface.raised");
         let input = token(theme, "surface.input");
         let selected = token(theme, "selection.bg");
         let family = gpui::SharedString::from(self.theme.fonts.ui.clone());
         let (sidebar_on, inspector_on) = self.docks(width);
+        let outline_width = self.outline_content_width(width);
+        let selected_target = self.target.clone();
         let save = self
             .document
             .as_ref()
@@ -1602,6 +1670,8 @@ impl Render for Shell {
                             filter,
                             sidebar_index,
                             outline_index,
+                            outline_width,
+                            &selected_target,
                             sidebar_on,
                             inspector_on,
                             active_tab,
@@ -1615,6 +1685,8 @@ impl Render for Shell {
                             accent,
                             error,
                             border,
+                            border_card,
+                            border_active,
                             text,
                         ))
                     }),
@@ -2029,6 +2101,8 @@ fn editor_body(
     filter: String,
     sidebar_index: usize,
     outline_index: usize,
+    outline_width: f32,
+    selected_target: &Target,
     sidebar_on: bool,
     inspector_on: bool,
     active_tab: Option<InspTab>,
@@ -2042,6 +2116,8 @@ fn editor_body(
     accent: gpui::Hsla,
     error: gpui::Hsla,
     border: gpui::Hsla,
+    border_card: gpui::Hsla,
+    border_active: gpui::Hsla,
     text: gpui::Hsla,
 ) -> gpui::Div {
     let rows = sidebar.clone().map(|(rows, _)| rows).unwrap_or_default();
@@ -2072,11 +2148,17 @@ fn editor_body(
             &cap,
             &outline,
             outline_index,
+            outline_width,
+            selected_target,
             base,
             raised,
+            panel,
             selected,
             secondary,
+            placeholder,
             border,
+            border_card,
+            border_active,
             accent,
             error,
         ))
@@ -2157,11 +2239,17 @@ fn outline_view(
     caption: &str,
     rows: &[OutlineRow],
     selected: usize,
+    outline_width: f32,
+    selected_target: &Target,
     base: gpui::Hsla,
     raised: gpui::Hsla,
+    panel: gpui::Hsla,
     selected_bg: gpui::Hsla,
     secondary: gpui::Hsla,
+    placeholder: gpui::Hsla,
     border: gpui::Hsla,
+    border_card: gpui::Hsla,
+    border_active: gpui::Hsla,
     accent: gpui::Hsla,
     error: gpui::Hsla,
 ) -> gpui::Div {
@@ -2191,17 +2279,32 @@ fn outline_view(
                 .flex_col()
                 .gap(px(8.0))
                 .children(rows.iter().enumerate().map(|(index, row)| {
+                    let grid = column_grid(
+                        cx,
+                        row,
+                        outline_width,
+                        selected_target,
+                        panel,
+                        raised,
+                        secondary,
+                        placeholder,
+                        border,
+                        border_card,
+                        border_active,
+                    );
                     div()
                         .id(("outline", index))
-                        .p(px(12.0))
-                        .bg(if index == selected {
-                            selected_bg
-                        } else {
-                            raised
+                        .when(row.columns.is_empty(), |card| {
+                            card.p(px(12.0))
+                                .bg(if index == selected {
+                                    selected_bg
+                                } else {
+                                    raised
+                                })
+                                .border_1()
+                                .border_color(if index == selected { accent } else { border })
+                                .ml(px(16.0 * row.depth as f32))
                         })
-                        .border_1()
-                        .border_color(if index == selected { accent } else { border })
-                        .ml(px(16.0 * row.depth as f32))
                         .child(row.label.clone())
                         .when(!row.detail.is_empty(), |card| {
                             card.child(div().text_color(secondary).child(row.detail.clone()))
@@ -2213,6 +2316,7 @@ fn outline_view(
                                 if row.issues == 1 { "" } else { "s" }
                             )))
                         })
+                        .when(grid.is_some(), |card| card.child(grid.unwrap()))
                         .on_click(cx.listener(move |shell, _: &ClickEvent, _, cx| {
                             shell.select_outline(index);
                             cx.notify();
@@ -2222,6 +2326,77 @@ fn outline_view(
                     col.child(div().text_color(secondary).child("No nodes on this page."))
                 }),
         )
+}
+
+fn column_grid(
+    cx: &mut Context<Shell>,
+    row: &OutlineRow,
+    outline_width: f32,
+    selected_target: &Target,
+    panel: gpui::Hsla,
+    raised: gpui::Hsla,
+    secondary: gpui::Hsla,
+    placeholder: gpui::Hsla,
+    border: gpui::Hsla,
+    border_card: gpui::Hsla,
+    border_active: gpui::Hsla,
+) -> Option<gpui::Div> {
+    if row.columns.is_empty() {
+        return None;
+    }
+    // DESIGN-GAP: Screens 33 and 34 do not draw this row. Under 140px the
+    // proportional columns stack so the chips stay readable.
+    let stack = column_layout(&row.columns, outline_width) == "stack";
+    let columns = row.columns.clone();
+    Some(
+        div()
+            .mt(px(8.0))
+            .w_full()
+            .gap(px(8.0))
+            .when(!stack, |grid| grid.flex().flex_row())
+            .when(stack, |grid| grid.flex().flex_col())
+            .children(columns.into_iter().enumerate().map(|(index, column)| {
+                let selected = column.target == *selected_target;
+                let empty = column.empty;
+                let label = column.label.clone();
+                let md_class = column.md_class.clone();
+                let chips = column.chips.clone();
+                div()
+                    .id(("column", index))
+                    .when(!stack, |card| {
+                        card.flex_grow(column.parts as f32).flex_basis(px(0.0))
+                    })
+                    .when(stack, |card| card.w_full())
+                    .p(px(8.0))
+                    .bg(panel)
+                    .rounded(px(6.0))
+                    .border_1()
+                    .when(empty && !selected, |card| {
+                        card.border_dashed().border_color(border)
+                    })
+                    .when(!empty && !selected, |card| card.border_color(border_card))
+                    .when(selected, |card| card.border_2().border_color(border_active))
+                    .child(div().text_color(secondary).child(label))
+                    .child(div().text_color(secondary).child(md_class))
+                    .when(empty, |card| {
+                        card.child(div().text_color(placeholder).child("Empty · / to add"))
+                    })
+                    .children(chips.into_iter().map(|chip| {
+                        div()
+                            .mt(px(6.0))
+                            .p(px(8.0))
+                            .bg(raised)
+                            .border_1()
+                            .border_color(border_card)
+                            .rounded(px(4.0))
+                            .child(chip)
+                    }))
+                    .on_click(cx.listener(move |shell, _: &ClickEvent, _, cx| {
+                        shell.select_column(&column.label);
+                        cx.notify();
+                    }))
+            })),
+    )
 }
 
 fn inspector_view(
