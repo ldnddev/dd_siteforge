@@ -746,20 +746,58 @@ mod tests {
         dir
     }
 
+    fn missing_shipped_omarchy(
+        paths: &OmarchyPaths,
+        palette: &ldnddev_theme::Palette,
+    ) -> Option<String> {
+        let choice = palette.omarchy.as_ref()?;
+        let err = ldnddev_theme::load_colors(paths, choice).err()?;
+        let detail = err.to_string();
+        let absent = detail.contains("has no colors.toml") || detail.contains("colors are missing");
+        if !absent {
+            return None;
+        }
+        if !paths.stock.is_dir() && !paths.user.is_dir() {
+            Some(format!(
+                "Omarchy is not installed (no themes directory at {} or {}); {detail}",
+                paths.stock.display(),
+                paths.user.display()
+            ))
+        } else {
+            Some(format!(
+                "{detail} (looked in {} and {})",
+                paths.stock.display(),
+                paths.user.display()
+            ))
+        }
+    }
+
     #[test]
     fn shipped_theme_file_loads_without_warning() {
-        let (theme, source, warning) = AppTheme::load_resolved(
-            Path::new(env!("CARGO_MANIFEST_DIR")),
-            None,
-            &ldnddev_theme::OmarchyPaths::from_root(Path::new("/nonexistent/dd_siteforge_omarchy")),
-        );
+        let project = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let paths = OmarchyPaths::system();
+        let raw =
+            std::fs::read_to_string(project.join(THEME_FILENAME)).expect("read shipped theme");
+        let palette = load_from_str(&raw, ParseMode::Lenient, ThemeSource::Local)
+            .expect("parse shipped theme");
+        if let Some(reason) = missing_shipped_omarchy(&paths, &palette) {
+            eprintln!("skipping shipped_theme_file_loads_without_warning: {reason}");
+            return;
+        }
+
+        let (theme, source, warning) = AppTheme::load_resolved(project, None, &paths);
         assert!(warning.is_none(), "{warning:?}");
         assert_eq!(source, "local");
+        assert_eq!(theme.omarchy, palette.omarchy);
+        let expected = apply_omarchy(&palette, &paths).expect("apply shipped omarchy theme");
         assert_eq!(
             color_to_hex(theme.base_background).to_ascii_uppercase(),
-            "#0F1114"
+            expected
+                .get("base_background")
+                .expect("base_background")
+                .to_hex()
+                .to_ascii_uppercase()
         );
-        assert!(theme.omarchy.is_none());
     }
 
     #[test]
