@@ -37,6 +37,14 @@ jobs:
         # --no-fail-fast so a core or theme failure is still reported when the
         # known Omarchy theme test fails on a runner that has no Omarchy install.
         run: cargo test --workspace --locked --no-fail-fast
+
+  # Separate job so a failing test (the Omarchy theme check on runners
+  # without Omarchy) does not skip the license and advisory gate.
+  deny:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
       - name: cargo deny
         uses: EmbarkStudios/cargo-deny-action@v2
         with:
