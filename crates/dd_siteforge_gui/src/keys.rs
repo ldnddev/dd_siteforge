@@ -1,10 +1,15 @@
 //! Key names the shell handles.
 //!
-//! J4 (dock-toggle shortcuts) is still open. Nothing is bound for it, and
-//! Ctrl+B stays free because that chord is Build CSS/JS.
+//! Jared, Nov 16 (J4): Ctrl+\ toggles the Sidebar and Ctrl+Alt+\ toggles the
+//! Inspector. Ctrl+B stays free because that chord is Build CSS/JS.
 
-/// Unassigned on purpose. Do not point this at `ctrl-b`.
-pub const DOCK_TOGGLE_KEY: Option<&str> = None;
+pub const TOGGLE_SIDEBAR_KEY: &str = "ctrl-\\";
+pub const TOGGLE_INSPECTOR_KEY: &str = "ctrl-alt-\\";
+
+/// Kbd hint on the "Show sidebar" tooltip.
+pub const SIDEBAR_KBD: &str = "Ctrl \\";
+/// Kbd hint on the "Show inspector" tooltip.
+pub const INSPECTOR_KBD: &str = "Ctrl Alt \\";
 
 pub const NEW_SITE_KEY: &str = "ctrl-shift-n";
 pub const ADD_PAGE_KEY: &str = "ctrl-n";
@@ -12,3 +17,11 @@ pub const THEME_KEY: &str = "f2";
 pub const REDO_KEY: &str = "ctrl-r";
 pub const QUIT_KEY: &str = "ctrl-q";
 pub const OPEN_KEY: &str = "ctrl-o";
+
+pub fn show_sidebar_tooltip() -> String {
+    format!("Show sidebar · {SIDEBAR_KBD}")
+}
+
+pub fn show_inspector_tooltip() -> String {
+    format!("Show inspector · {INSPECTOR_KBD}")
+}
