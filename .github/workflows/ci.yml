@@ -83,6 +83,7 @@ jobs:
             pkg-config \
             libwayland-dev \
             libxkbcommon-dev \
+            libxkbcommon-x11-dev \
             libvulkan-dev \
             libfontconfig1-dev \
             libxcb1-dev \
