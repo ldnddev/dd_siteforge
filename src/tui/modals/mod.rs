@@ -75,9 +75,10 @@ pub(in crate::tui) enum Modal {
 }
 
 /// One frame of drill-down context: parent form state plus the (subform id,
-/// item idx) we entered from. When we return, we copy the current state into
-/// `parent_state.sub_state[subform_field_id][item_idx]` and make the parent
-/// the active state again.
+/// item idx) we entered from. The parent snapshot is taken before the item
+/// is swapped out, so Esc restores that item. Ctrl+S copies the edited item
+/// into `parent_state.sub_state[subform_field_id][item_idx]` and makes the
+/// parent the active state again.
 pub(in crate::tui) struct DrillFrame {
     pub(in crate::tui) parent_state: editform::EditFormState,
     pub(in crate::tui) parent_cursor_pos: usize,
