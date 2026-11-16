@@ -177,7 +177,8 @@ pub struct GuiToken {
 pub struct GuiTheme {
     pub mode: ThemeMode,
     pub tokens: Vec<GuiToken>,
-    /// Rule (a). Outlined when `text.on-accent` is under 4.5:1 on `accent.fill`.
+    /// Rule (a). Outlined when `text.on-accent` is under 4.5:1 on `accent.fill`,
+    /// or when no slot can form a hover layer without lowering that contrast.
     pub primary_button: PrimaryButton,
     /// Rule (b). Icon token → the `status.*-text` token to draw on `surface.base`.
     pub on_surface_base: BTreeMap<String, String>,
@@ -297,7 +298,12 @@ pub fn resolve_gui_theme(colors: &OmarchyColors) -> GuiTheme {
 
     let on_accent = out["text.on-accent"];
     let fill = out["accent.fill"];
-    let primary_button = if meets(contrast_ratio(on_accent, fill), 4.5) {
+    // Rule (a), including rose-pine: accent.fill fell through to foreground, so
+    // the away-slot search finds no hover/pressed layer (0%). catppuccin-latte
+    // is outlined because the label contrast itself is under 4.5:1.
+    let plan = accent_plan(&vals, on_accent, fill);
+    let hover_layer = plan.hover_cents > 0 && plan.pressed_cents > 0;
+    let primary_button = if meets(contrast_ratio(on_accent, fill), 4.5) && hover_layer {
         PrimaryButton::Filled
     } else {
         PrimaryButton::Outlined

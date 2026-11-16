@@ -1744,8 +1744,9 @@ rose-pine,light,syntax.comment,text,surface.input,4.5,dark_foreground,#9893a5,2.
 rose-pine,light,syntax.punctuation,text,surface.input,4.5,light_foreground,#6e6a86,4.73,56.2,True,light_foreground,#6e6a86,#faf4ed,4.73,56.2,True,
 rose-pine,light,border.card,decor,surface.raised,,foreground @ 26% over surface.raised,#cac2c6,1.45,16.1,,foreground @ 26% over surface.raised,#cac2c6,#f2e9e1,1.45,16.1,,
 rose-pine,light,border.card,decor,surface.base,,foreground @ 26% over surface.raised,#cac2c6,1.42,15.1,,foreground @ 26% over surface.raised,#cac2c6,#ede7e1,1.42,15.1,,
-rose-pine,light,text.on-accent,text,state.on-accent-hover,4.5,background on accent.fill (default state),#faf4ed,6.66,65.7,True,background on foreground @ 0% over accent.fill,#faf4ed,#575279,6.66,65.7,True,
-rose-pine,light,text.on-accent,text,state.on-accent-pressed,4.5,background on accent.fill (default state),#faf4ed,6.66,65.7,True,background on foreground @ 0% over accent.fill,#faf4ed,#575279,6.66,65.7,True,
+rose-pine,light,text.accent,text,surface.raised,4.5,foreground (outlined primary button),#575279,6.07,61.7,True,foreground (outlined primary button),#575279,#f2e9e1,6.07,61.7,True,a
+rose-pine,light,text.accent,text,state.hover,4.5,foreground (outlined primary button),#575279,6.1,61.9,True,foreground (outlined primary button),#575279,#f0eae6,6.1,61.9,True,a
+rose-pine,light,accent.fill,ui,surface.raised,3.0,foreground (outlined primary button),#575279,6.07,61.7,True,foreground (outlined primary button),#575279,#f2e9e1,6.07,61.7,True,a
 solitude,dark,text.primary,text,surface.base,4.5,foreground,#cacccc,12.3,78.6,True,foreground,#cacccc,#080a0b,12.3,78.6,True,
 solitude,dark,text.primary,text,surface.panel,4.5,foreground,#cacccc,11.56,76.5,True,foreground,#cacccc,#101315,11.56,76.5,True,
 solitude,dark,text.primary,text,surface.raised,4.5,foreground,#cacccc,11.56,76.5,True,foreground,#cacccc,#101315,11.56,76.5,True,
