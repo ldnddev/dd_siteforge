@@ -8,23 +8,31 @@ impl App {
         }
         let component = self.selected_component_owned();
         match component {
-            Some(crate::model::SectionComponent::Accordion(_)) => {
+            Some(dd_siteforge_core::model::SectionComponent::Accordion(_)) => {
                 self.add_selected_accordion_item()
             }
-            Some(crate::model::SectionComponent::Alternating(_)) => {
+            Some(dd_siteforge_core::model::SectionComponent::Alternating(_)) => {
                 self.add_selected_alternating_item()
             }
-            Some(crate::model::SectionComponent::Card(_)) => self.add_selected_card_item(),
-            Some(crate::model::SectionComponent::Filmstrip(_)) => {
+            Some(dd_siteforge_core::model::SectionComponent::Card(_)) => {
+                self.add_selected_card_item()
+            }
+            Some(dd_siteforge_core::model::SectionComponent::Filmstrip(_)) => {
                 self.add_selected_filmstrip_item()
             }
-            Some(crate::model::SectionComponent::Milestones(_)) => {
+            Some(dd_siteforge_core::model::SectionComponent::Milestones(_)) => {
                 self.add_selected_milestones_item()
             }
-            Some(crate::model::SectionComponent::Slider(_)) => self.add_selected_slider_item(),
-            Some(crate::model::SectionComponent::Tabs(_)) => self.add_selected_tabs_item(),
-            Some(crate::model::SectionComponent::Timeline(_)) => self.add_selected_timeline_item(),
-            Some(crate::model::SectionComponent::DataTable(_)) => {
+            Some(dd_siteforge_core::model::SectionComponent::Slider(_)) => {
+                self.add_selected_slider_item()
+            }
+            Some(dd_siteforge_core::model::SectionComponent::Tabs(_)) => {
+                self.add_selected_tabs_item()
+            }
+            Some(dd_siteforge_core::model::SectionComponent::Timeline(_)) => {
+                self.add_selected_timeline_item()
+            }
+            Some(dd_siteforge_core::model::SectionComponent::DataTable(_)) => {
                 self.add_selected_data_table_row()
             }
             Some(_) => {
@@ -45,25 +53,31 @@ impl App {
         }
         let component = self.selected_component_owned();
         match component {
-            Some(crate::model::SectionComponent::Accordion(_)) => {
+            Some(dd_siteforge_core::model::SectionComponent::Accordion(_)) => {
                 self.remove_selected_accordion_item()
             }
-            Some(crate::model::SectionComponent::Alternating(_)) => {
+            Some(dd_siteforge_core::model::SectionComponent::Alternating(_)) => {
                 self.remove_selected_alternating_item()
             }
-            Some(crate::model::SectionComponent::Card(_)) => self.remove_selected_card_item(),
-            Some(crate::model::SectionComponent::Filmstrip(_)) => {
+            Some(dd_siteforge_core::model::SectionComponent::Card(_)) => {
+                self.remove_selected_card_item()
+            }
+            Some(dd_siteforge_core::model::SectionComponent::Filmstrip(_)) => {
                 self.remove_selected_filmstrip_item()
             }
-            Some(crate::model::SectionComponent::Milestones(_)) => {
+            Some(dd_siteforge_core::model::SectionComponent::Milestones(_)) => {
                 self.remove_selected_milestones_item()
             }
-            Some(crate::model::SectionComponent::Slider(_)) => self.remove_selected_slider_item(),
-            Some(crate::model::SectionComponent::Tabs(_)) => self.remove_selected_tabs_item(),
-            Some(crate::model::SectionComponent::Timeline(_)) => {
+            Some(dd_siteforge_core::model::SectionComponent::Slider(_)) => {
+                self.remove_selected_slider_item()
+            }
+            Some(dd_siteforge_core::model::SectionComponent::Tabs(_)) => {
+                self.remove_selected_tabs_item()
+            }
+            Some(dd_siteforge_core::model::SectionComponent::Timeline(_)) => {
                 self.remove_selected_timeline_item()
             }
-            Some(crate::model::SectionComponent::DataTable(_)) => {
+            Some(dd_siteforge_core::model::SectionComponent::DataTable(_)) => {
                 self.remove_selected_data_table_row()
             }
             Some(_) => {
@@ -106,14 +120,16 @@ impl App {
                 let col_i = selected_column.min(section.columns.len().saturating_sub(1));
                 let components = &mut section.columns[col_i].components;
                 if let Some(ci) = component_index(components.len(), selected_component) {
-                    if let crate::model::SectionComponent::Accordion(acc) = &mut components[ci] {
+                    if let dd_siteforge_core::model::SectionComponent::Accordion(acc) =
+                        &mut components[ci]
+                    {
                         let insert_idx = preferred_insert_after
                             .map(|i| (i + 1).min(acc.items.len()))
                             .unwrap_or(acc.items.len());
                         let next_num = acc.items.len() + 1;
                         acc.items.insert(
                             insert_idx,
-                            crate::model::AccordionItem {
+                            dd_siteforge_core::model::AccordionItem {
                                 child_title: format!("Accordion Item {}", next_num),
                                 child_copy: "Accordion content".to_string(),
                             },
@@ -160,7 +176,9 @@ impl App {
                 let col_i = selected_column.min(section.columns.len().saturating_sub(1));
                 let components = &mut section.columns[col_i].components;
                 if let Some(ci) = component_index(components.len(), selected_component) {
-                    if let crate::model::SectionComponent::Accordion(acc) = &mut components[ci] {
+                    if let dd_siteforge_core::model::SectionComponent::Accordion(acc) =
+                        &mut components[ci]
+                    {
                         if acc.items.len() <= 1 {
                             (
                                 None,
@@ -222,14 +240,16 @@ impl App {
                 let col_i = selected_column.min(section.columns.len().saturating_sub(1));
                 let components = &mut section.columns[col_i].components;
                 if let Some(ci) = component_index(components.len(), selected_component) {
-                    if let crate::model::SectionComponent::Alternating(alt) = &mut components[ci] {
+                    if let dd_siteforge_core::model::SectionComponent::Alternating(alt) =
+                        &mut components[ci]
+                    {
                         let insert_idx = preferred_insert_after
                             .map(|i| (i + 1).min(alt.items.len()))
                             .unwrap_or(alt.items.len());
                         let next_num = alt.items.len() + 1;
                         alt.items.insert(
                             insert_idx,
-                            crate::model::AlternatingItem {
+                            dd_siteforge_core::model::AlternatingItem {
                                 child_image_url: "https://dummyimage.com/600x400/000/fff"
                                     .to_string(),
                                 child_image_alt: format!("Alternating image {}", next_num),
@@ -237,7 +257,7 @@ impl App {
                                 child_subtitle: "Subtitle".to_string(),
                                 child_copy: "Alternating content".to_string(),
                                 links: Vec::new(),
-                                media: crate::model::Media::None,
+                                media: dd_siteforge_core::model::Media::None,
                             },
                         );
                         (
@@ -285,7 +305,9 @@ impl App {
                 let col_i = selected_column.min(section.columns.len().saturating_sub(1));
                 let components = &mut section.columns[col_i].components;
                 if let Some(ci) = component_index(components.len(), selected_component) {
-                    if let crate::model::SectionComponent::Alternating(alt) = &mut components[ci] {
+                    if let dd_siteforge_core::model::SectionComponent::Alternating(alt) =
+                        &mut components[ci]
+                    {
                         if alt.items.len() <= 1 {
                             (
                                 None,
@@ -350,14 +372,16 @@ impl App {
                 let col_i = selected_column.min(section.columns.len().saturating_sub(1));
                 let components = &mut section.columns[col_i].components;
                 if let Some(ci) = component_index(components.len(), selected_component) {
-                    if let crate::model::SectionComponent::Card(card) = &mut components[ci] {
+                    if let dd_siteforge_core::model::SectionComponent::Card(card) =
+                        &mut components[ci]
+                    {
                         let insert_idx = preferred_insert_after
                             .map(|i| (i + 1).min(card.items.len()))
                             .unwrap_or(card.items.len());
                         let next_num = card.items.len() + 1;
                         card.items.insert(
                             insert_idx,
-                            crate::model::CardItem {
+                            dd_siteforge_core::model::CardItem {
                                 child_image_url: "https://dummyimage.com/720x720/000/fff"
                                     .to_string(),
                                 child_image_alt: "Image alt text".to_string(),
@@ -365,9 +389,11 @@ impl App {
                                 child_subtitle: "Subtitle".to_string(),
                                 child_copy: "Copy".to_string(),
                                 child_link_url: Some("/front".to_string()),
-                                child_link_target: Some(crate::model::CardLinkTarget::SelfTarget),
+                                child_link_target: Some(
+                                    dd_siteforge_core::model::CardLinkTarget::SelfTarget,
+                                ),
                                 child_link_label: Some("Learn More".to_string()),
-                                child_link_style: crate::model::ButtonStyle::Primary,
+                                child_link_style: dd_siteforge_core::model::ButtonStyle::Primary,
                             },
                         );
                         (
@@ -420,7 +446,9 @@ impl App {
                 let col_i = selected_column.min(section.columns.len().saturating_sub(1));
                 let components = &mut section.columns[col_i].components;
                 if let Some(ci) = component_index(components.len(), selected_component) {
-                    if let crate::model::SectionComponent::Card(card) = &mut components[ci] {
+                    if let dd_siteforge_core::model::SectionComponent::Card(card) =
+                        &mut components[ci]
+                    {
                         if card.items.len() <= 1 {
                             (None, "dd-card must keep at least one item.".to_string())
                         } else {
@@ -479,7 +507,7 @@ impl App {
                 let col_i = selected_column.min(section.columns.len().saturating_sub(1));
                 let components = &mut section.columns[col_i].components;
                 if let Some(ci) = component_index(components.len(), selected_component) {
-                    if let crate::model::SectionComponent::Filmstrip(filmstrip) =
+                    if let dd_siteforge_core::model::SectionComponent::Filmstrip(filmstrip) =
                         &mut components[ci]
                     {
                         let insert_idx = preferred_insert_after
@@ -488,7 +516,7 @@ impl App {
                         let next_num = filmstrip.items.len() + 1;
                         filmstrip.items.insert(
                             insert_idx,
-                            crate::model::FilmstripItem {
+                            dd_siteforge_core::model::FilmstripItem {
                                 child_image_url: "https://dummyimage.com/256x256/000/fff"
                                     .to_string(),
                                 child_image_alt: "Image alt text".to_string(),
@@ -545,7 +573,7 @@ impl App {
                 let col_i = selected_column.min(section.columns.len().saturating_sub(1));
                 let components = &mut section.columns[col_i].components;
                 if let Some(ci) = component_index(components.len(), selected_component) {
-                    if let crate::model::SectionComponent::Filmstrip(filmstrip) =
+                    if let dd_siteforge_core::model::SectionComponent::Filmstrip(filmstrip) =
                         &mut components[ci]
                     {
                         if filmstrip.items.len() <= 1 {
@@ -609,7 +637,7 @@ impl App {
                 let col_i = selected_column.min(section.columns.len().saturating_sub(1));
                 let components = &mut section.columns[col_i].components;
                 if let Some(ci) = component_index(components.len(), selected_component) {
-                    if let crate::model::SectionComponent::Milestones(milestones) =
+                    if let dd_siteforge_core::model::SectionComponent::Milestones(milestones) =
                         &mut components[ci]
                     {
                         let insert_idx = preferred_insert_after
@@ -618,15 +646,17 @@ impl App {
                         let next_num = milestones.items.len() + 1;
                         milestones.items.insert(
                             insert_idx,
-                            crate::model::MilestonesItem {
+                            dd_siteforge_core::model::MilestonesItem {
                                 child_percentage: "70".to_string(),
                                 child_title: format!("Title {}", next_num),
                                 child_subtitle: "Subtitle".to_string(),
                                 child_copy: "Copy".to_string(),
                                 child_link_url: None,
-                                child_link_target: Some(crate::model::CardLinkTarget::SelfTarget),
+                                child_link_target: Some(
+                                    dd_siteforge_core::model::CardLinkTarget::SelfTarget,
+                                ),
                                 child_link_label: None,
-                                child_link_style: crate::model::ButtonStyle::Primary,
+                                child_link_style: dd_siteforge_core::model::ButtonStyle::Primary,
                             },
                         );
                         (
@@ -679,7 +709,7 @@ impl App {
                 let col_i = selected_column.min(section.columns.len().saturating_sub(1));
                 let components = &mut section.columns[col_i].components;
                 if let Some(ci) = component_index(components.len(), selected_component) {
-                    if let crate::model::SectionComponent::Milestones(milestones) =
+                    if let dd_siteforge_core::model::SectionComponent::Milestones(milestones) =
                         &mut components[ci]
                     {
                         if milestones.items.len() <= 1 {
@@ -743,21 +773,23 @@ impl App {
                 let col_i = selected_column.min(section.columns.len().saturating_sub(1));
                 let components = &mut section.columns[col_i].components;
                 if let Some(ci) = component_index(components.len(), selected_component) {
-                    if let crate::model::SectionComponent::Slider(slider) = &mut components[ci] {
+                    if let dd_siteforge_core::model::SectionComponent::Slider(slider) =
+                        &mut components[ci]
+                    {
                         let insert_idx = preferred_insert_after
                             .map(|i| (i + 1).min(slider.items.len()))
                             .unwrap_or(slider.items.len());
                         let next_num = slider.items.len() + 1;
                         slider.items.insert(
                             insert_idx,
-                            crate::model::SliderItem {
+                            dd_siteforge_core::model::SliderItem {
                                 child_title: format!("Title {}", next_num),
                                 child_copy: "Copy".to_string(),
-                                links: vec![crate::model::DdLink {
+                                links: vec![dd_siteforge_core::model::DdLink {
                                     url: "/path".to_string(),
                                     label: "Learn More".to_string(),
-                                    target: crate::model::CardLinkTarget::SelfTarget,
-                                    style: crate::model::ButtonStyle::Primary,
+                                    target: dd_siteforge_core::model::CardLinkTarget::SelfTarget,
+                                    style: dd_siteforge_core::model::ButtonStyle::Primary,
                                 }],
                                 child_link_url: None,
                                 child_link_target: None,
@@ -765,7 +797,7 @@ impl App {
                                 child_image_url: "https://dummyimage.com/720x720/000/fff"
                                     .to_string(),
                                 child_image_alt: "Image alt text".to_string(),
-                                media: crate::model::Media::None,
+                                media: dd_siteforge_core::model::Media::None,
                             },
                         );
                         (
@@ -818,7 +850,9 @@ impl App {
                 let col_i = selected_column.min(section.columns.len().saturating_sub(1));
                 let components = &mut section.columns[col_i].components;
                 if let Some(ci) = component_index(components.len(), selected_component) {
-                    if let crate::model::SectionComponent::Slider(slider) = &mut components[ci] {
+                    if let dd_siteforge_core::model::SectionComponent::Slider(slider) =
+                        &mut components[ci]
+                    {
                         if slider.items.len() <= 1 {
                             (None, "dd-slider must keep at least one item.".to_string())
                         } else {
@@ -877,14 +911,16 @@ impl App {
                 let col_i = selected_column.min(section.columns.len().saturating_sub(1));
                 let components = &mut section.columns[col_i].components;
                 if let Some(ci) = component_index(components.len(), selected_component) {
-                    if let crate::model::SectionComponent::Tabs(tabs) = &mut components[ci] {
+                    if let dd_siteforge_core::model::SectionComponent::Tabs(tabs) =
+                        &mut components[ci]
+                    {
                         let insert_idx = preferred_insert_after
                             .map(|i| (i + 1).min(tabs.items.len()))
                             .unwrap_or(tabs.items.len());
                         let next_num = tabs.items.len() + 1;
                         tabs.items.insert(
                             insert_idx,
-                            crate::model::TabsItem {
+                            dd_siteforge_core::model::TabsItem {
                                 child_title: format!("Tab {}", next_num),
                                 child_copy: "Panel copy".to_string(),
                             },
@@ -939,7 +975,9 @@ impl App {
                 let col_i = selected_column.min(section.columns.len().saturating_sub(1));
                 let components = &mut section.columns[col_i].components;
                 if let Some(ci) = component_index(components.len(), selected_component) {
-                    if let crate::model::SectionComponent::Tabs(tabs) = &mut components[ci] {
+                    if let dd_siteforge_core::model::SectionComponent::Tabs(tabs) =
+                        &mut components[ci]
+                    {
                         if tabs.items.len() <= 1 {
                             (None, "dd-tabs must keep at least one item.".to_string())
                         } else {
@@ -998,7 +1036,8 @@ impl App {
                 let col_i = selected_column.min(section.columns.len().saturating_sub(1));
                 let components = &mut section.columns[col_i].components;
                 if let Some(ci) = component_index(components.len(), selected_component) {
-                    if let crate::model::SectionComponent::Timeline(timeline) = &mut components[ci]
+                    if let dd_siteforge_core::model::SectionComponent::Timeline(timeline) =
+                        &mut components[ci]
                     {
                         let insert_idx = preferred_insert_after
                             .map(|i| (i + 1).min(timeline.items.len()))
@@ -1006,7 +1045,7 @@ impl App {
                         let next_num = timeline.items.len() + 1;
                         timeline.items.insert(
                             insert_idx,
-                            crate::model::TimelineItem {
+                            dd_siteforge_core::model::TimelineItem {
                                 child_year: format!("{}", 2020 + next_num),
                                 child_datetime: None,
                                 child_title: format!("Title {}", next_num),
@@ -1066,7 +1105,8 @@ impl App {
                 let col_i = selected_column.min(section.columns.len().saturating_sub(1));
                 let components = &mut section.columns[col_i].components;
                 if let Some(ci) = component_index(components.len(), selected_component) {
-                    if let crate::model::SectionComponent::Timeline(timeline) = &mut components[ci]
+                    if let dd_siteforge_core::model::SectionComponent::Timeline(timeline) =
+                        &mut components[ci]
                     {
                         if timeline.items.len() <= 1 {
                             (None, "dd-timeline must keep at least one item.".to_string())
@@ -1126,7 +1166,9 @@ impl App {
                 let col_i = selected_column.min(section.columns.len().saturating_sub(1));
                 let components = &mut section.columns[col_i].components;
                 if let Some(ci) = component_index(components.len(), selected_component) {
-                    if let crate::model::SectionComponent::DataTable(table) = &mut components[ci] {
+                    if let dd_siteforge_core::model::SectionComponent::DataTable(table) =
+                        &mut components[ci]
+                    {
                         let insert_idx = preferred_insert_after
                             .map(|i| (i + 1).min(table.rows.len()))
                             .unwrap_or(table.rows.len());
@@ -1182,7 +1224,9 @@ impl App {
                 let col_i = selected_column.min(section.columns.len().saturating_sub(1));
                 let components = &mut section.columns[col_i].components;
                 if let Some(ci) = component_index(components.len(), selected_component) {
-                    if let crate::model::SectionComponent::DataTable(table) = &mut components[ci] {
+                    if let dd_siteforge_core::model::SectionComponent::DataTable(table) =
+                        &mut components[ci]
+                    {
                         if table.rows.is_empty() {
                             (None, "dd-data-table has no rows to remove.".to_string())
                         } else {

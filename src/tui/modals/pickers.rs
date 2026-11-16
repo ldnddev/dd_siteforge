@@ -35,7 +35,7 @@ impl App {
             KeyCode::Left if !key.modifiers.contains(KeyModifiers::CONTROL) => {
                 if state.cwd != state.root {
                     if let Some(parent) = state.cwd.parent() {
-                        if crate::export::path_is_inside(&state.root, parent) {
+                        if dd_siteforge_core::export::path_is_inside(&state.root, parent) {
                             state.cwd = parent.to_path_buf();
                         } else {
                             state.cwd = state.root.clone();
@@ -94,7 +94,7 @@ impl App {
 
         let next = cwd.join(&selected_name);
         if next.is_dir() {
-            if !crate::export::path_is_inside(&root, &next) {
+            if !dd_siteforge_core::export::path_is_inside(&root, &next) {
                 self.push_toast(
                     ToastLevel::Warning,
                     "That folder is outside the image directory.",
@@ -109,7 +109,7 @@ impl App {
             return;
         }
 
-        if !crate::export::path_is_inside(&root, &next) {
+        if !dd_siteforge_core::export::path_is_inside(&root, &next) {
             self.push_toast(
                 ToastLevel::Warning,
                 "That folder is outside the image directory.",
@@ -221,7 +221,7 @@ impl App {
                     ..
                 }) = self.modal.as_mut()
                 {
-                    let value = crate::model::page_href(&slug, self.site.pretty_urls);
+                    let value = dd_siteforge_core::model::page_href(&slug, self.site.pretty_urls);
                     state.set(&field_id, value.clone());
                     *cursor_pos = text_end(state.get(&field_id));
                     *selection_anchor = None;

@@ -16,7 +16,10 @@ pub(super) struct PageTreeRow {
 /// Longest existing slug prefix of `pages[idx]`, if any.
 /// `blog/entry` nests under `blog`; `blog/2024/entry` nests under `blog/2024`
 /// when that page exists, else under `blog`.
-pub(super) fn page_parent_idx(pages: &[crate::model::Page], idx: usize) -> Option<usize> {
+pub(super) fn page_parent_idx(
+    pages: &[dd_siteforge_core::model::Page],
+    idx: usize,
+) -> Option<usize> {
     let slug = pages.get(idx)?.slug.as_str();
     if slug == "index" {
         return None;
@@ -38,7 +41,7 @@ pub(super) fn page_parent_idx(pages: &[crate::model::Page], idx: usize) -> Optio
     None
 }
 
-fn page_forest(pages: &[crate::model::Page]) -> (Vec<usize>, Vec<Vec<usize>>) {
+fn page_forest(pages: &[dd_siteforge_core::model::Page]) -> (Vec<usize>, Vec<Vec<usize>>) {
     let n = pages.len();
     let mut children = vec![Vec::new(); n];
     let mut roots = Vec::new();
@@ -130,7 +133,7 @@ impl App {
         fn walk(
             idx: usize,
             depth: usize,
-            pages: &[crate::model::Page],
+            pages: &[dd_siteforge_core::model::Page],
             children: &[Vec<usize>],
             ords: &[usize],
             collapsed: &HashSet<String>,

@@ -1,6 +1,6 @@
 //! Insert-picker component kinds.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum ComponentKind {
+pub enum ComponentKind {
     Hero,
     Section,
     Banner,
@@ -28,7 +28,7 @@ pub(super) enum ComponentKind {
 }
 
 impl ComponentKind {
-    pub(super) fn all() -> &'static [Self] {
+    pub fn all() -> &'static [Self] {
         &[
             Self::Hero,
             Self::Section,
@@ -57,7 +57,7 @@ impl ComponentKind {
         ]
     }
 
-    pub(super) fn label(self) -> &'static str {
+    pub fn label(self) -> &'static str {
         match self {
             ComponentKind::Hero => "dd-hero",
             ComponentKind::Section => "dd-section",
@@ -86,7 +86,7 @@ impl ComponentKind {
         }
     }
 
-    pub(super) fn from_section_component(c: &crate::model::SectionComponent) -> Self {
+    pub fn from_section_component(c: &crate::model::SectionComponent) -> Self {
         match c {
             crate::model::SectionComponent::Cta(_) => Self::Cta,
             crate::model::SectionComponent::Banner(_) => Self::Banner,
@@ -113,7 +113,7 @@ impl ComponentKind {
         }
     }
 
-    pub(super) fn default_component(self) -> crate::model::SectionComponent {
+    pub fn default_component(self) -> crate::model::SectionComponent {
         match self {
             ComponentKind::Hero | ComponentKind::Section => {
                 unreachable!("top-level kinds do not map to section components")
@@ -383,5 +383,50 @@ impl ComponentKind {
                 })
             }
         }
+    }
+
+    /// Whether this kind may be inserted in `region`.
+    ///
+    /// Hero is a page node. Header search and the header menu stay in the
+    /// header and the footer. The site-settings row accepts nothing.
+    pub fn allowed_in(self, region: InsertRegion) -> bool {
+        match self {
+            ComponentKind::Hero => region == InsertRegion::Page,
+            ComponentKind::HeaderSearch | ComponentKind::HeaderMenu => {
+                matches!(region, InsertRegion::Header | InsertRegion::Footer)
+            }
+            _ => region != InsertRegion::Site,
+        }
+    }
+}
+
+/// Region an insert is aimed at. Matches the editor's page, site, header,
+/// and footer focus.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum InsertRegion {
+    Page,
+    Site,
+    Header,
+    Footer,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hero_is_a_page_node_and_header_widgets_stay_off_the_page() {
+        assert!(ComponentKind::Hero.allowed_in(InsertRegion::Page));
+        assert!(!ComponentKind::Hero.allowed_in(InsertRegion::Header));
+        assert!(!ComponentKind::Hero.allowed_in(InsertRegion::Footer));
+        assert!(!ComponentKind::Hero.allowed_in(InsertRegion::Site));
+
+        assert!(ComponentKind::HeaderSearch.allowed_in(InsertRegion::Header));
+        assert!(ComponentKind::HeaderMenu.allowed_in(InsertRegion::Footer));
+        assert!(!ComponentKind::HeaderSearch.allowed_in(InsertRegion::Page));
+
+        assert!(ComponentKind::Cta.allowed_in(InsertRegion::Page));
+        assert!(ComponentKind::Cta.allowed_in(InsertRegion::Header));
+        assert!(!ComponentKind::Cta.allowed_in(InsertRegion::Site));
     }
 }

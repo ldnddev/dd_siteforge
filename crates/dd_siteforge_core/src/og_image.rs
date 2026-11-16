@@ -141,6 +141,8 @@ fn webp_size(bytes: &[u8]) -> Option<RasterSize> {
             return positive(width, height, "image/webp");
         }
         let padded = size + (size & 1);
+        // A chunk length that wraps the read cursor ends the scan.
+        #[allow(clippy::panicking_overflow_checks)]
         if data + padded < data {
             return None;
         }

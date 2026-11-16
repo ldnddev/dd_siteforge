@@ -83,8 +83,9 @@ impl App {
                                         component_idx,
                                     },
                                 });
-                                if let Some(crate::model::SectionComponent::Accordion(acc)) =
-                                    col.components.get(component_idx)
+                                if let Some(
+                                    dd_siteforge_core::model::SectionComponent::Accordion(acc),
+                                ) = col.components.get(component_idx)
                                 {
                                     if self.is_accordion_items_expanded(
                                         node_idx,
@@ -103,8 +104,9 @@ impl App {
                                         }
                                     }
                                 }
-                                if let Some(crate::model::SectionComponent::Alternating(alt)) =
-                                    col.components.get(component_idx)
+                                if let Some(
+                                    dd_siteforge_core::model::SectionComponent::Alternating(alt),
+                                ) = col.components.get(component_idx)
                                 {
                                     if self.is_alternating_items_expanded(
                                         node_idx,
@@ -123,8 +125,9 @@ impl App {
                                         }
                                     }
                                 }
-                                if let Some(crate::model::SectionComponent::Card(card)) =
-                                    col.components.get(component_idx)
+                                if let Some(dd_siteforge_core::model::SectionComponent::Card(
+                                    card,
+                                )) = col.components.get(component_idx)
                                 {
                                     if self.is_card_items_expanded(
                                         node_idx,
@@ -143,8 +146,11 @@ impl App {
                                         }
                                     }
                                 }
-                                if let Some(crate::model::SectionComponent::Filmstrip(filmstrip)) =
-                                    col.components.get(component_idx)
+                                if let Some(
+                                    dd_siteforge_core::model::SectionComponent::Filmstrip(
+                                        filmstrip,
+                                    ),
+                                ) = col.components.get(component_idx)
                                 {
                                     if self.is_filmstrip_items_expanded(
                                         node_idx,
@@ -163,9 +169,11 @@ impl App {
                                         }
                                     }
                                 }
-                                if let Some(crate::model::SectionComponent::Milestones(
-                                    milestones,
-                                )) = col.components.get(component_idx)
+                                if let Some(
+                                    dd_siteforge_core::model::SectionComponent::Milestones(
+                                        milestones,
+                                    ),
+                                ) = col.components.get(component_idx)
                                 {
                                     if self.is_milestones_items_expanded(
                                         node_idx,
@@ -184,8 +192,9 @@ impl App {
                                         }
                                     }
                                 }
-                                if let Some(crate::model::SectionComponent::Slider(slider)) =
-                                    col.components.get(component_idx)
+                                if let Some(dd_siteforge_core::model::SectionComponent::Slider(
+                                    slider,
+                                )) = col.components.get(component_idx)
                                 {
                                     if self.is_slider_items_expanded(
                                         node_idx,
@@ -204,8 +213,9 @@ impl App {
                                         }
                                     }
                                 }
-                                if let Some(crate::model::SectionComponent::Tabs(tabs)) =
-                                    col.components.get(component_idx)
+                                if let Some(dd_siteforge_core::model::SectionComponent::Tabs(
+                                    tabs,
+                                )) = col.components.get(component_idx)
                                 {
                                     if self.is_tabs_items_expanded(
                                         node_idx,
@@ -224,8 +234,9 @@ impl App {
                                         }
                                     }
                                 }
-                                if let Some(crate::model::SectionComponent::Timeline(timeline)) =
-                                    col.components.get(component_idx)
+                                if let Some(dd_siteforge_core::model::SectionComponent::Timeline(
+                                    timeline,
+                                )) = col.components.get(component_idx)
                                 {
                                     if self.is_timeline_items_expanded(
                                         node_idx,
@@ -244,8 +255,9 @@ impl App {
                                         }
                                     }
                                 }
-                                if let Some(crate::model::SectionComponent::DataTable(table)) =
-                                    col.components.get(component_idx)
+                                if let Some(
+                                    dd_siteforge_core::model::SectionComponent::DataTable(table),
+                                ) = col.components.get(component_idx)
                                 {
                                     if self.is_data_table_rows_expanded(
                                         node_idx,
@@ -458,63 +470,90 @@ impl App {
                     (*component_idx).min(columns[col_i].components.len().saturating_sub(1));
                 let component = &columns[col_i].components[comp_i];
                 let label = component_label(component);
-                if matches!(component, crate::model::SectionComponent::Accordion(_)) {
+                if matches!(
+                    component,
+                    dd_siteforge_core::model::SectionComponent::Accordion(_)
+                ) {
                     let marker = if self.is_accordion_items_expanded(*node_idx, col_i, comp_i) {
                         "[-]"
                     } else {
                         "[+]"
                     };
                     format!("    - {} {} {}", comp_i + 1, marker, label)
-                } else if matches!(component, crate::model::SectionComponent::Alternating(_)) {
+                } else if matches!(
+                    component,
+                    dd_siteforge_core::model::SectionComponent::Alternating(_)
+                ) {
                     let marker = if self.is_alternating_items_expanded(*node_idx, col_i, comp_i) {
                         "[-]"
                     } else {
                         "[+]"
                     };
                     format!("    - {} {} {}", comp_i + 1, marker, label)
-                } else if matches!(component, crate::model::SectionComponent::Card(_)) {
+                } else if matches!(
+                    component,
+                    dd_siteforge_core::model::SectionComponent::Card(_)
+                ) {
                     let marker = if self.is_card_items_expanded(*node_idx, col_i, comp_i) {
                         "[-]"
                     } else {
                         "[+]"
                     };
                     format!("    - {} {} {}", comp_i + 1, marker, label)
-                } else if matches!(component, crate::model::SectionComponent::Filmstrip(_)) {
+                } else if matches!(
+                    component,
+                    dd_siteforge_core::model::SectionComponent::Filmstrip(_)
+                ) {
                     let marker = if self.is_filmstrip_items_expanded(*node_idx, col_i, comp_i) {
                         "[-]"
                     } else {
                         "[+]"
                     };
                     format!("    - {} {} {}", comp_i + 1, marker, label)
-                } else if matches!(component, crate::model::SectionComponent::Milestones(_)) {
+                } else if matches!(
+                    component,
+                    dd_siteforge_core::model::SectionComponent::Milestones(_)
+                ) {
                     let marker = if self.is_milestones_items_expanded(*node_idx, col_i, comp_i) {
                         "[-]"
                     } else {
                         "[+]"
                     };
                     format!("    - {} {} {}", comp_i + 1, marker, label)
-                } else if matches!(component, crate::model::SectionComponent::Slider(_)) {
+                } else if matches!(
+                    component,
+                    dd_siteforge_core::model::SectionComponent::Slider(_)
+                ) {
                     let marker = if self.is_slider_items_expanded(*node_idx, col_i, comp_i) {
                         "[-]"
                     } else {
                         "[+]"
                     };
                     format!("    - {} {} {}", comp_i + 1, marker, label)
-                } else if matches!(component, crate::model::SectionComponent::Tabs(_)) {
+                } else if matches!(
+                    component,
+                    dd_siteforge_core::model::SectionComponent::Tabs(_)
+                ) {
                     let marker = if self.is_tabs_items_expanded(*node_idx, col_i, comp_i) {
                         "[-]"
                     } else {
                         "[+]"
                     };
                     format!("    - {} {} {}", comp_i + 1, marker, label)
-                } else if matches!(component, crate::model::SectionComponent::Timeline(_)) {
+                } else if matches!(
+                    component,
+                    dd_siteforge_core::model::SectionComponent::Timeline(_)
+                ) {
                     let marker = if self.is_timeline_items_expanded(*node_idx, col_i, comp_i) {
                         "[-]"
                     } else {
                         "[+]"
                     };
                     format!("    - {} {} {}", comp_i + 1, marker, label)
-                } else if matches!(component, crate::model::SectionComponent::DataTable(_)) {
+                } else if matches!(
+                    component,
+                    dd_siteforge_core::model::SectionComponent::DataTable(_)
+                ) {
                     let marker = if self.is_data_table_rows_expanded(*node_idx, col_i, comp_i) {
                         "[-]"
                     } else {
@@ -540,7 +579,7 @@ impl App {
                 let comp_i =
                     (*component_idx).min(columns[col_i].components.len().saturating_sub(1));
                 let acc = match &columns[col_i].components[comp_i] {
-                    crate::model::SectionComponent::Accordion(a) => a,
+                    dd_siteforge_core::model::SectionComponent::Accordion(a) => a,
                     _ => return format!("      - item {}", item_idx + 1),
                 };
                 let item_i = (*item_idx).min(acc.items.len().saturating_sub(1));
@@ -566,7 +605,7 @@ impl App {
                 let comp_i =
                     (*component_idx).min(columns[col_i].components.len().saturating_sub(1));
                 let alt = match &columns[col_i].components[comp_i] {
-                    crate::model::SectionComponent::Alternating(a) => a,
+                    dd_siteforge_core::model::SectionComponent::Alternating(a) => a,
                     _ => return format!("      - item {}", item_idx + 1),
                 };
                 let item_i = (*item_idx).min(alt.items.len().saturating_sub(1));
@@ -592,7 +631,7 @@ impl App {
                 let comp_i =
                     (*component_idx).min(columns[col_i].components.len().saturating_sub(1));
                 let card = match &columns[col_i].components[comp_i] {
-                    crate::model::SectionComponent::Card(c) => c,
+                    dd_siteforge_core::model::SectionComponent::Card(c) => c,
                     _ => return format!("      - item {}", item_idx + 1),
                 };
                 let item_i = (*item_idx).min(card.items.len().saturating_sub(1));
@@ -618,7 +657,7 @@ impl App {
                 let comp_i =
                     (*component_idx).min(columns[col_i].components.len().saturating_sub(1));
                 let filmstrip = match &columns[col_i].components[comp_i] {
-                    crate::model::SectionComponent::Filmstrip(f) => f,
+                    dd_siteforge_core::model::SectionComponent::Filmstrip(f) => f,
                     _ => return format!("      - item {}", item_idx + 1),
                 };
                 let item_i = (*item_idx).min(filmstrip.items.len().saturating_sub(1));
@@ -644,7 +683,7 @@ impl App {
                 let comp_i =
                     (*component_idx).min(columns[col_i].components.len().saturating_sub(1));
                 let milestones = match &columns[col_i].components[comp_i] {
-                    crate::model::SectionComponent::Milestones(m) => m,
+                    dd_siteforge_core::model::SectionComponent::Milestones(m) => m,
                     _ => return format!("      - item {}", item_idx + 1),
                 };
                 let item_i = (*item_idx).min(milestones.items.len().saturating_sub(1));
@@ -670,7 +709,7 @@ impl App {
                 let comp_i =
                     (*component_idx).min(columns[col_i].components.len().saturating_sub(1));
                 let slider = match &columns[col_i].components[comp_i] {
-                    crate::model::SectionComponent::Slider(s) => s,
+                    dd_siteforge_core::model::SectionComponent::Slider(s) => s,
                     _ => return format!("      - item {}", item_idx + 1),
                 };
                 let item_i = (*item_idx).min(slider.items.len().saturating_sub(1));
@@ -696,7 +735,7 @@ impl App {
                 let comp_i =
                     (*component_idx).min(columns[col_i].components.len().saturating_sub(1));
                 let tabs = match &columns[col_i].components[comp_i] {
-                    crate::model::SectionComponent::Tabs(t) => t,
+                    dd_siteforge_core::model::SectionComponent::Tabs(t) => t,
                     _ => return format!("      - item {}", item_idx + 1),
                 };
                 let item_i = (*item_idx).min(tabs.items.len().saturating_sub(1));
@@ -722,7 +761,7 @@ impl App {
                 let comp_i =
                     (*component_idx).min(columns[col_i].components.len().saturating_sub(1));
                 let timeline = match &columns[col_i].components[comp_i] {
-                    crate::model::SectionComponent::Timeline(t) => t,
+                    dd_siteforge_core::model::SectionComponent::Timeline(t) => t,
                     _ => return format!("      - item {}", item_idx + 1),
                 };
                 let item_i = (*item_idx).min(timeline.items.len().saturating_sub(1));
@@ -748,7 +787,7 @@ impl App {
                 let comp_i =
                     (*component_idx).min(columns[col_i].components.len().saturating_sub(1));
                 let table = match &columns[col_i].components[comp_i] {
-                    crate::model::SectionComponent::DataTable(t) => t,
+                    dd_siteforge_core::model::SectionComponent::DataTable(t) => t,
                     _ => return format!("      - row {}", item_idx + 1),
                 };
                 if table.rows.is_empty() {

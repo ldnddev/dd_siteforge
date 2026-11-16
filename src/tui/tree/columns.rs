@@ -4,7 +4,7 @@ use super::super::*;
 impl App {
     pub(in crate::tui) fn mutate_selected_section<F>(&mut self, mutator: F, success_message: &str)
     where
-        F: FnOnce(&mut crate::model::DdSection),
+        F: FnOnce(&mut dd_siteforge_core::model::DdSection),
     {
         let prev_selected_component = self.selected_component;
         let selected = self.selected_node;
@@ -47,7 +47,7 @@ impl App {
         self.mutate_selected_section(
             |section| {
                 normalize_section_columns(section);
-                let id = crate::model::next_column_id(
+                let id = dd_siteforge_core::model::next_column_id(
                     &section.id,
                     section.columns.iter().map(|c| c.id.as_str()),
                 );
@@ -81,7 +81,7 @@ impl App {
             .min(self.site.header.sections.len().saturating_sub(1));
         let section = &mut self.site.header.sections[section_idx];
         normalize_section_columns(section);
-        let id = crate::model::next_column_id(
+        let id = dd_siteforge_core::model::next_column_id(
             &section.id,
             section.columns.iter().map(|c| c.id.as_str()),
         );

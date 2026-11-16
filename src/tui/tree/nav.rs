@@ -38,7 +38,7 @@ impl App {
 
     pub(in crate::tui) fn selected_component_owned(
         &self,
-    ) -> Option<crate::model::SectionComponent> {
+    ) -> Option<dd_siteforge_core::model::SectionComponent> {
         let page = self.current_page();
         if page.nodes.is_empty() {
             return None;

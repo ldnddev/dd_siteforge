@@ -386,7 +386,7 @@ fn collect_json_strings<T: serde::Serialize>(
 }
 
 fn collect_section_components(
-    sections: &[crate::model::DdSection],
+    sections: &[dd_siteforge_core::model::DdSection],
     ctx: &str,
     query: &str,
     target: impl Fn(usize, usize, usize) -> FindTarget,

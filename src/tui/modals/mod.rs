@@ -52,7 +52,7 @@ pub(in crate::tui) enum Modal {
     Palette { query: String, selected: usize },
     /// Per-page authoring health (SEO, alt, headings, internal links).
     PageHealth {
-        items: Vec<crate::health::HealthItem>,
+        items: Vec<dd_siteforge_core::health::HealthItem>,
         scroll_offset: usize,
     },
     /// Unified form editor: all fields of a component rendered together,

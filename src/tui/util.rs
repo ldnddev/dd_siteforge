@@ -12,13 +12,15 @@ pub(super) fn component_index(total: usize, selected_component: usize) -> Option
     }
 }
 
-pub(super) fn section_columns_ref(section: &crate::model::DdSection) -> Vec<SectionColumn> {
+pub(super) fn section_columns_ref(
+    section: &dd_siteforge_core::model::DdSection,
+) -> Vec<SectionColumn> {
     section.columns.clone()
 }
 
-pub(super) fn normalize_section_columns(section: &mut crate::model::DdSection) {
+pub(super) fn normalize_section_columns(section: &mut dd_siteforge_core::model::DdSection) {
     if section.columns.is_empty() {
-        let id = crate::model::next_column_id(&section.id, std::iter::empty::<&str>());
+        let id = dd_siteforge_core::model::next_column_id(&section.id, std::iter::empty::<&str>());
         section.columns.push(SectionColumn {
             id,
             width_class: "dd-u-1-1".to_string(),
@@ -74,7 +76,7 @@ pub(super) fn fuzzy_score(query: &str, text: &str) -> Option<i32> {
     Some(score)
 }
 
-pub(super) fn next_section_id_for_page(page: &crate::model::Page) -> String {
+pub(super) fn next_section_id_for_page(page: &dd_siteforge_core::model::Page) -> String {
     let mut used = HashSet::new();
     for node in &page.nodes {
         if let PageNode::Section(section) = node {
@@ -93,7 +95,7 @@ pub(super) fn next_section_id_for_page(page: &crate::model::Page) -> String {
     }
 }
 
-pub(super) fn ensure_page_section_ids(page: &mut crate::model::Page) {
+pub(super) fn ensure_page_section_ids(page: &mut dd_siteforge_core::model::Page) {
     let mut used = HashSet::new();
     let mut next_idx = 1usize;
     for node in &mut page.nodes {

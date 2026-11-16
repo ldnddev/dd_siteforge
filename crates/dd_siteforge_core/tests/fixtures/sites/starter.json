@@ -1,0 +1,142 @@
+{
+  "schema_version": 1,
+  "id": "site-1",
+  "name": "My Site",
+  "theme": {
+    "primary_color": "#88d9f7",
+    "secondary_color": "#ffca76",
+    "tertiary_color": "#f98971",
+    "support_color": "#46be8c"
+  },
+  "header": {
+    "id": "header",
+    "custom_css": null,
+    "cta_label": "Contact",
+    "alert": null,
+    "sections": [
+      {
+        "id": "header-section-1",
+        "section_title": null,
+        "section_class": "-full-contained",
+        "item_box_class": "l-box",
+        "sal": "no-animation",
+        "columns": [
+          {
+            "id": "header-section-1-column-1",
+            "width_class": "dd-u-18-24 dd-u-md-18-24",
+            "components": []
+          },
+          {
+            "id": "header-section-1-column-2",
+            "width_class": "dd-u-3-24 dd-u-sm-3-24 dd-u-md-3-24 dd-u-lg-4-24",
+            "components": [
+              {
+                "component_type": "header_search",
+                "sal": "fade"
+              }
+            ]
+          },
+          {
+            "id": "header-section-1-column-3",
+            "width_class": "dd-u-3-24 dd-u-sm-3-24 dd-u-md-3-24",
+            "components": [
+              {
+                "component_type": "header_menu",
+                "sal": "fade"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "footer": {
+    "id": "footer",
+    "custom_css": null,
+    "sections": [
+      {
+        "id": "footer-section-1",
+        "section_title": null,
+        "section_class": "-full-contained",
+        "item_box_class": "l-box",
+        "sal": "no-animation",
+        "columns": [
+          {
+            "id": "footer-section-1-column-1",
+            "width_class": "dd-u-1-1",
+            "components": []
+          }
+        ]
+      }
+    ]
+  },
+  "pages": [
+    {
+      "id": "page-home",
+      "slug": "index",
+      "slug_locked": false,
+      "head": {
+        "title": "Home",
+        "meta_title": null,
+        "meta_description": "Starter page",
+        "canonical_url": null,
+        "robots": "index, follow",
+        "schema_type": "WebPage",
+        "og_title": null,
+        "og_description": null,
+        "og_image": null
+      },
+      "nodes": [
+        {
+          "node_type": "hero",
+          "parent_image_url": "assets/images/hero.jpg",
+          "parent_image_alt": "Decorative hero",
+          "parent_class": "-full-full",
+          "sal": "fade",
+          "parent_custom_css": null,
+          "parent_title": "Build with dd-framework",
+          "parent_subtitle": "Framework-native static page builder",
+          "parent_copy": "Compose pages with typed component schemas.",
+          "links": [
+            {
+              "url": "#",
+              "label": "Get Started",
+              "target": "_self",
+              "style": "-primary"
+            },
+            {
+              "url": "#",
+              "label": "Learn More",
+              "target": "_self",
+              "style": "-ghost"
+            }
+          ],
+          "parent_image_mobile": null,
+          "parent_image_tablet": null,
+          "parent_image_desktop": null,
+          "parent_image_class": "-full-full",
+          "copy_position": "-left",
+          "aria_label": "Introduction"
+        },
+        {
+          "node_type": "section",
+          "id": "section-1",
+          "section_title": "Ready to publish?",
+          "section_class": "-full-contained",
+          "item_box_class": "l-box",
+          "sal": "no-animation",
+          "columns": [
+            {
+              "id": "section-1-column-1",
+              "width_class": "dd-u-1-1",
+              "components": []
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "export_dir": null,
+  "base_url": null,
+  "lang": "en"
+}

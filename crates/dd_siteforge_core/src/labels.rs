@@ -1,7 +1,7 @@
 //! Enum cycle helpers and component labels.
 
 #[allow(dead_code)]
-pub(in crate::tui) fn section_class_to_str(v: crate::model::SectionClass) -> &'static str {
+pub fn section_class_to_str(v: crate::model::SectionClass) -> &'static str {
     match v {
         crate::model::SectionClass::FullFull => "-full-full",
         crate::model::SectionClass::FullContained => "-full-contained",
@@ -17,10 +17,7 @@ pub(in crate::tui) fn section_class_to_str(v: crate::model::SectionClass) -> &'s
 }
 
 #[allow(dead_code)]
-pub(in crate::tui) fn next_alert_type(
-    current: crate::model::AlertType,
-    forward: bool,
-) -> crate::model::AlertType {
+pub fn next_alert_type(current: crate::model::AlertType, forward: bool) -> crate::model::AlertType {
     use crate::model::AlertType;
     let all = [
         AlertType::Default,
@@ -41,7 +38,7 @@ pub(in crate::tui) fn next_alert_type(
 }
 
 #[allow(dead_code)]
-pub(in crate::tui) fn next_alert_class(
+pub fn next_alert_class(
     current: crate::model::AlertClass,
     forward: bool,
 ) -> crate::model::AlertClass {
@@ -58,16 +55,11 @@ pub(in crate::tui) fn next_alert_class(
     all[next_idx]
 }
 
-pub(in crate::tui) fn input_lines_preserve(s: &str) -> Vec<String> {
+pub fn input_lines_preserve(s: &str) -> Vec<String> {
     s.split('\n').map(|line| line.to_string()).collect()
 }
 
-#[cfg(test)]
-pub(in crate::tui) fn cursor_from_row_col(
-    lines: &[String],
-    target_row: usize,
-    target_col: usize,
-) -> usize {
+pub fn cursor_from_row_col(lines: &[String], target_row: usize, target_col: usize) -> usize {
     let row = target_row.min(lines.len().saturating_sub(1));
     let mut cursor = 0usize;
     for line in lines.iter().take(row) {
@@ -77,7 +69,7 @@ pub(in crate::tui) fn cursor_from_row_col(
     cursor + target_col.min(line_len)
 }
 
-pub(in crate::tui) fn component_label(component: &crate::model::SectionComponent) -> &'static str {
+pub fn component_label(component: &crate::model::SectionComponent) -> &'static str {
     match component {
         crate::model::SectionComponent::Cta(_) => "dd-cta",
         crate::model::SectionComponent::Filmstrip(_) => "dd-filmstrip",
@@ -105,9 +97,7 @@ pub(in crate::tui) fn component_label(component: &crate::model::SectionComponent
 }
 
 #[allow(dead_code)]
-pub(in crate::tui) fn component_blueprint_label(
-    component: &crate::model::SectionComponent,
-) -> String {
+pub fn component_blueprint_label(component: &crate::model::SectionComponent) -> String {
     match component {
         crate::model::SectionComponent::Cta(v) => {
             format!("dd-cta | parent_title: {}", v.parent_title)
@@ -208,7 +198,7 @@ pub(in crate::tui) fn component_blueprint_label(
 }
 
 #[allow(dead_code)]
-pub(in crate::tui) fn hero_image_class_to_str(v: crate::model::HeroImageClass) -> &'static str {
+pub fn hero_image_class_to_str(v: crate::model::HeroImageClass) -> &'static str {
     match v {
         crate::model::HeroImageClass::Contained => "-contained",
         crate::model::HeroImageClass::ContainedMd => "-contained-md",
@@ -225,7 +215,7 @@ pub(in crate::tui) fn hero_image_class_to_str(v: crate::model::HeroImageClass) -
 }
 
 #[allow(dead_code)]
-pub(in crate::tui) fn sal_to_str(v: crate::model::SalAnimation) -> &'static str {
+pub fn sal_to_str(v: crate::model::SalAnimation) -> &'static str {
     match v {
         crate::model::SalAnimation::NoAnimation => "no-animation",
         crate::model::SalAnimation::Fade => "fade",
@@ -243,7 +233,7 @@ pub(in crate::tui) fn sal_to_str(v: crate::model::SalAnimation) -> &'static str 
 }
 
 #[allow(dead_code)]
-pub(in crate::tui) fn next_navigation_type(
+pub fn next_navigation_type(
     current: crate::model::NavigationType,
     forward: bool,
 ) -> crate::model::NavigationType {
@@ -259,7 +249,7 @@ pub(in crate::tui) fn next_navigation_type(
 }
 
 #[allow(dead_code)]
-pub(in crate::tui) fn next_navigation_class(
+pub fn next_navigation_class(
     current: crate::model::NavigationClass,
     forward: bool,
 ) -> crate::model::NavigationClass {
@@ -283,7 +273,7 @@ pub(in crate::tui) fn next_navigation_class(
 }
 
 #[allow(dead_code)]
-pub(in crate::tui) fn navigation_kind_to_str(v: crate::model::NavigationKind) -> &'static str {
+pub fn navigation_kind_to_str(v: crate::model::NavigationKind) -> &'static str {
     match v {
         crate::model::NavigationKind::Link => "link",
         crate::model::NavigationKind::Button => "button",
@@ -291,7 +281,7 @@ pub(in crate::tui) fn navigation_kind_to_str(v: crate::model::NavigationKind) ->
 }
 
 #[allow(dead_code)]
-pub(in crate::tui) fn parse_navigation_kind(raw: &str) -> Option<crate::model::NavigationKind> {
+pub fn parse_navigation_kind(raw: &str) -> Option<crate::model::NavigationKind> {
     match raw.trim().to_ascii_lowercase().as_str() {
         "link" => Some(crate::model::NavigationKind::Link),
         "button" => Some(crate::model::NavigationKind::Button),
@@ -300,7 +290,7 @@ pub(in crate::tui) fn parse_navigation_kind(raw: &str) -> Option<crate::model::N
 }
 
 #[allow(dead_code)]
-pub(in crate::tui) fn next_navigation_kind(
+pub fn next_navigation_kind(
     current: crate::model::NavigationKind,
     forward: bool,
 ) -> crate::model::NavigationKind {
@@ -312,7 +302,7 @@ pub(in crate::tui) fn next_navigation_kind(
 }
 
 #[allow(dead_code)]
-pub(in crate::tui) fn robots_directive_to_str(v: crate::model::RobotsDirective) -> &'static str {
+pub fn robots_directive_to_str(v: crate::model::RobotsDirective) -> &'static str {
     match v {
         crate::model::RobotsDirective::IndexFollow => "index, follow",
         crate::model::RobotsDirective::NoindexFollow => "noindex, follow",
@@ -322,7 +312,7 @@ pub(in crate::tui) fn robots_directive_to_str(v: crate::model::RobotsDirective) 
 }
 
 #[allow(dead_code)]
-pub(in crate::tui) fn next_robots_directive(
+pub fn next_robots_directive(
     current: crate::model::RobotsDirective,
     forward: bool,
 ) -> crate::model::RobotsDirective {
@@ -343,7 +333,7 @@ pub(in crate::tui) fn next_robots_directive(
 }
 
 #[allow(dead_code)]
-pub(in crate::tui) fn schema_type_to_str(v: crate::model::SchemaType) -> &'static str {
+pub fn schema_type_to_str(v: crate::model::SchemaType) -> &'static str {
     match v {
         crate::model::SchemaType::WebPage => "WebPage",
         crate::model::SchemaType::Article => "Article",
@@ -358,7 +348,7 @@ pub(in crate::tui) fn schema_type_to_str(v: crate::model::SchemaType) -> &'stati
 }
 
 #[allow(dead_code)]
-pub(in crate::tui) fn next_schema_type(
+pub fn next_schema_type(
     current: crate::model::SchemaType,
     forward: bool,
 ) -> crate::model::SchemaType {

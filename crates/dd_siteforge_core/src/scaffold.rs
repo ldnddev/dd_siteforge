@@ -13,14 +13,14 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, anyhow};
 use rust_embed::RustEmbed;
 
-const GRUNTFILE: &str = include_str!("../Gruntfile.js");
-const PACKAGE_JSON: &str = include_str!("../package.json");
-const LANDO_YML: &str = include_str!("../.lando.yml");
-const DDEV_CONFIG: &str = include_str!("../.ddev/config.yaml");
-const IMAGES_GITKEEP: &[u8] = include_bytes!("../source/images/.gitkeep");
+const GRUNTFILE: &str = include_str!("../../../Gruntfile.js");
+const PACKAGE_JSON: &str = include_str!("../../../package.json");
+const LANDO_YML: &str = include_str!("../../../.lando.yml");
+const DDEV_CONFIG: &str = include_str!("../../../.ddev/config.yaml");
+const IMAGES_GITKEEP: &[u8] = include_bytes!("../../../source/images/.gitkeep");
 
 #[derive(RustEmbed)]
-#[folder = "source/"]
+#[folder = "../../source/"]
 #[exclude = "images/*"]
 #[exclude = "images/**"]
 #[exclude = "templates/*"]

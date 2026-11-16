@@ -98,7 +98,7 @@ impl App {
     pub(in crate::tui) fn commit_preview_to(&mut self, rel: String) -> bool {
         let normalized = normalize_relative_path(&rel);
         let base = self.site_root();
-        let Some(out) = crate::export::join_inside(&base, &rel) else {
+        let Some(out) = dd_siteforge_core::export::join_inside(&base, &rel) else {
             self.push_toast(
                 ToastLevel::Warning,
                 "Export path must stay inside the site directory.",
@@ -106,7 +106,7 @@ impl App {
             return false;
         };
 
-        if let Err(e) = crate::export::export_site(&self.site, &out, Some(&base)) {
+        if let Err(e) = dd_siteforge_core::export::export_site(&self.site, &out, Some(&base)) {
             let msg = format!("Preview failed: {}", e);
             self.push_toast(ToastLevel::Error, msg);
             return true;
@@ -160,14 +160,14 @@ impl App {
             return;
         }
         let base = self.site_root();
-        let Some(out) = crate::export::join_inside(&base, &rel) else {
+        let Some(out) = dd_siteforge_core::export::join_inside(&base, &rel) else {
             self.push_toast(
                 ToastLevel::Warning,
                 "Export path must stay inside the site directory.",
             );
             return;
         };
-        if let Err(e) = crate::export::export_site(&self.site, &out, Some(&base)) {
+        if let Err(e) = dd_siteforge_core::export::export_site(&self.site, &out, Some(&base)) {
             self.push_toast(ToastLevel::Error, format!("Preview refresh failed: {}", e));
             return;
         }
@@ -184,7 +184,7 @@ impl App {
             server.set_root(out);
             return Ok(server.url_for(&slug, self.site.pretty_urls));
         }
-        let server = crate::serve::StaticServer::start(out)?;
+        let server = dd_siteforge_core::serve::StaticServer::start(out)?;
         let url = server.url_for(&slug, self.site.pretty_urls);
         self.preview_server = Some(server);
         Ok(url)
@@ -203,7 +203,8 @@ impl App {
 
     pub(in crate::tui) fn begin_preview_flow(&mut self) {
         let root = self.path.as_ref().map(|_| self.site_root());
-        let errors = crate::validate::validate_site_with_root(&self.site, root.as_deref());
+        let errors =
+            dd_siteforge_core::validate::validate_site_with_root(&self.site, root.as_deref());
         if !errors.is_empty() {
             self.modal = Some(Modal::ValidationErrors {
                 errors,
@@ -225,7 +226,8 @@ impl App {
 
     pub(in crate::tui) fn begin_export_flow(&mut self) {
         let root = self.path.as_ref().map(|_| self.site_root());
-        let errors = crate::validate::validate_site_with_root(&self.site, root.as_deref());
+        let errors =
+            dd_siteforge_core::validate::validate_site_with_root(&self.site, root.as_deref());
         if !errors.is_empty() {
             self.modal = Some(Modal::ValidationErrors {
                 errors,
@@ -265,7 +267,7 @@ impl App {
     pub(in crate::tui) fn commit_export_to(&mut self, rel: String) -> bool {
         let normalized = normalize_relative_path(&rel);
         let base = self.site_root();
-        let Some(out) = crate::export::join_inside(&base, &rel) else {
+        let Some(out) = dd_siteforge_core::export::join_inside(&base, &rel) else {
             self.push_toast(
                 ToastLevel::Warning,
                 "Export path must stay inside the site directory.",
@@ -273,7 +275,7 @@ impl App {
             return false;
         };
 
-        match crate::export::export_site(&self.site, &out, Some(&base)) {
+        match dd_siteforge_core::export::export_site(&self.site, &out, Some(&base)) {
             Ok(report) => {
                 self.site.export_dir = Some(normalized.clone());
                 let display = display_relative_path(&base, &out, &normalized);

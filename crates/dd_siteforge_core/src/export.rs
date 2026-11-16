@@ -484,7 +484,7 @@ mod tests {
     }
 
     fn crate_source() -> std::path::PathBuf {
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("source")
+        crate::paths::workspace_dir().join("source")
     }
 
     #[test]

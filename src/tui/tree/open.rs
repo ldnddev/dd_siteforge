@@ -563,14 +563,17 @@ impl App {
         }
     }
 
-    fn default_alert() -> crate::model::DdAlert {
+    fn default_alert() -> dd_siteforge_core::model::DdAlert {
         match ComponentKind::Alert.default_component() {
-            crate::model::SectionComponent::Alert(a) => a,
+            dd_siteforge_core::model::SectionComponent::Alert(a) => a,
             _ => unreachable!("Alert default_component is always DdAlert"),
         }
     }
 
-    pub(in crate::tui) fn place_header_alert(&mut self, alert: crate::model::DdAlert) -> bool {
+    pub(in crate::tui) fn place_header_alert(
+        &mut self,
+        alert: dd_siteforge_core::model::DdAlert,
+    ) -> bool {
         if self.site.header.alert.is_some() {
             self.push_toast(
                 ToastLevel::Warning,
@@ -586,17 +589,18 @@ impl App {
 
     pub(in crate::tui) fn add_header_section(&mut self) {
         let section_id = format!("header-section-{}", self.site.header.sections.len() + 1);
-        let column_id = crate::model::next_column_id(&section_id, std::iter::empty::<&str>());
-        let section = crate::model::DdSection {
+        let column_id =
+            dd_siteforge_core::model::next_column_id(&section_id, std::iter::empty::<&str>());
+        let section = dd_siteforge_core::model::DdSection {
             id: section_id,
             section_title: None,
-            section_class: Some(crate::model::SectionClass::FullContained),
-            item_box_class: Some(crate::model::SectionItemBoxClass::LBox),
+            section_class: Some(dd_siteforge_core::model::SectionClass::FullContained),
+            item_box_class: Some(dd_siteforge_core::model::SectionItemBoxClass::LBox),
             bg: None,
             padding: None,
             custom_css: None,
             aria_label: None,
-            sal: crate::model::SalAnimation::NoAnimation,
+            sal: dd_siteforge_core::model::SalAnimation::NoAnimation,
             sal_duration: None,
             sal_delay: None,
             columns: vec![SectionColumn {
@@ -621,17 +625,18 @@ impl App {
 
     pub(in crate::tui) fn add_footer_section(&mut self) {
         let section_id = format!("footer-section-{}", self.site.footer.sections.len() + 1);
-        let column_id = crate::model::next_column_id(&section_id, std::iter::empty::<&str>());
-        let section = crate::model::DdSection {
+        let column_id =
+            dd_siteforge_core::model::next_column_id(&section_id, std::iter::empty::<&str>());
+        let section = dd_siteforge_core::model::DdSection {
             id: section_id,
             section_title: None,
-            section_class: Some(crate::model::SectionClass::FullContained),
-            item_box_class: Some(crate::model::SectionItemBoxClass::LBox),
+            section_class: Some(dd_siteforge_core::model::SectionClass::FullContained),
+            item_box_class: Some(dd_siteforge_core::model::SectionItemBoxClass::LBox),
             bg: None,
             padding: None,
             custom_css: None,
             aria_label: None,
-            sal: crate::model::SalAnimation::NoAnimation,
+            sal: dd_siteforge_core::model::SalAnimation::NoAnimation,
             sal_duration: None,
             sal_delay: None,
             columns: vec![SectionColumn {
@@ -750,23 +755,17 @@ impl App {
     }
 
     pub(in crate::tui) fn filtered_component_kinds(&self, query: &str) -> Vec<ComponentKind> {
-        if self.selected_region == SelectedRegion::Site {
-            return Vec::new();
-        }
-        let all = ComponentKind::all();
-        // Hero is a page node. Header search and menu stay off page sections.
-        // Header and footer sections accept every other component.
-        let allowed: Vec<ComponentKind> = all
+        use dd_siteforge_core::component_kind::InsertRegion;
+        let region = match self.selected_region {
+            SelectedRegion::Page => InsertRegion::Page,
+            SelectedRegion::Site => InsertRegion::Site,
+            SelectedRegion::Header => InsertRegion::Header,
+            SelectedRegion::Footer => InsertRegion::Footer,
+        };
+        let allowed: Vec<ComponentKind> = ComponentKind::all()
             .iter()
             .copied()
-            .filter(|k| match k {
-                ComponentKind::Hero => self.selected_region == SelectedRegion::Page,
-                ComponentKind::HeaderSearch | ComponentKind::HeaderMenu => matches!(
-                    self.selected_region,
-                    SelectedRegion::Header | SelectedRegion::Footer
-                ),
-                _ => true,
-            })
+            .filter(|kind| kind.allowed_in(region))
             .collect();
         let q = query.trim().to_ascii_lowercase();
         if q.is_empty() {
@@ -788,10 +787,10 @@ impl App {
         let Some(page) = self.current_page_mut() else {
             return;
         };
-        let hero = crate::model::DdHero {
+        let hero = dd_siteforge_core::model::DdHero {
             parent_image_url: "/assets/images/hero-new.jpg".to_string(),
-            parent_class: Some(crate::model::HeroImageClass::FullFull),
-            sal: Some(crate::model::SalAnimation::NoAnimation),
+            parent_class: Some(dd_siteforge_core::model::HeroImageClass::FullFull),
+            sal: Some(dd_siteforge_core::model::SalAnimation::NoAnimation),
             sal_duration: None,
             sal_delay: None,
             parent_custom_css: None,
@@ -801,18 +800,18 @@ impl App {
             links: Vec::new(),
             link_1_label: None,
             link_1_url: None,
-            link_1_target: Some(crate::model::CtaTarget::SelfTarget),
+            link_1_target: Some(dd_siteforge_core::model::CtaTarget::SelfTarget),
             link_2_label: None,
             link_2_url: None,
-            link_2_target: Some(crate::model::CtaTarget::SelfTarget),
+            link_2_target: Some(dd_siteforge_core::model::CtaTarget::SelfTarget),
             parent_image_alt: Some("Hero image".to_string()),
             parent_image_mobile: None,
             parent_image_tablet: None,
             parent_image_desktop: None,
-            parent_image_class: Some(crate::model::HeroImageClass::FullFull),
-            media: crate::model::Media::None,
+            parent_image_class: Some(dd_siteforge_core::model::HeroImageClass::FullFull),
+            media: dd_siteforge_core::model::Media::None,
             overlay: None,
-            copy_position: Some(crate::model::HeroCopyPosition::Left),
+            copy_position: Some(dd_siteforge_core::model::HeroCopyPosition::Left),
             id: None,
             aria_label: Some("Introduction".to_string()),
         };
@@ -836,17 +835,18 @@ impl App {
             return;
         };
         let next_id = next_section_id_for_page(page);
-        let column_id = crate::model::next_column_id(&next_id, std::iter::empty::<&str>());
-        let section = crate::model::DdSection {
+        let column_id =
+            dd_siteforge_core::model::next_column_id(&next_id, std::iter::empty::<&str>());
+        let section = dd_siteforge_core::model::DdSection {
             id: next_id,
             section_title: None,
-            section_class: Some(crate::model::SectionClass::FullContained),
-            item_box_class: Some(crate::model::SectionItemBoxClass::LBox),
+            section_class: Some(dd_siteforge_core::model::SectionClass::FullContained),
+            item_box_class: Some(dd_siteforge_core::model::SectionItemBoxClass::LBox),
             bg: None,
             padding: None,
             custom_css: None,
             aria_label: None,
-            sal: crate::model::SalAnimation::NoAnimation,
+            sal: dd_siteforge_core::model::SalAnimation::NoAnimation,
             sal_duration: None,
             sal_delay: None,
             columns: vec![SectionColumn {

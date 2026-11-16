@@ -16,9 +16,9 @@ impl App {
             return;
         }
         let root = self.site_root();
-        let cmd = crate::asset_build::asset_build_command(&root);
+        let cmd = dd_siteforge_core::asset_build::asset_build_command(&root);
         self.push_toast(ToastLevel::Info, format!("Running `{}`…", cmd.display()));
-        self.build_rx = Some(crate::asset_build::spawn_asset_build(root));
+        self.build_rx = Some(dd_siteforge_core::asset_build::spawn_asset_build(root));
     }
 
     pub(in crate::tui) fn poll_asset_build(&mut self) -> bool {
@@ -49,7 +49,7 @@ impl App {
     }
 
     pub(in crate::tui) fn open_page_health(&mut self) {
-        let items = crate::health::page_health(&self.site, self.selected_page);
+        let items = dd_siteforge_core::health::page_health(&self.site, self.selected_page);
         self.modal = Some(Modal::PageHealth {
             items,
             scroll_offset: 0,

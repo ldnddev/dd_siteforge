@@ -233,10 +233,10 @@ pub(in crate::tui) fn brand_from_hex(hex: &str) -> Option<BlueprintStyle> {
 }
 
 pub(in crate::tui) fn component_token_style(
-    component: &crate::model::SectionComponent,
-    theme: &crate::model::ThemeSettings,
+    component: &dd_siteforge_core::model::SectionComponent,
+    theme: &dd_siteforge_core::model::ThemeSettings,
 ) -> Option<BlueprintStyle> {
-    use crate::model::{AccordionClass, AlertType, SectionComponent};
+    use dd_siteforge_core::model::{AccordionClass, AlertType, SectionComponent};
     match component {
         SectionComponent::Accordion(v) => match v.parent_class {
             AccordionClass::Primary => brand_from_hex(&theme.primary_color),

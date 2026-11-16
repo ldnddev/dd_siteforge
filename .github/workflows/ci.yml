@@ -1,0 +1,44 @@
+# Test the workspace on every pull request and on master.
+# The release and pages workflows are unchanged. The musl TUI archive
+# is still built only by release.yml.
+
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: fmt
+        run: cargo fmt --all -- --check
+      # The tree already fails `cargo clippy -- -D warnings`. This step
+      # fails on clippy errors and stays green for those existing lints.
+      - name: clippy
+        run: cargo clippy --workspace --all-targets --locked
+      - name: test
+        # --no-fail-fast so a core or theme failure is still reported when the
+        # known Omarchy theme test fails on a runner that has no Omarchy install.
+        run: cargo test --workspace --locked --no-fail-fast
+      - name: cargo deny
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check
+          manifest-path: Cargo.toml

@@ -1,0 +1,400 @@
+{
+  "schema_version": 1,
+  "id": "site-1",
+  "name": "My Site",
+  "theme": {
+    "primary_color": "#88d9f7",
+    "secondary_color": "#ffca76",
+    "tertiary_color": "#f98971",
+    "support_color": "#46be8c"
+  },
+  "header": {
+    "id": "header",
+    "custom_css": null,
+    "cta_label": "Contact",
+    "alert": null,
+    "sections": [
+      {
+        "id": "header-section-1",
+        "section_title": null,
+        "section_class": "-full-contained",
+        "item_box_class": "l-box",
+        "sal": "no-animation",
+        "columns": [
+          {
+            "id": "header-section-1-column-1",
+            "width_class": "dd-u-18-24 dd-u-md-18-24",
+            "components": []
+          },
+          {
+            "id": "header-section-1-column-2",
+            "width_class": "dd-u-3-24 dd-u-sm-3-24 dd-u-md-3-24 dd-u-lg-4-24",
+            "components": [
+              {
+                "component_type": "header_search",
+                "sal": "fade"
+              }
+            ]
+          },
+          {
+            "id": "header-section-1-column-3",
+            "width_class": "dd-u-3-24 dd-u-sm-3-24 dd-u-md-3-24",
+            "components": [
+              {
+                "component_type": "header_menu",
+                "sal": "fade"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "footer": {
+    "id": "footer",
+    "custom_css": null,
+    "sections": [
+      {
+        "id": "footer-section-1",
+        "section_title": null,
+        "section_class": "-full-contained",
+        "item_box_class": "l-box",
+        "sal": "no-animation",
+        "columns": [
+          {
+            "id": "footer-section-1-column-1",
+            "width_class": "dd-u-1-1",
+            "components": []
+          }
+        ]
+      }
+    ]
+  },
+  "pages": [
+    {
+      "id": "page-home",
+      "slug": "index",
+      "slug_locked": false,
+      "head": {
+        "title": "Home",
+        "meta_title": null,
+        "meta_description": "Starter page",
+        "canonical_url": null,
+        "robots": "index, follow",
+        "schema_type": "WebPage",
+        "og_title": null,
+        "og_description": null,
+        "og_image": null
+      },
+      "nodes": [
+        {
+          "node_type": "hero",
+          "parent_image_url": "assets/images/hero.jpg",
+          "parent_image_alt": "Decorative hero",
+          "parent_class": "-full-full",
+          "sal": "fade",
+          "parent_custom_css": null,
+          "parent_title": "Build with dd-framework",
+          "parent_subtitle": "Framework-native static page builder",
+          "parent_copy": "Compose pages with typed component schemas.",
+          "links": [
+            {
+              "url": "#",
+              "label": "Get Started",
+              "target": "_self",
+              "style": "-primary"
+            },
+            {
+              "url": "#",
+              "label": "Learn More",
+              "target": "_self",
+              "style": "-ghost"
+            }
+          ],
+          "parent_image_mobile": null,
+          "parent_image_tablet": null,
+          "parent_image_desktop": null,
+          "parent_image_class": "-full-full",
+          "copy_position": "-left",
+          "aria_label": "Introduction"
+        },
+        {
+          "node_type": "section",
+          "id": "section-1",
+          "section_title": "Ready to publish?",
+          "section_class": "-full-contained",
+          "item_box_class": "l-box",
+          "sal": "no-animation",
+          "columns": [
+            {
+              "id": "section-1-column-1",
+              "width_class": "dd-u-1-1",
+              "components": [
+                {
+                  "component_type": "cta",
+                  "parent_class": "-top-left",
+                  "parent_image_url": "https://dummyimage.com/1920x1080/000000/fff",
+                  "parent_image_alt": "Image alt",
+                  "sal": "no-animation",
+                  "parent_title": "Title",
+                  "parent_subtitle": "Subtitle",
+                  "parent_copy": "Copy",
+                  "links": [
+                    {
+                      "url": "/path",
+                      "label": "Learn More",
+                      "target": "_self",
+                      "style": "-primary"
+                    }
+                  ]
+                },
+                {
+                  "component_type": "banner",
+                  "parent_class": "-bg-center-center",
+                  "sal": "no-animation",
+                  "parent_image_url": "https://dummyimage.com/1920x1080/000/fff",
+                  "parent_image_alt": "Banner alt text"
+                },
+                {
+                  "component_type": "blockquote",
+                  "sal": "no-animation",
+                  "parent_image_url": "https://dummyimage.com/512x512/000/fff",
+                  "parent_image_alt": "blockquote Persons Name",
+                  "parent_name": "blockquote Persons Name",
+                  "parent_role": "blockquote Persons Title",
+                  "parent_copy": "blockquote content"
+                },
+                {
+                  "component_type": "accordion",
+                  "parent_type": "-default",
+                  "parent_class": "-primary",
+                  "sal": "no-animation",
+                  "parent_group_name": "group1",
+                  "items": [
+                    {
+                      "child_title": "Accordion Item",
+                      "child_copy": "Accordion content"
+                    }
+                  ],
+                  "multiple": false
+                },
+                {
+                  "component_type": "alternating",
+                  "parent_type": "-default",
+                  "parent_class": "-default",
+                  "sal": "no-animation",
+                  "items": [
+                    {
+                      "child_image_url": "https://dummyimage.com/600x400/000/fff",
+                      "child_image_alt": "Alternating image",
+                      "child_title": "Alternating Item",
+                      "child_subtitle": "Subtitle",
+                      "child_copy": "Alternating content"
+                    }
+                  ]
+                },
+                {
+                  "component_type": "card",
+                  "parent_type": "-default",
+                  "sal": "no-animation",
+                  "parent_width": "dd-u-1-1 dd-u-md-12-24 dd-u-lg-8-24",
+                  "items": [
+                    {
+                      "child_image_url": "https://dummyimage.com/720x720/000/fff",
+                      "child_image_alt": "Image alt text",
+                      "child_title": "Title",
+                      "child_subtitle": "Subtitle",
+                      "child_copy": "Copy",
+                      "child_link_url": "/front",
+                      "child_link_target": "_self",
+                      "child_link_label": "Learn More",
+                      "child_link_style": "-primary"
+                    }
+                  ]
+                },
+                {
+                  "component_type": "filmstrip",
+                  "parent_type": "-default",
+                  "sal": "no-animation",
+                  "items": [
+                    {
+                      "child_image_url": "https://dummyimage.com/256x256/000/fff",
+                      "child_image_alt": "Image alt text",
+                      "child_title": "Title"
+                    }
+                  ]
+                },
+                {
+                  "component_type": "milestones",
+                  "sal": "no-animation",
+                  "parent_width": "dd-u-1-1 dd-u-md-12-24",
+                  "items": [
+                    {
+                      "child_percentage": "70",
+                      "child_title": "Title",
+                      "child_subtitle": "Subtitle",
+                      "child_copy": "Copy",
+                      "child_link_url": null,
+                      "child_link_target": "_self",
+                      "child_link_label": null,
+                      "child_link_style": "-primary"
+                    }
+                  ]
+                },
+                {
+                  "component_type": "modal",
+                  "parent_title": "Title",
+                  "parent_copy": "Copy"
+                },
+                {
+                  "component_type": "slider",
+                  "parent_title": "",
+                  "items": [
+                    {
+                      "child_title": "Title",
+                      "child_copy": "Copy",
+                      "links": [
+                        {
+                          "url": "/path",
+                          "label": "Learn More",
+                          "target": "_self",
+                          "style": "-primary"
+                        }
+                      ],
+                      "child_image_url": "https://dummyimage.com/720x720/000/fff",
+                      "child_image_alt": "Image alt text"
+                    }
+                  ]
+                },
+                {
+                  "component_type": "alert",
+                  "parent_type": "-default",
+                  "parent_class": "-default",
+                  "sal": "no-animation",
+                  "parent_title": "Alert Title",
+                  "parent_copy": "Alert content"
+                },
+                {
+                  "component_type": "image",
+                  "sal": "no-animation",
+                  "parent_image_url": "https://dummyimage.com/1200x600/000/fff",
+                  "parent_image_url_dark": null,
+                  "parent_image_alt": "Image alt text",
+                  "parent_link_url": null,
+                  "parent_link_target": null
+                },
+                {
+                  "component_type": "rich_text",
+                  "parent_class": null,
+                  "sal": "no-animation",
+                  "parent_copy": "Copy"
+                },
+                {
+                  "component_type": "navigation",
+                  "parent_type": "dd-header__navigation",
+                  "parent_class": "-main-menu",
+                  "sal": "no-animation",
+                  "items": [
+                    {
+                      "child_kind": "link",
+                      "child_link_label": "Home",
+                      "child_link_url": "/",
+                      "child_link_target": "_self",
+                      "child_link_css": null,
+                      "items": []
+                    }
+                  ]
+                },
+                {
+                  "component_type": "header_search",
+                  "sal": "no-animation"
+                },
+                {
+                  "component_type": "header_menu",
+                  "sal": "no-animation"
+                },
+                {
+                  "component_type": "spacer",
+                  "size": "-md",
+                  "divider": false
+                },
+                {
+                  "component_type": "tabs",
+                  "parent_id": "tabs",
+                  "parent_class": "-horizontal",
+                  "aria_label": "Content tabs",
+                  "sal": "no-animation",
+                  "items": [
+                    {
+                      "child_title": "Tab 1",
+                      "child_copy": "Panel copy"
+                    }
+                  ]
+                },
+                {
+                  "component_type": "timeline",
+                  "aria_label": "Timeline",
+                  "sal": "no-animation",
+                  "items": [
+                    {
+                      "child_year": "2024",
+                      "child_title": "Title",
+                      "heading_level": 3,
+                      "child_copy": "Copy"
+                    }
+                  ]
+                },
+                {
+                  "component_type": "data_table",
+                  "caption": "Data table",
+                  "dense": false,
+                  "columns": [
+                    {
+                      "label": "ID",
+                      "align": "start",
+                      "sortable": false
+                    },
+                    {
+                      "label": "Status",
+                      "align": "start",
+                      "sortable": false
+                    }
+                  ],
+                  "rows": [
+                    {
+                      "cells": [
+                        {
+                          "type": "text",
+                          "text": "ROW-001",
+                          "badge": "-info"
+                        },
+                        {
+                          "type": "badge",
+                          "text": "Info",
+                          "badge": "-info"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "component_type": "search_results",
+                  "sal": "no-animation"
+                },
+                {
+                  "component_type": "headline",
+                  "text": "Headline",
+                  "heading_level": "h2",
+                  "sal": "no-animation"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "export_dir": null,
+  "base_url": null,
+  "lang": "en"
+}

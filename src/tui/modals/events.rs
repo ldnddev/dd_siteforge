@@ -471,20 +471,24 @@ impl App {
             KeyCode::Enter => {
                 let picked = *selected;
                 let mut new_page = match picked {
-                    1 => {
-                        crate::model::Page::from_template("", crate::model::PageTemplate::HeroOnly)
-                    }
-                    2 => crate::model::Page::from_template(
+                    1 => dd_siteforge_core::model::Page::from_template(
                         "",
-                        crate::model::PageTemplate::HeroPlusSection,
+                        dd_siteforge_core::model::PageTemplate::HeroOnly,
+                    ),
+                    2 => dd_siteforge_core::model::Page::from_template(
+                        "",
+                        dd_siteforge_core::model::PageTemplate::HeroPlusSection,
                     ),
                     3 if !self.site.pages.is_empty() => {
                         let src_idx = self
                             .selected_page
                             .min(self.site.pages.len().saturating_sub(1));
-                        crate::model::Page::duplicate_from(&self.site.pages[src_idx])
+                        dd_siteforge_core::model::Page::duplicate_from(&self.site.pages[src_idx])
                     }
-                    _ => crate::model::Page::from_template("", crate::model::PageTemplate::Blank),
+                    _ => dd_siteforge_core::model::Page::from_template(
+                        "",
+                        dd_siteforge_core::model::PageTemplate::Blank,
+                    ),
                 };
                 Self::dedup_page_id_slug(&self.site.pages, None, &mut new_page);
                 self.site.pages.push(new_page);
@@ -531,9 +535,9 @@ impl App {
     }
 
     fn dedup_page_id_slug(
-        pages: &[crate::model::Page],
+        pages: &[dd_siteforge_core::model::Page],
         skip_idx: Option<usize>,
-        page: &mut crate::model::Page,
+        page: &mut dd_siteforge_core::model::Page,
     ) {
         let taken = |id: &str| {
             pages
@@ -640,7 +644,7 @@ impl App {
         if let Some(page) = self.site.pages.get_mut(page_idx) {
             page.head.title = trimmed.to_string();
             if !page.slug_locked {
-                page.slug = crate::model::slug_from_title(trimmed);
+                page.slug = dd_siteforge_core::model::slug_from_title(trimmed);
             }
             let msg = format!("Renamed page: {}", page.head.title);
             self.push_toast(ToastLevel::Success, msg);
@@ -703,7 +707,8 @@ impl App {
     /// if any errors; otherwise set a green status and leave no modal open.
     pub(in crate::tui) fn open_validation_modal(&mut self) {
         let root = self.path.as_ref().map(|_| self.site_root());
-        let errors = crate::validate::validate_site_with_root(&self.site, root.as_deref());
+        let errors =
+            dd_siteforge_core::validate::validate_site_with_root(&self.site, root.as_deref());
         if errors.is_empty() {
             self.push_toast(ToastLevel::Success, "No validation errors.");
         } else {
