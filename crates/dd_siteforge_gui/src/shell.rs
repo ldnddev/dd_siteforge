@@ -531,6 +531,9 @@ impl Shell {
             lines.push("Rename page. Edit and press Enter.".to_string());
             lines.push(title.clone());
         }
+        // DESIGN-GAP: no board draws the shrink choice. Image well copy states
+        // show copying and missing-file only. These two actions are the
+        // closest drawn button copy.
         if let Some(offer) = &self.shrink {
             lines.push(format!(
                 "This image is {} px on the long edge.",
