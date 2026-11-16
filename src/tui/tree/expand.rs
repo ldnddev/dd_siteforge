@@ -372,7 +372,7 @@ impl App {
             let comp_i = component_idx.min(columns[col_i].components.len().saturating_sub(1));
             if matches!(
                 columns[col_i].components.get(comp_i),
-                Some(crate::model::SectionComponent::Accordion(_))
+                Some(dd_siteforge_core::model::SectionComponent::Accordion(_))
             ) {
                 let expanded = self.is_accordion_items_expanded(node_idx, col_i, comp_i);
                 self.set_accordion_items_expanded(node_idx, col_i, comp_i, !expanded);
@@ -391,7 +391,7 @@ impl App {
             }
             if matches!(
                 columns[col_i].components.get(comp_i),
-                Some(crate::model::SectionComponent::Alternating(_))
+                Some(dd_siteforge_core::model::SectionComponent::Alternating(_))
             ) {
                 let expanded = self.is_alternating_items_expanded(node_idx, col_i, comp_i);
                 self.set_alternating_items_expanded(node_idx, col_i, comp_i, !expanded);
@@ -410,7 +410,7 @@ impl App {
             }
             if matches!(
                 columns[col_i].components.get(comp_i),
-                Some(crate::model::SectionComponent::Card(_))
+                Some(dd_siteforge_core::model::SectionComponent::Card(_))
             ) {
                 let expanded = self.is_card_items_expanded(node_idx, col_i, comp_i);
                 self.set_card_items_expanded(node_idx, col_i, comp_i, !expanded);
@@ -429,7 +429,7 @@ impl App {
             }
             if matches!(
                 columns[col_i].components.get(comp_i),
-                Some(crate::model::SectionComponent::Filmstrip(_))
+                Some(dd_siteforge_core::model::SectionComponent::Filmstrip(_))
             ) {
                 let expanded = self.is_filmstrip_items_expanded(node_idx, col_i, comp_i);
                 self.set_filmstrip_items_expanded(node_idx, col_i, comp_i, !expanded);
@@ -448,7 +448,7 @@ impl App {
             }
             if matches!(
                 columns[col_i].components.get(comp_i),
-                Some(crate::model::SectionComponent::Milestones(_))
+                Some(dd_siteforge_core::model::SectionComponent::Milestones(_))
             ) {
                 let expanded = self.is_milestones_items_expanded(node_idx, col_i, comp_i);
                 self.set_milestones_items_expanded(node_idx, col_i, comp_i, !expanded);
@@ -467,7 +467,7 @@ impl App {
             }
             if matches!(
                 columns[col_i].components.get(comp_i),
-                Some(crate::model::SectionComponent::Slider(_))
+                Some(dd_siteforge_core::model::SectionComponent::Slider(_))
             ) {
                 let expanded = self.is_slider_items_expanded(node_idx, col_i, comp_i);
                 self.set_slider_items_expanded(node_idx, col_i, comp_i, !expanded);
@@ -486,7 +486,7 @@ impl App {
             }
             if matches!(
                 columns[col_i].components.get(comp_i),
-                Some(crate::model::SectionComponent::Tabs(_))
+                Some(dd_siteforge_core::model::SectionComponent::Tabs(_))
             ) {
                 let expanded = self.is_tabs_items_expanded(node_idx, col_i, comp_i);
                 self.set_tabs_items_expanded(node_idx, col_i, comp_i, !expanded);
@@ -505,7 +505,7 @@ impl App {
             }
             if matches!(
                 columns[col_i].components.get(comp_i),
-                Some(crate::model::SectionComponent::Timeline(_))
+                Some(dd_siteforge_core::model::SectionComponent::Timeline(_))
             ) {
                 let expanded = self.is_timeline_items_expanded(node_idx, col_i, comp_i);
                 self.set_timeline_items_expanded(node_idx, col_i, comp_i, !expanded);
@@ -524,7 +524,7 @@ impl App {
             }
             if matches!(
                 columns[col_i].components.get(comp_i),
-                Some(crate::model::SectionComponent::DataTable(_))
+                Some(dd_siteforge_core::model::SectionComponent::DataTable(_))
             ) {
                 let expanded = self.is_data_table_rows_expanded(node_idx, col_i, comp_i);
                 self.set_data_table_rows_expanded(node_idx, col_i, comp_i, !expanded);

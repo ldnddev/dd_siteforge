@@ -60,23 +60,23 @@ impl App {
         let Some(path) = &self.path else {
             return;
         };
-        let mut session = crate::session::load();
+        let mut session = dd_siteforge_core::session::load();
         session.record(
             path,
             self.selected_page,
             self.selected_tree_row,
             region_name(self.selected_region),
         );
-        let _ = crate::session::save(&session);
+        let _ = dd_siteforge_core::session::save(&session);
     }
 
     pub(in crate::tui) fn load_site_into_app(&mut self, path: PathBuf) -> Result<(), String> {
-        let site = crate::storage::load_site(&path).map_err(|e| e.to_string())?;
+        let site = dd_siteforge_core::storage::load_site(&path).map_err(|e| e.to_string())?;
         self.replace_site(path, site);
         Ok(())
     }
 
-    fn replace_site(&mut self, path: PathBuf, mut site: crate::model::Site) {
+    fn replace_site(&mut self, path: PathBuf, mut site: dd_siteforge_core::model::Site) {
         for page in &mut site.pages {
             ensure_page_section_ids(page);
         }
@@ -92,7 +92,7 @@ impl App {
         self.modal = None;
         self.preview_server = None;
         self.deleted_pages.clear();
-        let session = crate::session::load();
+        let session = dd_siteforge_core::session::load();
         let (page, tree_row, region) = session.selection_for(&path);
         self.restore_selection(page, tree_row, region_from_name(&region));
         let mut session = session;
@@ -102,7 +102,7 @@ impl App {
             self.selected_tree_row,
             region_name(self.selected_region),
         );
-        let _ = crate::session::save(&session);
+        let _ = dd_siteforge_core::session::save(&session);
         self.push_toast(ToastLevel::Success, format!("Opened {}", path.display()));
     }
 
@@ -112,24 +112,26 @@ impl App {
                 std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
             }
         }
-        let site = crate::model::Site::starter();
-        crate::storage::save_site(&path, &site).map_err(|e| e.to_string())?;
+        let site = dd_siteforge_core::model::Site::starter();
+        dd_siteforge_core::storage::save_site(&path, &site).map_err(|e| e.to_string())?;
         let root = path
             .parent()
             .filter(|p| !p.as_os_str().is_empty())
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from("."));
-        let slug = crate::scaffold::slugify_project_name(&crate::scaffold::dir_hint(&root));
-        let overlay = crate::scaffold::overlay_if_present();
-        let _ = crate::scaffold::seed_scaffold(
+        let slug = dd_siteforge_core::scaffold::slugify_project_name(
+            &dd_siteforge_core::scaffold::dir_hint(&root),
+        );
+        let overlay = dd_siteforge_core::scaffold::overlay_if_present();
+        let _ = dd_siteforge_core::scaffold::seed_scaffold(
             &root,
-            crate::scaffold::SeedOpts {
+            dd_siteforge_core::scaffold::SeedOpts {
                 force: false,
                 project_name: Some(&slug),
                 overlay: overlay.as_deref(),
             },
         );
-        let _ = crate::templates::seed_templates(&root, false, None);
+        let _ = dd_siteforge_core::templates::seed_templates(&root, false, None);
         self.replace_site(path, site);
         Ok(())
     }
@@ -262,7 +264,7 @@ fn open_site_choices(query: &str) -> Vec<(String, OpenSiteAction)> {
             items.push((format!("Open {}", q), OpenSiteAction::Open(path)));
         }
     }
-    let recents = crate::session::load().existing_recents();
+    let recents = dd_siteforge_core::session::load().existing_recents();
     for recent in recents {
         let display = recent.path.display().to_string();
         if q.is_empty() || fuzzy_score(q, &display).is_some() {

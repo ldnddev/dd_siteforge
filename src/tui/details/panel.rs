@@ -269,7 +269,7 @@ impl App {
         let mut view = DetailsView::new();
         if self.page_head_selected {
             view.push_styled("Page health".to_string(), BlueprintStyle::Label);
-            for item in crate::health::page_health(&self.site, self.selected_page) {
+            for item in dd_siteforge_core::health::page_health(&self.site, self.selected_page) {
                 let mark = if item.ok { "OK" } else { "!!" };
                 view.push_plain(format!("  {mark}  {}", item.message));
             }
@@ -616,9 +616,9 @@ fn paint_section_map(
     map_start: usize,
     map_end: usize,
     boxes: &[Vec<(usize, usize, usize)>],
-    section: &crate::model::DdSection,
+    section: &dd_siteforge_core::model::DdSection,
     node_focus: Option<FocusDepth>,
-    theme: &crate::model::ThemeSettings,
+    theme: &dd_siteforge_core::model::ThemeSettings,
 ) {
     let columns = section_columns_ref(section);
     match node_focus {
@@ -695,10 +695,10 @@ fn paint_header_region(
     decl_idx: usize,
     map_start: usize,
     map_end: usize,
-    sections: &[crate::model::DdSection],
+    sections: &[dd_siteforge_core::model::DdSection],
     focus: BlueprintFocus,
     is_header: bool,
-    theme: &crate::model::ThemeSettings,
+    theme: &dd_siteforge_core::model::ThemeSettings,
 ) {
     let depth = match (focus, is_header) {
         (BlueprintFocus::Header { depth }, true) => Some(depth),

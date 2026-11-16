@@ -1,0 +1,17 @@
+{
+  "v": 1,
+  "pages": [
+    {
+      "url": "index.html",
+      "path": "/",
+      "title": "Home",
+      "description": "Starter page",
+      "body": "Home Build with dd-framework Framework-native static page builder Compose pages with typed component schemas. Get Started Learn More Decorative hero Ready to publish?",
+      "headings": [
+        "Build with dd-framework",
+        "Ready to publish?"
+      ],
+      "image": "assets/images/hero.jpg"
+    }
+  ]
+}

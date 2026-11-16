@@ -1,0 +1,166 @@
+{
+  "schema_version": 1,
+  "id": "site-1",
+  "name": "My Site",
+  "theme": {
+    "primary_color": "#88d9f7",
+    "secondary_color": "#ffca76",
+    "tertiary_color": "#f98971",
+    "support_color": "#46be8c"
+  },
+  "header": {
+    "id": "header",
+    "custom_css": "header { }",
+    "cta_label": "Contact",
+    "cta_url": "/contact",
+    "alert": null,
+    "sections": [
+      {
+        "id": "header-section-1",
+        "section_title": null,
+        "section_class": "-full-contained",
+        "item_box_class": "l-box",
+        "sal": "no-animation",
+        "columns": [
+          {
+            "id": "header-section-1-column-1",
+            "width_class": "dd-u-18-24 dd-u-md-18-24",
+            "components": []
+          },
+          {
+            "id": "header-section-1-column-2",
+            "width_class": "dd-u-3-24 dd-u-sm-3-24 dd-u-md-3-24 dd-u-lg-4-24",
+            "components": [
+              {
+                "component_type": "header_search",
+                "sal": "fade"
+              }
+            ]
+          },
+          {
+            "id": "header-section-1-column-3",
+            "width_class": "dd-u-3-24 dd-u-sm-3-24 dd-u-md-3-24",
+            "components": [
+              {
+                "component_type": "header_menu",
+                "sal": "fade"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "footer": {
+    "id": "footer",
+    "custom_css": "footer { }",
+    "blurb": "A small footer blurb.",
+    "copyright": "© 2026 Example",
+    "sections": [
+      {
+        "id": "footer-section-1",
+        "section_title": null,
+        "section_class": "-full-contained",
+        "item_box_class": "l-box",
+        "sal": "no-animation",
+        "columns": [
+          {
+            "id": "footer-section-1-column-1",
+            "width_class": "dd-u-1-1",
+            "components": []
+          }
+        ]
+      }
+    ]
+  },
+  "pages": [
+    {
+      "id": "page-home",
+      "slug": "index",
+      "slug_locked": false,
+      "head": {
+        "title": "Home",
+        "meta_title": "Home · Example",
+        "meta_description": "Starter page",
+        "canonical_url": "/",
+        "robots": "index, follow",
+        "schema_type": "WebPage",
+        "og_title": "Home OG",
+        "og_description": "OG description",
+        "og_image": "/assets/images/og.png",
+        "og_image_alt": "OG alt",
+        "og_image_width": 1200,
+        "og_image_height": 630,
+        "twitter_card": "summary_large_image"
+      },
+      "nodes": [
+        {
+          "node_type": "hero",
+          "parent_image_url": "assets/images/hero.jpg",
+          "parent_image_alt": "Decorative hero",
+          "parent_class": "-full-full",
+          "sal": "fade",
+          "sal_duration": 400,
+          "sal_delay": 100,
+          "parent_custom_css": null,
+          "parent_title": "Build with dd-framework",
+          "parent_subtitle": "Framework-native static page builder",
+          "parent_copy": "Compose pages with typed component schemas.",
+          "links": [
+            {
+              "url": "#",
+              "label": "Get Started",
+              "target": "_self",
+              "style": "-primary"
+            },
+            {
+              "url": "/more",
+              "label": "More",
+              "target": "_blank",
+              "style": "-secondary"
+            }
+          ],
+          "parent_image_mobile": "assets/images/hero-sm.jpg",
+          "parent_image_tablet": "assets/images/hero-md.jpg",
+          "parent_image_desktop": "assets/images/hero-lg.jpg",
+          "parent_image_class": "-full-full",
+          "overlay": "-overlay-dark",
+          "copy_position": "-center",
+          "id": "intro",
+          "aria_label": "Introduction"
+        },
+        {
+          "node_type": "section",
+          "id": "section-1",
+          "section_title": "Ready to publish?",
+          "section_class": "-full-contained",
+          "item_box_class": "l-box",
+          "bg": "-bg-muted",
+          "padding": "-no-padding",
+          "custom_css": ".section { }",
+          "aria_label": "Ready",
+          "sal": "slide-up",
+          "sal_duration": 300,
+          "sal_delay": 50,
+          "columns": [
+            {
+              "id": "section-1-column-1",
+              "width_class": "dd-u-1-1",
+              "components": []
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "export_dir": "web",
+  "base_url": "https://example.com",
+  "lang": "en",
+  "ga_measurement_id": "G-ABCDEF1234",
+  "pretty_urls": true,
+  "default_og_image": "/assets/images/custom-og.png",
+  "default_og_image_alt": "Custom share image",
+  "default_og_image_width": 1600,
+  "default_og_image_height": 900,
+  "default_twitter_card": "summary"
+}

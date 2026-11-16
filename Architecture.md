@@ -7,33 +7,43 @@ Living product spec: `docs/SPEC.md`. Visual contract: `LDNDDEV_TUI_VISUAL_STANDA
 ## Crate Layout
 
 ```
-src/
-  main.rs          CLI entry: init-site / init-templates / init-scaffold / show-site / validate-site / export-html / tui
-  model.rs         Site → Page → PageNode → SectionComponent typed tree (serde)
-  storage.rs       JSON load/save
-  validate.rs      validate_site() + validate_site_with_root() (missing-image)
-  renderer.rs      typed-model → HTML via handlebars templates
-  search_index.rs  flattened search-index.json for client-side search
-  templates.rs     load bundled, live crate templates/, site templates/, source/templates; seed from live crate tree when present
-  scaffold.rs      embed Grunt/source/Lando/DDEV; seed on init; optional ~/.config overlay
-  tui/mod.rs            App shell (struct, run loop, save/autosave)
-  tui/draw.rs           header / sidebar / details / footer frame
-  tui/events.rs         keyboard, mouse, Pages-panel dispatch
-  tui/modals/           Modal enum + paint / prompts / pickers / form_edit / events / export / toasts
-  tui/tree/             layout tree (build, nav, expand, open, edit, items, columns)
-  tui/details/          Details panel (ascii maps, labels, click-to-select)
-  tui/theme.rs          TUI theme load
-  tui/help.rs           F1/F2 modal text
-  tui/cursor.rs         component → form-state mapping
-  tui/editform/         FormEdit types + block / collection / layout form values
-  tui/component_kind.rs insert-picker kinds
-  tui/form_textarea.rs  FormEdit textarea layout
-  tui/util.rs           small TUI helpers
-source/            framework source (js, scss, fonts, favicon; images are local)
-Gruntfile.js       builds source/{js,scss} → web/assets
-package.json       npm run build / dev
-.lando.yml         optional Lando (host npm is the contract)
-.ddev/             optional DDEV
+src/                         TUI binary (dd_siteforge). Depends on dd_siteforge_core.
+  main.rs                    CLI entry: init-site / init-templates / init-scaffold / show-site / validate-site / export-html / tui
+  tui/mod.rs                 App shell (struct, run loop, save/autosave)
+  tui/draw.rs                header / sidebar / details / footer frame
+  tui/events.rs              keyboard, mouse, Pages-panel dispatch
+  tui/modals/                Modal enum + paint / prompts / pickers / form_edit / events / export / toasts
+  tui/tree/                  layout tree (build, nav, expand, open, edit, items, columns)
+  tui/details/               Details panel (ascii maps, click-to-select). Labels come from core.
+  tui/theme.rs               TUI theme load
+  tui/help.rs                F1/F2 modal text
+  tui/form_textarea.rs       FormEdit textarea layout
+  tui/util.rs                small TUI helpers
+crates/dd_siteforge_core/    UI-free library. site.json, forms, export, init, preview server.
+  model.rs                   Site → Page → PageNode → SectionComponent typed tree (serde)
+  storage.rs                 JSON load/save
+  validate.rs                validate_site() + validate_site_with_root() (missing-image)
+  health.rs                  page health lines
+  renderer.rs                typed-model → HTML via handlebars templates
+  markdown.rs                copy fields → HTML / plain text
+  search_index.rs            flattened search-index.json for client-side search
+  og_image.rs                share-image dimensions
+  export.rs                  HTML, sitemap, robots, 404, asset copy
+  templates.rs               bundled + live templates/; seed into source/templates
+  scaffold.rs                embed Grunt/source/Lando/DDEV; seed on init; optional ~/.config overlay
+  serve.rs                   local preview server
+  session.rs                 recents and last selection (session.json)
+  asset_build.rs             lando/npx grunt build command
+  editform/                  EditForm field contracts
+  cursor.rs                  model ⇄ form state, including the #RRGGBB rule
+  component_kind.rs          insert-picker kinds and which region accepts each
+  labels.rs                  enum cycle helpers and component labels
+crates/ldnddev_theme/        Omarchy theme load/save (unchanged)
+source/                      framework source (js, scss, fonts, favicon; images are local)
+Gruntfile.js                 builds source/{js,scss} → web/assets
+package.json                 npm run build / dev
+.lando.yml                   optional Lando (host npm is the contract)
+.ddev/                       optional DDEV
 ```
 
 
@@ -62,13 +72,13 @@ Site
 
 **Header / Footer slots:** every section component, including `dd-header-search` and `dd-header-menu`. Those two stay off page sections. `dd-hero` stays a page node.
 
-Fields live in `src/model.rs`, edit forms in `src/tui/editform/`, HTML in `templates/dd-*.hbs`, and checks in `src/validate.rs`.
+Fields live in `crates/dd_siteforge_core/src/model.rs`, edit forms in `crates/dd_siteforge_core/src/editform/`, HTML in `templates/dd-*.hbs`, and checks in `crates/dd_siteforge_core/src/validate.rs`.
 
 ## Renderer
 
 - Iterates `site.pages` in order. Home (`index`) is always `index.html`. Nested slugs (`blog/entry`) create folders. With site `pretty_urls`, non-home pages write `{slug}/index.html` (so `blog` → `blog/index.html`, `blog/entry` → `blog/entry/index.html`); otherwise `{slug}.html`. Nested pages prefix `href`/`src`/`poster`/`srcset`/`data-search-index` with `../` so `assets/`, page links, and `search-index.json` still resolve. Meta `content` (viewport, robots, description, OG titles) is not prefixed. Canonical, `og:url`, schema `url`, and sitemap `<loc>` use `base_url` plus the public path (`/` home, `/{slug}/` pretty, `/{slug}.html` otherwise). A stored canonical path such as `/page/` is joined with `base_url`. Auto 404 writes root `404.html` with an `<h1>`, no self-canonical, and origin- or `/`-prefixed assets so CSS still loads at deep missing URLs. Sitemap entries include `<lastmod>` (`YYYY-MM-DD` UTC export date).
 - Share image tags are the same on every page: `og:image`, `og:image:secure_url`, `og:image:alt`, `og:image:width`, `og:image:height`, `og:image:type`, `twitter:card`, `twitter:image`, `twitter:image:alt`. The URL is page `og_image`, else the first hero image, else site `default_og_image` (`/assets/images/og-default.png`). Alt follows page `og_image_alt`, else the hero alt, else `default_og_image_alt`. Width and height are read from `source/images/` when the URL is `assets/images/…`; otherwise page `og_image_width` / `og_image_height`, else the site defaults (1200×630). Type comes from the file format, else the extension (`image/png`, `image/jpeg`, `image/webp`). `twitter:card` is site `default_twitter_card` (`summary_large_image`) unless the page sets `summary`. `og:type` stays `website`. JSON-LD `image` uses the same absolute URL.
-- `dd-hero` / `dd-section` / each section component has a dedicated `render_*` fn in `src/renderer.rs`.
+- `dd-hero` / `dd-section` / each section component has a dedicated `render_*` fn in `crates/dd_siteforge_core/src/renderer.rs`.
 - Special cases:
   - `dd-accordion` emits FAQ JSON-LD only when `parent_type == -faq`.
   - `dd-blockquote` emits Quotation JSON-LD.

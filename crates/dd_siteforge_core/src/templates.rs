@@ -16,76 +16,100 @@ use handlebars::Handlebars;
 use serde_json::Value;
 
 pub const BUNDLED: &[(&str, &str)] = &[
-    ("_page", include_str!("../templates/_page.hbs")),
-    ("_head", include_str!("../templates/_head.hbs")),
-    ("_media", include_str!("../templates/_media.hbs")),
-    ("dd-header", include_str!("../templates/dd-header.hbs")),
-    ("dd-footer", include_str!("../templates/dd-footer.hbs")),
-    ("dd-hero", include_str!("../templates/dd-hero.hbs")),
-    ("dd-section", include_str!("../templates/dd-section.hbs")),
+    ("_page", include_str!("../../../templates/_page.hbs")),
+    ("_head", include_str!("../../../templates/_head.hbs")),
+    ("_media", include_str!("../../../templates/_media.hbs")),
+    (
+        "dd-header",
+        include_str!("../../../templates/dd-header.hbs"),
+    ),
+    (
+        "dd-footer",
+        include_str!("../../../templates/dd-footer.hbs"),
+    ),
+    ("dd-hero", include_str!("../../../templates/dd-hero.hbs")),
+    (
+        "dd-section",
+        include_str!("../../../templates/dd-section.hbs"),
+    ),
     (
         "dd-section-column",
-        include_str!("../templates/dd-section-column.hbs"),
+        include_str!("../../../templates/dd-section-column.hbs"),
     ),
     (
         "dd-alternating",
-        include_str!("../templates/dd-alternating.hbs"),
+        include_str!("../../../templates/dd-alternating.hbs"),
     ),
-    ("dd-card", include_str!("../templates/dd-card.hbs")),
-    ("dd-banner", include_str!("../templates/dd-banner.hbs")),
-    ("dd-cta", include_str!("../templates/dd-cta.hbs")),
+    ("dd-card", include_str!("../../../templates/dd-card.hbs")),
+    (
+        "dd-banner",
+        include_str!("../../../templates/dd-banner.hbs"),
+    ),
+    ("dd-cta", include_str!("../../../templates/dd-cta.hbs")),
     (
         "dd-filmstrip",
-        include_str!("../templates/dd-filmstrip.hbs"),
+        include_str!("../../../templates/dd-filmstrip.hbs"),
     ),
     (
         "dd-milestones",
-        include_str!("../templates/dd-milestones.hbs"),
+        include_str!("../../../templates/dd-milestones.hbs"),
     ),
-    ("dd-modal", include_str!("../templates/dd-modal.hbs")),
-    ("dd-slider", include_str!("../templates/dd-slider.hbs")),
+    ("dd-modal", include_str!("../../../templates/dd-modal.hbs")),
+    (
+        "dd-slider",
+        include_str!("../../../templates/dd-slider.hbs"),
+    ),
     (
         "dd-accordion",
-        include_str!("../templates/dd-accordion.hbs"),
+        include_str!("../../../templates/dd-accordion.hbs"),
     ),
     (
         "dd-blockquote",
-        include_str!("../templates/dd-blockquote.hbs"),
+        include_str!("../../../templates/dd-blockquote.hbs"),
     ),
-    ("dd-alert", include_str!("../templates/dd-alert.hbs")),
-    ("dd-image", include_str!("../templates/dd-image.hbs")),
+    ("dd-alert", include_str!("../../../templates/dd-alert.hbs")),
+    ("dd-image", include_str!("../../../templates/dd-image.hbs")),
     (
         "dd-rich_text",
-        include_str!("../templates/dd-rich_text.hbs"),
+        include_str!("../../../templates/dd-rich_text.hbs"),
     ),
     (
         "dd-navigation",
-        include_str!("../templates/dd-navigation.hbs"),
+        include_str!("../../../templates/dd-navigation.hbs"),
     ),
     (
         "dd-navigation-item",
-        include_str!("../templates/dd-navigation-item.hbs"),
+        include_str!("../../../templates/dd-navigation-item.hbs"),
     ),
     (
         "dd-header-search",
-        include_str!("../templates/dd-header-search.hbs"),
+        include_str!("../../../templates/dd-header-search.hbs"),
     ),
     (
         "dd-header-menu",
-        include_str!("../templates/dd-header-menu.hbs"),
+        include_str!("../../../templates/dd-header-menu.hbs"),
     ),
-    ("dd-spacer", include_str!("../templates/dd-spacer.hbs")),
-    ("dd-tabs", include_str!("../templates/dd-tabs.hbs")),
-    ("dd-timeline", include_str!("../templates/dd-timeline.hbs")),
+    (
+        "dd-spacer",
+        include_str!("../../../templates/dd-spacer.hbs"),
+    ),
+    ("dd-tabs", include_str!("../../../templates/dd-tabs.hbs")),
+    (
+        "dd-timeline",
+        include_str!("../../../templates/dd-timeline.hbs"),
+    ),
     (
         "dd-data-table",
-        include_str!("../templates/dd-data-table.hbs"),
+        include_str!("../../../templates/dd-data-table.hbs"),
     ),
     (
         "dd-search-results",
-        include_str!("../templates/dd-search-results.hbs"),
+        include_str!("../../../templates/dd-search-results.hbs"),
     ),
-    ("dd-headline", include_str!("../templates/dd-headline.hbs")),
+    (
+        "dd-headline",
+        include_str!("../../../templates/dd-headline.hbs"),
+    ),
 ];
 
 pub fn bundled(name: &str) -> Option<&'static str> {
@@ -103,7 +127,7 @@ pub fn templates_dir(site_root: &Path) -> PathBuf {
 /// still exists (cargo run / cargo install --path). Release binaries fall back
 /// to the baked-in copies.
 pub fn live_crate_templates_dir() -> Option<PathBuf> {
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("templates");
+    let dir = crate::paths::workspace_dir().join("templates");
     dir.is_dir().then_some(dir)
 }
 
@@ -278,7 +302,7 @@ mod tests {
 
     #[test]
     fn bundled_covers_every_hbs_in_templates_dir() {
-        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("templates");
+        let dir = crate::paths::workspace_dir().join("templates");
         let mut disk: Vec<String> = fs::read_dir(&dir)
             .unwrap()
             .filter_map(|e| {

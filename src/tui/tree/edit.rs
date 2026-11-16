@@ -5,21 +5,21 @@ use super::super::*;
 #[derive(Clone)]
 pub(in crate::tui) enum Clipboard {
     Node(PageNode),
-    Component(crate::model::SectionComponent),
+    Component(dd_siteforge_core::model::SectionComponent),
     CollectionItem(CollectionClip),
 }
 
 #[derive(Clone)]
 pub(in crate::tui) enum CollectionClip {
-    Accordion(crate::model::AccordionItem),
-    Alternating(crate::model::AlternatingItem),
-    Card(crate::model::CardItem),
-    Filmstrip(crate::model::FilmstripItem),
-    Milestones(crate::model::MilestonesItem),
-    Slider(crate::model::SliderItem),
-    Tabs(crate::model::TabsItem),
-    Timeline(crate::model::TimelineItem),
-    DataTable(crate::model::DataTableRow),
+    Accordion(dd_siteforge_core::model::AccordionItem),
+    Alternating(dd_siteforge_core::model::AlternatingItem),
+    Card(dd_siteforge_core::model::CardItem),
+    Filmstrip(dd_siteforge_core::model::FilmstripItem),
+    Milestones(dd_siteforge_core::model::MilestonesItem),
+    Slider(dd_siteforge_core::model::SliderItem),
+    Tabs(dd_siteforge_core::model::TabsItem),
+    Timeline(dd_siteforge_core::model::TimelineItem),
+    DataTable(dd_siteforge_core::model::DataTableRow),
 }
 
 impl Clipboard {
@@ -324,12 +324,9 @@ impl App {
             return;
         };
         let clip = match kind {
-            TreeRowKind::HeaderAlert => self
-                .site
-                .header
-                .alert
-                .clone()
-                .map(|a| Clipboard::Component(crate::model::SectionComponent::Alert(a))),
+            TreeRowKind::HeaderAlert => self.site.header.alert.clone().map(|a| {
+                Clipboard::Component(dd_siteforge_core::model::SectionComponent::Alert(a))
+            }),
             TreeRowKind::Hero { node_idx } | TreeRowKind::Section { node_idx } => self
                 .current_page()
                 .nodes
@@ -446,7 +443,7 @@ impl App {
                     return;
                 }
             },
-            Clipboard::Component(crate::model::SectionComponent::Alert(_))
+            Clipboard::Component(dd_siteforge_core::model::SectionComponent::Alert(_))
                 if self.selected_region == SelectedRegion::Header && self.header_alert_selected =>
             {
                 TreeRowKind::HeaderAlert
@@ -588,12 +585,12 @@ impl App {
         }
     }
 
-    fn paste_component(&mut self, component: crate::model::SectionComponent) -> bool {
+    fn paste_component(&mut self, component: dd_siteforge_core::model::SectionComponent) -> bool {
         let kind = ComponentKind::from_section_component(&component);
         if matches!(kind, ComponentKind::Alert) {
             match self.selected_region {
                 SelectedRegion::Header => {
-                    let crate::model::SectionComponent::Alert(alert) = component else {
+                    let dd_siteforge_core::model::SectionComponent::Alert(alert) = component else {
                         return false;
                     };
                     return self.place_header_alert(alert);
@@ -670,7 +667,7 @@ impl App {
     fn insert_component_in_region(
         &mut self,
         footer: bool,
-        component: crate::model::SectionComponent,
+        component: dd_siteforge_core::model::SectionComponent,
     ) -> bool {
         let sections = if footer {
             &mut self.site.footer.sections
@@ -723,39 +720,39 @@ impl App {
         )?;
         let item_idx = self.selected_nested_item;
         match &section.columns[col_i].components[ci] {
-            crate::model::SectionComponent::Accordion(a) => a
+            dd_siteforge_core::model::SectionComponent::Accordion(a) => a
                 .items
                 .get(item_idx)
                 .cloned()
                 .map(CollectionClip::Accordion),
-            crate::model::SectionComponent::Alternating(a) => a
+            dd_siteforge_core::model::SectionComponent::Alternating(a) => a
                 .items
                 .get(item_idx)
                 .cloned()
                 .map(CollectionClip::Alternating),
-            crate::model::SectionComponent::Card(a) => {
+            dd_siteforge_core::model::SectionComponent::Card(a) => {
                 a.items.get(item_idx).cloned().map(CollectionClip::Card)
             }
-            crate::model::SectionComponent::Filmstrip(a) => a
+            dd_siteforge_core::model::SectionComponent::Filmstrip(a) => a
                 .items
                 .get(item_idx)
                 .cloned()
                 .map(CollectionClip::Filmstrip),
-            crate::model::SectionComponent::Milestones(a) => a
+            dd_siteforge_core::model::SectionComponent::Milestones(a) => a
                 .items
                 .get(item_idx)
                 .cloned()
                 .map(CollectionClip::Milestones),
-            crate::model::SectionComponent::Slider(a) => {
+            dd_siteforge_core::model::SectionComponent::Slider(a) => {
                 a.items.get(item_idx).cloned().map(CollectionClip::Slider)
             }
-            crate::model::SectionComponent::Tabs(a) => {
+            dd_siteforge_core::model::SectionComponent::Tabs(a) => {
                 a.items.get(item_idx).cloned().map(CollectionClip::Tabs)
             }
-            crate::model::SectionComponent::Timeline(a) => {
+            dd_siteforge_core::model::SectionComponent::Timeline(a) => {
                 a.items.get(item_idx).cloned().map(CollectionClip::Timeline)
             }
-            crate::model::SectionComponent::DataTable(a) => {
+            dd_siteforge_core::model::SectionComponent::DataTable(a) => {
                 a.rows.get(item_idx).cloned().map(CollectionClip::DataTable)
             }
             _ => None,
@@ -799,7 +796,10 @@ impl App {
             return false;
         };
         let inserted = match (&mut section.columns[col_i].components[ci], clip) {
-            (crate::model::SectionComponent::Accordion(a), CollectionClip::Accordion(item)) => {
+            (
+                dd_siteforge_core::model::SectionComponent::Accordion(a),
+                CollectionClip::Accordion(item),
+            ) => {
                 let at = if a.items.is_empty() {
                     0
                 } else {
@@ -809,7 +809,10 @@ impl App {
                 self.selected_nested_item = at;
                 true
             }
-            (crate::model::SectionComponent::Alternating(a), CollectionClip::Alternating(item)) => {
+            (
+                dd_siteforge_core::model::SectionComponent::Alternating(a),
+                CollectionClip::Alternating(item),
+            ) => {
                 let at = if a.items.is_empty() {
                     0
                 } else {
@@ -819,7 +822,7 @@ impl App {
                 self.selected_nested_item = at;
                 true
             }
-            (crate::model::SectionComponent::Card(a), CollectionClip::Card(item)) => {
+            (dd_siteforge_core::model::SectionComponent::Card(a), CollectionClip::Card(item)) => {
                 let at = if a.items.is_empty() {
                     0
                 } else {
@@ -829,7 +832,10 @@ impl App {
                 self.selected_nested_item = at;
                 true
             }
-            (crate::model::SectionComponent::Filmstrip(a), CollectionClip::Filmstrip(item)) => {
+            (
+                dd_siteforge_core::model::SectionComponent::Filmstrip(a),
+                CollectionClip::Filmstrip(item),
+            ) => {
                 let at = if a.items.is_empty() {
                     0
                 } else {
@@ -839,7 +845,10 @@ impl App {
                 self.selected_nested_item = at;
                 true
             }
-            (crate::model::SectionComponent::Milestones(a), CollectionClip::Milestones(item)) => {
+            (
+                dd_siteforge_core::model::SectionComponent::Milestones(a),
+                CollectionClip::Milestones(item),
+            ) => {
                 let at = if a.items.is_empty() {
                     0
                 } else {
@@ -849,7 +858,10 @@ impl App {
                 self.selected_nested_item = at;
                 true
             }
-            (crate::model::SectionComponent::Slider(a), CollectionClip::Slider(item)) => {
+            (
+                dd_siteforge_core::model::SectionComponent::Slider(a),
+                CollectionClip::Slider(item),
+            ) => {
                 let at = if a.items.is_empty() {
                     0
                 } else {
@@ -859,7 +871,7 @@ impl App {
                 self.selected_nested_item = at;
                 true
             }
-            (crate::model::SectionComponent::Tabs(a), CollectionClip::Tabs(item)) => {
+            (dd_siteforge_core::model::SectionComponent::Tabs(a), CollectionClip::Tabs(item)) => {
                 let at = if a.items.is_empty() {
                     0
                 } else {
@@ -869,7 +881,10 @@ impl App {
                 self.selected_nested_item = at;
                 true
             }
-            (crate::model::SectionComponent::Timeline(a), CollectionClip::Timeline(item)) => {
+            (
+                dd_siteforge_core::model::SectionComponent::Timeline(a),
+                CollectionClip::Timeline(item),
+            ) => {
                 let at = if a.items.is_empty() {
                     0
                 } else {
@@ -879,7 +894,10 @@ impl App {
                 self.selected_nested_item = at;
                 true
             }
-            (crate::model::SectionComponent::DataTable(a), CollectionClip::DataTable(item)) => {
+            (
+                dd_siteforge_core::model::SectionComponent::DataTable(a),
+                CollectionClip::DataTable(item),
+            ) => {
                 let at = if a.rows.is_empty() {
                     0
                 } else {
@@ -1086,39 +1104,39 @@ impl App {
         }
         let dest = dest as usize;
         let swapped = match &mut section.columns[col_i].components[ci] {
-            crate::model::SectionComponent::Accordion(a) if dest < a.items.len() => {
+            dd_siteforge_core::model::SectionComponent::Accordion(a) if dest < a.items.len() => {
                 a.items.swap(item_idx, dest);
                 true
             }
-            crate::model::SectionComponent::Alternating(a) if dest < a.items.len() => {
+            dd_siteforge_core::model::SectionComponent::Alternating(a) if dest < a.items.len() => {
                 a.items.swap(item_idx, dest);
                 true
             }
-            crate::model::SectionComponent::Card(a) if dest < a.items.len() => {
+            dd_siteforge_core::model::SectionComponent::Card(a) if dest < a.items.len() => {
                 a.items.swap(item_idx, dest);
                 true
             }
-            crate::model::SectionComponent::Filmstrip(a) if dest < a.items.len() => {
+            dd_siteforge_core::model::SectionComponent::Filmstrip(a) if dest < a.items.len() => {
                 a.items.swap(item_idx, dest);
                 true
             }
-            crate::model::SectionComponent::Milestones(a) if dest < a.items.len() => {
+            dd_siteforge_core::model::SectionComponent::Milestones(a) if dest < a.items.len() => {
                 a.items.swap(item_idx, dest);
                 true
             }
-            crate::model::SectionComponent::Slider(a) if dest < a.items.len() => {
+            dd_siteforge_core::model::SectionComponent::Slider(a) if dest < a.items.len() => {
                 a.items.swap(item_idx, dest);
                 true
             }
-            crate::model::SectionComponent::Tabs(a) if dest < a.items.len() => {
+            dd_siteforge_core::model::SectionComponent::Tabs(a) if dest < a.items.len() => {
                 a.items.swap(item_idx, dest);
                 true
             }
-            crate::model::SectionComponent::Timeline(a) if dest < a.items.len() => {
+            dd_siteforge_core::model::SectionComponent::Timeline(a) if dest < a.items.len() => {
                 a.items.swap(item_idx, dest);
                 true
             }
-            crate::model::SectionComponent::DataTable(a) if dest < a.rows.len() => {
+            dd_siteforge_core::model::SectionComponent::DataTable(a) if dest < a.rows.len() => {
                 a.rows.swap(item_idx, dest);
                 true
             }

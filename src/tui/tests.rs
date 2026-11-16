@@ -34,8 +34,11 @@ fn send_key(app: &mut App, code: KeyCode, modifiers: KeyModifiers) {
         .expect("key event should be handled");
 }
 
-fn blank_page(title: &str, slug: &str) -> crate::model::Page {
-    let mut page = crate::model::Page::from_template(title, crate::model::PageTemplate::Blank);
+fn blank_page(title: &str, slug: &str) -> dd_siteforge_core::model::Page {
+    let mut page = dd_siteforge_core::model::Page::from_template(
+        title,
+        dd_siteforge_core::model::PageTemplate::Blank,
+    );
     page.slug = slug.to_string();
     page.id = format!("page-{}", slug.replace('/', "-"));
     page
@@ -66,7 +69,7 @@ fn send_mouse_mods(
     .expect("mouse event should be handled");
 }
 
-fn selected_card(app: &App) -> &crate::model::DdCard {
+fn selected_card(app: &App) -> &dd_siteforge_core::model::DdCard {
     let page = &app.site.pages[app.selected_page];
     let section = match &page.nodes[app.selected_node] {
         PageNode::Section(section) => section,
@@ -74,7 +77,7 @@ fn selected_card(app: &App) -> &crate::model::DdCard {
     };
     let component = &section.columns[app.selected_column].components[app.selected_component];
     match component {
-        crate::model::SectionComponent::Card(card) => card,
+        dd_siteforge_core::model::SectionComponent::Card(card) => card,
         _ => panic!("selected component is not dd-card"),
     }
 }
@@ -105,7 +108,7 @@ fn app_with_cta() -> App {
     app
 }
 
-fn selected_cta(app: &App) -> &crate::model::DdCta {
+fn selected_cta(app: &App) -> &dd_siteforge_core::model::DdCta {
     let page = &app.site.pages[app.selected_page];
     let section = match &page.nodes[app.selected_node] {
         PageNode::Section(section) => section,
@@ -113,7 +116,7 @@ fn selected_cta(app: &App) -> &crate::model::DdCta {
     };
     let component = &section.columns[app.selected_column].components[app.selected_component];
     match component {
-        crate::model::SectionComponent::Cta(cta) => cta,
+        dd_siteforge_core::model::SectionComponent::Cta(cta) => cta,
         _ => panic!("selected component is not dd-cta"),
     }
 }
@@ -193,7 +196,7 @@ fn dd_cta_form_edit_tab_and_enum_cycle() {
     assert!(app.modal.is_none());
     assert_eq!(
         selected_cta(&app).parent_class,
-        crate::model::CtaClass::TopLeft
+        dd_siteforge_core::model::CtaClass::TopLeft
     );
 }
 
@@ -241,7 +244,7 @@ fn dd_cta_edits_apply_in_page_region() {
     assert!(app.modal.is_none(), "Ctrl+S should close the modal");
     assert_eq!(
         selected_cta(&app).parent_class,
-        crate::model::CtaClass::CenterCenter
+        dd_siteforge_core::model::CtaClass::CenterCenter
     );
 }
 
@@ -283,14 +286,17 @@ fn dd_cta_edits_in_header_region() {
     send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
 
     let header_cta = match &app.site.header.sections[0].columns[0].components[0] {
-        crate::model::SectionComponent::Cta(cta) => cta,
+        dd_siteforge_core::model::SectionComponent::Cta(cta) => cta,
         _ => panic!("expected CTA at header.sections[0].columns[0].components[0]"),
     };
-    assert_eq!(header_cta.parent_class, crate::model::CtaClass::TopCenter);
+    assert_eq!(
+        header_cta.parent_class,
+        dd_siteforge_core::model::CtaClass::TopCenter
+    );
 
     // Page-1 CTA (if any) should NOT have been modified.
     if let PageNode::Section(section) = &app.site.pages[0].nodes[1]
-        && let Some(crate::model::SectionComponent::Cta(page_cta)) =
+        && let Some(dd_siteforge_core::model::SectionComponent::Cta(page_cta)) =
             section.columns.first().and_then(|c| c.components.first())
     {
         assert_ne!(
@@ -335,10 +341,13 @@ fn dd_cta_edits_in_footer_region() {
     send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
 
     let footer_cta = match &app.site.footer.sections[0].columns[0].components[0] {
-        crate::model::SectionComponent::Cta(cta) => cta,
+        dd_siteforge_core::model::SectionComponent::Cta(cta) => cta,
         _ => panic!("expected CTA at footer.sections[0].columns[0].components[0]"),
     };
-    assert_eq!(footer_cta.parent_class, crate::model::CtaClass::TopCenter);
+    assert_eq!(
+        footer_cta.parent_class,
+        dd_siteforge_core::model::CtaClass::TopCenter
+    );
 }
 
 fn open_form_edit_on_page_component(app: &mut App) {
@@ -409,9 +418,9 @@ fn tier_a_banner_form_edit_round_trip() {
     send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
     match &app.site.pages[0].nodes[1] {
         PageNode::Section(s) => match &s.columns[0].components[0] {
-            crate::model::SectionComponent::Banner(b) => assert_eq!(
+            dd_siteforge_core::model::SectionComponent::Banner(b) => assert_eq!(
                 b.parent_class,
-                crate::model::BannerClass::BgCenterRight,
+                dd_siteforge_core::model::BannerClass::BgCenterRight,
                 "banner class should advance one step from default BgCenterCenter"
             ),
             other => panic!("expected Banner, got {:?}", std::mem::discriminant(other)),
@@ -432,10 +441,10 @@ fn tier_a_image_form_edit_round_trip() {
     send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
     match &app.site.pages[0].nodes[1] {
         PageNode::Section(s) => match &s.columns[0].components[0] {
-            crate::model::SectionComponent::Image(i) => {
+            dd_siteforge_core::model::SectionComponent::Image(i) => {
                 assert_eq!(
                     i.sal,
-                    crate::model::SalAnimation::Fade,
+                    dd_siteforge_core::model::SalAnimation::Fade,
                     "image sal should advance one step from default"
                 );
                 assert_eq!(
@@ -459,7 +468,7 @@ fn image_form_saves_sal_duration() {
     send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
     match &app.site.pages[0].nodes[1] {
         PageNode::Section(s) => match &s.columns[0].components[0] {
-            crate::model::SectionComponent::Image(i) => {
+            dd_siteforge_core::model::SectionComponent::Image(i) => {
                 assert_eq!(i.sal_duration, Some(450));
             }
             _ => panic!("expected Image"),
@@ -475,8 +484,8 @@ fn image_form_no_animation_omits_duration_on_save() {
     send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
     match &app.site.pages[0].nodes[1] {
         PageNode::Section(s) => match &s.columns[0].components[0] {
-            crate::model::SectionComponent::Image(i) => {
-                assert_eq!(i.sal, crate::model::SalAnimation::NoAnimation);
+            dd_siteforge_core::model::SectionComponent::Image(i) => {
+                assert_eq!(i.sal, dd_siteforge_core::model::SalAnimation::NoAnimation);
             }
             _ => panic!("expected Image"),
         },
@@ -532,7 +541,7 @@ fn tier_a_rich_text_form_edit_round_trip() {
     send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
     match &app.site.pages[0].nodes[1] {
         PageNode::Section(s) => match &s.columns[0].components[0] {
-            crate::model::SectionComponent::RichText(r) => {
+            dd_siteforge_core::model::SectionComponent::RichText(r) => {
                 assert_eq!(r.parent_class.as_deref(), Some("x"));
             }
             _ => panic!("expected RichText"),
@@ -598,7 +607,7 @@ fn textarea_expand_edits_then_save_commits_copy() {
     assert!(app.modal.is_none());
     match &app.site.pages[0].nodes[1] {
         PageNode::Section(s) => match &s.columns[0].components[0] {
-            crate::model::SectionComponent::RichText(r) => {
+            dd_siteforge_core::model::SectionComponent::RichText(r) => {
                 assert!(r.parent_copy.ends_with('Z'), "{}", r.parent_copy);
             }
             _ => panic!("expected RichText"),
@@ -619,7 +628,7 @@ fn textarea_expand_ctrl_s_saves_from_expanded_view() {
     assert!(!app.form_textarea_expanded);
     match &app.site.pages[0].nodes[1] {
         PageNode::Section(s) => match &s.columns[0].components[0] {
-            crate::model::SectionComponent::RichText(r) => {
+            dd_siteforge_core::model::SectionComponent::RichText(r) => {
                 assert!(r.parent_copy.ends_with('Q'), "{}", r.parent_copy);
             }
             _ => panic!("expected RichText"),
@@ -1469,8 +1478,8 @@ fn tier_a_alert_form_edit_round_trip() {
     send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
     match &app.site.pages[0].nodes[1] {
         PageNode::Section(s) => match &s.columns[0].components[0] {
-            crate::model::SectionComponent::Alert(a) => {
-                assert_eq!(a.parent_type, crate::model::AlertType::Info);
+            dd_siteforge_core::model::SectionComponent::Alert(a) => {
+                assert_eq!(a.parent_type, dd_siteforge_core::model::AlertType::Info);
             }
             _ => panic!("expected Alert"),
         },
@@ -1487,7 +1496,7 @@ fn tier_a_modal_form_edit_round_trip() {
     send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
     match &app.site.pages[0].nodes[1] {
         PageNode::Section(s) => match &s.columns[0].components[0] {
-            crate::model::SectionComponent::Modal(m) => {
+            dd_siteforge_core::model::SectionComponent::Modal(m) => {
                 assert!(m.parent_title.ends_with('Z'));
             }
             _ => panic!("expected Modal"),
@@ -1505,8 +1514,8 @@ fn tier_a_blockquote_form_edit_round_trip() {
     send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
     match &app.site.pages[0].nodes[1] {
         PageNode::Section(s) => match &s.columns[0].components[0] {
-            crate::model::SectionComponent::Blockquote(bq) => {
-                assert_eq!(bq.sal, crate::model::SalAnimation::Fade);
+            dd_siteforge_core::model::SectionComponent::Blockquote(bq) => {
+                assert_eq!(bq.sal, dd_siteforge_core::model::SalAnimation::Fade);
             }
             _ => panic!("expected Blockquote"),
         },
@@ -1614,7 +1623,7 @@ fn tier_b_data_table_rows_drill_round_trip() {
     assert!(app.modal.is_none());
     match &app.site.pages[0].nodes[1] {
         PageNode::Section(s) => match &s.columns[0].components[0] {
-            crate::model::SectionComponent::DataTable(t) => {
+            dd_siteforge_core::model::SectionComponent::DataTable(t) => {
                 assert_eq!(t.caption, "Data table");
                 assert_eq!(t.columns.len(), 2);
                 assert_eq!(t.rows.len(), 1);
@@ -1633,7 +1642,7 @@ fn data_table_add_remove_rows_allows_empty() {
     app.sync_tree_row_with_selection();
     match &app.site.pages[0].nodes[1] {
         PageNode::Section(s) => match &s.columns[0].components[0] {
-            crate::model::SectionComponent::DataTable(t) => assert_eq!(t.rows.len(), 1),
+            dd_siteforge_core::model::SectionComponent::DataTable(t) => assert_eq!(t.rows.len(), 1),
             _ => panic!("expected DataTable"),
         },
         _ => panic!("expected Section"),
@@ -1641,7 +1650,7 @@ fn data_table_add_remove_rows_allows_empty() {
     send_key(&mut app, KeyCode::Char('A'), KeyModifiers::SHIFT);
     match &app.site.pages[0].nodes[1] {
         PageNode::Section(s) => match &s.columns[0].components[0] {
-            crate::model::SectionComponent::DataTable(t) => {
+            dd_siteforge_core::model::SectionComponent::DataTable(t) => {
                 assert_eq!(t.rows.len(), 2);
                 assert_eq!(t.rows[1].cells.len(), 2);
             }
@@ -1653,7 +1662,7 @@ fn data_table_add_remove_rows_allows_empty() {
     send_key(&mut app, KeyCode::Char('X'), KeyModifiers::SHIFT);
     match &app.site.pages[0].nodes[1] {
         PageNode::Section(s) => match &s.columns[0].components[0] {
-            crate::model::SectionComponent::DataTable(t) => assert!(t.rows.is_empty()),
+            dd_siteforge_core::model::SectionComponent::DataTable(t) => assert!(t.rows.is_empty()),
             _ => panic!("expected DataTable"),
         },
         _ => panic!("expected Section"),
@@ -1671,11 +1680,11 @@ fn tier_c_headline_form_edit_round_trip() {
     assert!(app.modal.is_none());
     match &app.site.pages[0].nodes[1] {
         PageNode::Section(s) => match &s.columns[0].components[0] {
-            crate::model::SectionComponent::Headline(h) => {
+            dd_siteforge_core::model::SectionComponent::Headline(h) => {
                 assert_eq!(h.text, "HeadlineZ");
-                assert_eq!(h.heading_level, crate::model::HeadingLevel::H3);
+                assert_eq!(h.heading_level, dd_siteforge_core::model::HeadingLevel::H3);
                 assert!(h.custom_css.is_none());
-                assert_eq!(h.sal, crate::model::SalAnimation::NoAnimation);
+                assert_eq!(h.sal, dd_siteforge_core::model::SalAnimation::NoAnimation);
                 assert!(h.sal_duration.is_none());
                 assert!(h.sal_delay.is_none());
             }
@@ -1694,8 +1703,8 @@ fn tier_c_spacer_form_edit_round_trip() {
     assert!(app.modal.is_none());
     match &app.site.pages[0].nodes[1] {
         PageNode::Section(s) => match &s.columns[0].components[0] {
-            crate::model::SectionComponent::Spacer(sp) => {
-                assert_eq!(sp.size, crate::model::SpacerSize::Lg);
+            dd_siteforge_core::model::SectionComponent::Spacer(sp) => {
+                assert_eq!(sp.size, dd_siteforge_core::model::SpacerSize::Lg);
             }
             _ => panic!("expected Spacer"),
         },
@@ -1719,7 +1728,7 @@ fn alternating_item_subtitle_round_trip() {
     send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
     match &app.site.pages[0].nodes[1] {
         PageNode::Section(s) => match &s.columns[0].components[0] {
-            crate::model::SectionComponent::Alternating(alt) => {
+            dd_siteforge_core::model::SectionComponent::Alternating(alt) => {
                 assert!(
                     alt.items[0].child_subtitle.contains('!'),
                     "subtitle should contain inserted char, got {:?}",
@@ -1746,7 +1755,7 @@ fn tier_b_accordion_item_edit_persists() {
     send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
     match &app.site.pages[0].nodes[1] {
         PageNode::Section(s) => match &s.columns[0].components[0] {
-            crate::model::SectionComponent::Accordion(acc) => {
+            dd_siteforge_core::model::SectionComponent::Accordion(acc) => {
                 assert!(
                     acc.items[0].child_title.contains('!'),
                     "first accordion item title should contain inserted char, got {:?}",
@@ -2026,15 +2035,15 @@ fn tier_d_navigation_button_saves_url() {
     send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
     match &app.site.pages[0].nodes[1] {
         PageNode::Section(s) => match &s.columns[0].components[0] {
-            crate::model::SectionComponent::Navigation(nav) => {
+            dd_siteforge_core::model::SectionComponent::Navigation(nav) => {
                 assert_eq!(
                     nav.items[0].child_kind,
-                    crate::model::NavigationKind::Button
+                    dd_siteforge_core::model::NavigationKind::Button
                 );
                 assert_eq!(nav.items[0].child_link_url.as_deref(), Some("/contact-us"));
                 assert_eq!(
                     nav.items[0].child_link_target,
-                    Some(crate::model::CardLinkTarget::SelfTarget)
+                    Some(dd_siteforge_core::model::CardLinkTarget::SelfTarget)
                 );
             }
             _ => panic!("expected Navigation"),
@@ -2047,7 +2056,8 @@ fn tier_d_navigation_button_saves_url() {
 fn navigation_menu_and_submenu_reorder_with_shift_jk() {
     let mut app = app_with_component(ComponentKind::Navigation);
     if let PageNode::Section(section) = &mut app.site.pages[0].nodes[1] {
-        let crate::model::SectionComponent::Navigation(nav) = &mut section.columns[0].components[0]
+        let dd_siteforge_core::model::SectionComponent::Navigation(nav) =
+            &mut section.columns[0].components[0]
         else {
             panic!("expected Navigation");
         };
@@ -2096,7 +2106,7 @@ fn navigation_menu_and_submenu_reorder_with_shift_jk() {
 
     match &app.site.pages[0].nodes[1] {
         PageNode::Section(section) => match &section.columns[0].components[0] {
-            crate::model::SectionComponent::Navigation(nav) => {
+            dd_siteforge_core::model::SectionComponent::Navigation(nav) => {
                 assert_eq!(nav.items[0].child_link_label, "About");
                 assert_eq!(
                     nav.items[0]
@@ -2115,12 +2125,15 @@ fn navigation_menu_and_submenu_reorder_with_shift_jk() {
     }
 }
 
-fn nav_item(label: &str, items: Vec<crate::model::NavigationItem>) -> crate::model::NavigationItem {
-    crate::model::NavigationItem {
-        child_kind: crate::model::NavigationKind::Link,
+fn nav_item(
+    label: &str,
+    items: Vec<dd_siteforge_core::model::NavigationItem>,
+) -> dd_siteforge_core::model::NavigationItem {
+    dd_siteforge_core::model::NavigationItem {
+        child_kind: dd_siteforge_core::model::NavigationKind::Link,
         child_link_label: label.to_string(),
         child_link_url: Some("/".to_string()),
-        child_link_target: Some(crate::model::CardLinkTarget::SelfTarget),
+        child_link_target: Some(dd_siteforge_core::model::CardLinkTarget::SelfTarget),
         child_link_css: None,
         items,
     }
@@ -2661,7 +2674,10 @@ fn pages_panel_add_hero_only_template_inserts_single_hero() {
 
     let p = app.site.pages.last().unwrap();
     assert_eq!(p.nodes.len(), 1);
-    assert!(matches!(p.nodes[0], crate::model::PageNode::Hero(_)));
+    assert!(matches!(
+        p.nodes[0],
+        dd_siteforge_core::model::PageNode::Hero(_)
+    ));
     assert_eq!(p.head.title, "Gallery");
 }
 
@@ -2680,8 +2696,14 @@ fn pages_panel_add_hero_plus_section_inserts_hero_then_section() {
 
     let p = app.site.pages.last().unwrap();
     assert_eq!(p.nodes.len(), 2);
-    assert!(matches!(p.nodes[0], crate::model::PageNode::Hero(_)));
-    assert!(matches!(p.nodes[1], crate::model::PageNode::Section(_)));
+    assert!(matches!(
+        p.nodes[0],
+        dd_siteforge_core::model::PageNode::Hero(_)
+    ));
+    assert!(matches!(
+        p.nodes[1],
+        dd_siteforge_core::model::PageNode::Section(_)
+    ));
 }
 
 #[test]
@@ -2829,10 +2851,12 @@ fn pages_panel_shift_x_prompts_then_y_deletes_and_pushes_trash() {
         None,
     );
     app.selected_sidebar_section = SidebarSection::Pages;
-    app.site.pages.push(crate::model::Page::from_template(
-        "Contact",
-        crate::model::PageTemplate::Blank,
-    ));
+    app.site
+        .pages
+        .push(dd_siteforge_core::model::Page::from_template(
+            "Contact",
+            dd_siteforge_core::model::PageTemplate::Blank,
+        ));
     app.selected_page = 1;
 
     send_key(&mut app, KeyCode::Char('X'), KeyModifiers::SHIFT);
@@ -2855,10 +2879,12 @@ fn pages_panel_shift_x_prompts_then_n_cancels() {
         None,
     );
     app.selected_sidebar_section = SidebarSection::Pages;
-    app.site.pages.push(crate::model::Page::from_template(
-        "Contact",
-        crate::model::PageTemplate::Blank,
-    ));
+    app.site
+        .pages
+        .push(dd_siteforge_core::model::Page::from_template(
+            "Contact",
+            dd_siteforge_core::model::PageTemplate::Blank,
+        ));
     app.selected_page = 1;
 
     send_key(&mut app, KeyCode::Char('X'), KeyModifiers::SHIFT);
@@ -2878,10 +2904,12 @@ fn pages_panel_u_restores_last_deleted_page_and_selects_it() {
         None,
     );
     app.selected_sidebar_section = SidebarSection::Pages;
-    app.site.pages.push(crate::model::Page::from_template(
-        "Contact",
-        crate::model::PageTemplate::Blank,
-    ));
+    app.site
+        .pages
+        .push(dd_siteforge_core::model::Page::from_template(
+            "Contact",
+            dd_siteforge_core::model::PageTemplate::Blank,
+        ));
     app.selected_page = 1;
 
     app.modal = None;
@@ -2926,14 +2954,18 @@ fn pages_panel_shift_j_moves_current_page_down() {
         None,
     );
     app.selected_sidebar_section = SidebarSection::Pages;
-    app.site.pages.push(crate::model::Page::from_template(
-        "Contact",
-        crate::model::PageTemplate::Blank,
-    ));
-    app.site.pages.push(crate::model::Page::from_template(
-        "About",
-        crate::model::PageTemplate::Blank,
-    ));
+    app.site
+        .pages
+        .push(dd_siteforge_core::model::Page::from_template(
+            "Contact",
+            dd_siteforge_core::model::PageTemplate::Blank,
+        ));
+    app.site
+        .pages
+        .push(dd_siteforge_core::model::Page::from_template(
+            "About",
+            dd_siteforge_core::model::PageTemplate::Blank,
+        ));
     app.selected_page = 0;
 
     send_key(&mut app, KeyCode::Char('J'), KeyModifiers::SHIFT);
@@ -2952,10 +2984,12 @@ fn pages_panel_shift_k_moves_current_page_up() {
         None,
     );
     app.selected_sidebar_section = SidebarSection::Pages;
-    app.site.pages.push(crate::model::Page::from_template(
-        "Contact",
-        crate::model::PageTemplate::Blank,
-    ));
+    app.site
+        .pages
+        .push(dd_siteforge_core::model::Page::from_template(
+            "Contact",
+            dd_siteforge_core::model::PageTemplate::Blank,
+        ));
     app.selected_page = 1;
 
     send_key(&mut app, KeyCode::Char('K'), KeyModifiers::SHIFT);
@@ -3583,7 +3617,10 @@ fn page_head_share_fields_stay_empty_until_set() {
     );
     assert_eq!(head.og_image_width, Some(640));
     assert_eq!(head.og_image_height, Some(480));
-    assert_eq!(head.twitter_card, Some(crate::model::TwitterCard::Summary));
+    assert_eq!(
+        head.twitter_card,
+        Some(dd_siteforge_core::model::TwitterCard::Summary)
+    );
     assert!(head.og_image.is_none());
 }
 
@@ -4029,7 +4066,7 @@ fn bare_site_json_name_exports_into_the_working_directory() {
         .unwrap()
         .to_path_buf();
     assert!(empty_parent.as_os_str().is_empty());
-    assert!(crate::export::join_inside(&empty_parent, "web").is_none());
+    assert!(dd_siteforge_core::export::join_inside(&empty_parent, "web").is_none());
 
     if let PageNode::Hero(hero) = &mut app.site.pages[0].nodes[0] {
         hero.parent_image_url = "https://example.com/hero.jpg".to_string();
@@ -4102,10 +4139,12 @@ fn double_click_page_in_nodes_panel_switches_to_page_and_opens_head_edit() {
         None,
     );
     // starter has 1 page; add a second so we can double-click the second item (index 1)
-    app.site.pages.push(crate::model::Page::from_template(
-        "About",
-        crate::model::PageTemplate::Blank,
-    ));
+    app.site
+        .pages
+        .push(dd_siteforge_core::model::Page::from_template(
+            "About",
+            dd_siteforge_core::model::PageTemplate::Blank,
+        ));
     assert!(app.site.pages.len() >= 2);
 
     // Make pages_area tall enough to contain the list items (body starts at y+1)
@@ -4259,7 +4298,7 @@ fn tick_autosave_writes_when_dirty_and_debounce_elapsed() {
     ));
     std::fs::create_dir_all(&tmp_dir).unwrap();
     let json_path = tmp_dir.join("site.json");
-    crate::storage::save_site(&json_path, &Site::starter()).unwrap();
+    dd_siteforge_core::storage::save_site(&json_path, &Site::starter()).unwrap();
 
     let mut app = App::new(
         Site::starter(),
@@ -4439,10 +4478,12 @@ fn current_page_slug_for_preview_returns_selected_page_slug() {
         "default".to_string(),
         None,
     );
-    app.site.pages.push(crate::model::Page::from_template(
-        "Contact",
-        crate::model::PageTemplate::Blank,
-    ));
+    app.site
+        .pages
+        .push(dd_siteforge_core::model::Page::from_template(
+            "Contact",
+            dd_siteforge_core::model::PageTemplate::Blank,
+        ));
     app.selected_page = 1;
     assert_eq!(app.current_page_slug_for_preview(), "contact");
 }
@@ -4488,8 +4529,8 @@ fn second_preview_reuses_server_and_asks_for_refresh() {
         None,
     );
     app.site.export_dir = Some("web".to_string());
-    crate::export::export_site(&app.site, &web, Some(&tmp)).unwrap();
-    app.preview_server = Some(crate::serve::StaticServer::start(web.clone()).unwrap());
+    dd_siteforge_core::export::export_site(&app.site, &web, Some(&tmp)).unwrap();
+    app.preview_server = Some(dd_siteforge_core::serve::StaticServer::start(web.clone()).unwrap());
     app.toasts.clear();
     app.commit_preview_to("web".to_string());
     assert!(
@@ -4528,8 +4569,8 @@ fn form_save_refreshes_running_preview() {
     let mut app = app_with_component(ComponentKind::RichText);
     app.path = Some(tmp.join("site.json"));
     app.site.export_dir = Some("web".to_string());
-    crate::export::export_site(&app.site, &web, Some(&tmp)).unwrap();
-    app.preview_server = Some(crate::serve::StaticServer::start(web.clone()).unwrap());
+    dd_siteforge_core::export::export_site(&app.site, &web, Some(&tmp)).unwrap();
+    app.preview_server = Some(dd_siteforge_core::serve::StaticServer::start(web.clone()).unwrap());
     open_form_edit_on_page_component(&mut app);
     app.toasts.clear();
     send_key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
@@ -4986,7 +5027,7 @@ fn shift_jk_keeps_focus_on_moved_component() {
         PageNode::Section(s) => {
             assert!(matches!(
                 s.columns[0].components[1],
-                crate::model::SectionComponent::Banner(_)
+                dd_siteforge_core::model::SectionComponent::Banner(_)
             ));
         }
         _ => panic!("expected section"),
@@ -5005,11 +5046,12 @@ fn shift_jk_keeps_focus_on_moved_component() {
 fn shift_jk_keeps_focus_on_moved_collection_item() {
     let mut app = app_with_component(ComponentKind::Card);
     if let PageNode::Section(section) = &mut app.site.pages[0].nodes[1] {
-        let crate::model::SectionComponent::Card(card) = &mut section.columns[0].components[0]
+        let dd_siteforge_core::model::SectionComponent::Card(card) =
+            &mut section.columns[0].components[0]
         else {
             panic!("expected card");
         };
-        card.items.push(crate::model::CardItem {
+        card.items.push(dd_siteforge_core::model::CardItem {
             child_image_url: "https://dummyimage.com/720x720/000/fff".to_string(),
             child_image_alt: "Second".to_string(),
             child_title: "Second".to_string(),
@@ -5018,7 +5060,7 @@ fn shift_jk_keeps_focus_on_moved_collection_item() {
             child_link_url: None,
             child_link_target: None,
             child_link_label: None,
-            child_link_style: crate::model::ButtonStyle::Primary,
+            child_link_style: dd_siteforge_core::model::ButtonStyle::Primary,
         });
     }
     let rows = app.build_tree_rows();
@@ -5100,7 +5142,7 @@ fn insert_component_after_selected_not_append() {
             assert_eq!(s.columns[0].components.len(), 2);
             assert!(matches!(
                 s.columns[0].components[1],
-                crate::model::SectionComponent::Alert(_)
+                dd_siteforge_core::model::SectionComponent::Alert(_)
             ));
         }
         _ => panic!("expected section"),
@@ -5114,7 +5156,7 @@ fn insert_component_after_selected_not_append() {
             assert_eq!(s.columns[0].components.len(), 3);
             assert!(matches!(
                 s.columns[0].components[1],
-                crate::model::SectionComponent::Image(_)
+                dd_siteforge_core::model::SectionComponent::Image(_)
             ));
         }
         _ => panic!("expected section"),
@@ -5141,7 +5183,7 @@ fn footer_insert_adds_to_footer_not_page() {
         app.site.footer.sections[0].columns[0]
             .components
             .iter()
-            .any(|c| matches!(c, crate::model::SectionComponent::RichText(_)))
+            .any(|c| matches!(c, dd_siteforge_core::model::SectionComponent::RichText(_)))
     );
     let page_comps_after = match &app.site.pages[0].nodes[1] {
         PageNode::Section(s) => s.columns[0].components.len(),
@@ -5929,10 +5971,12 @@ fn page_down_on_pages_moves_selected_page() {
     );
     app.selected_sidebar_section = SidebarSection::Pages;
     for title in ["About", "Work", "Blog", "Team", "Contact"] {
-        app.site.pages.push(crate::model::Page::from_template(
-            title,
-            crate::model::PageTemplate::Blank,
-        ));
+        app.site
+            .pages
+            .push(dd_siteforge_core::model::Page::from_template(
+                title,
+                dd_siteforge_core::model::PageTemplate::Blank,
+            ));
     }
     assert_eq!(app.site.pages.len(), 6);
     app.selected_page = 0;
@@ -6544,7 +6588,7 @@ fn insert_alert_on_page_does_not_add_header_alert() {
         s.columns.iter().any(|c| {
             c.components
                 .iter()
-                .any(|comp| matches!(comp, crate::model::SectionComponent::Alert(_)))
+                .any(|comp| matches!(comp, dd_siteforge_core::model::SectionComponent::Alert(_)))
         })
     });
     assert!(!header_has_alert_component);
@@ -6553,7 +6597,7 @@ fn insert_alert_on_page_does_not_add_header_alert() {
             s.columns[0]
                 .components
                 .iter()
-                .any(|c| matches!(c, crate::model::SectionComponent::Alert(_)))
+                .any(|c| matches!(c, dd_siteforge_core::model::SectionComponent::Alert(_)))
         ),
         _ => panic!("expected section"),
     }
@@ -6577,7 +6621,7 @@ fn insert_alert_in_header_uses_alert_slot_not_a_column() {
         s.columns.iter().any(|c| {
             c.components
                 .iter()
-                .any(|comp| matches!(comp, crate::model::SectionComponent::Alert(_)))
+                .any(|comp| matches!(comp, dd_siteforge_core::model::SectionComponent::Alert(_)))
         })
     });
     assert!(
@@ -6824,7 +6868,7 @@ fn site_form_saves_share_image_defaults() {
     assert_eq!(app.site.default_og_image_height, 500);
     assert_eq!(
         app.site.default_twitter_card,
-        crate::model::TwitterCard::Summary
+        dd_siteforge_core::model::TwitterCard::Summary
     );
 }
 

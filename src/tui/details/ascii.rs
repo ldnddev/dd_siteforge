@@ -5,7 +5,7 @@ use crate::tui::cursor;
 use crate::tui::editform::{EditFormState, FieldKind};
 
 pub(in crate::tui) fn section_ascii_map(
-    section: &crate::model::DdSection,
+    section: &dd_siteforge_core::model::DdSection,
     selected_column: usize,
     panel_width: usize,
 ) -> AsciiMap {
@@ -147,7 +147,7 @@ pub(in crate::tui) fn section_ascii_map(
 }
 
 pub(in crate::tui) fn header_ascii_map(
-    header: &crate::model::DdHeader,
+    header: &dd_siteforge_core::model::DdHeader,
     selected_section: usize,
     selected_column: usize,
     panel_width: usize,
@@ -189,7 +189,7 @@ pub(in crate::tui) fn header_ascii_map(
 }
 
 pub(in crate::tui) fn footer_ascii_map(
-    footer: &crate::model::DdFooter,
+    footer: &dd_siteforge_core::model::DdFooter,
     selected_section: usize,
     selected_column: usize,
     panel_width: usize,
@@ -227,7 +227,7 @@ pub(in crate::tui) fn footer_ascii_map(
 fn append_nested_section_map(
     lines: &mut Vec<String>,
     line_hits: &mut Vec<Vec<(usize, usize, usize, usize)>>,
-    section: &crate::model::DdSection,
+    section: &dd_siteforge_core::model::DdSection,
     selected_column: usize,
     inner_width: usize,
 ) {
@@ -267,7 +267,7 @@ fn wrap_ascii_block(
 }
 
 pub(in crate::tui) fn card_items_ascii_lines(
-    card: &crate::model::DdCard,
+    card: &dd_siteforge_core::model::DdCard,
     container_inner_width: usize,
 ) -> Vec<String> {
     if card.items.is_empty() {
@@ -331,17 +331,17 @@ pub(in crate::tui) fn card_items_ascii_lines(
 }
 
 fn component_blueprint_lines(
-    component: &crate::model::SectionComponent,
+    component: &dd_siteforge_core::model::SectionComponent,
     inner: usize,
 ) -> Vec<String> {
-    if let crate::model::SectionComponent::Spacer(sp) = component {
+    if let dd_siteforge_core::model::SectionComponent::Spacer(sp) = component {
         let size = match sp.size {
-            crate::model::SpacerSize::Sm => "-sm",
-            crate::model::SpacerSize::Md => "-md",
-            crate::model::SpacerSize::Lg => "-lg",
-            crate::model::SpacerSize::Xl => "-xl",
-            crate::model::SpacerSize::Xxl => "-xxl",
-            crate::model::SpacerSize::Xxxl => "-xxxl",
+            dd_siteforge_core::model::SpacerSize::Sm => "-sm",
+            dd_siteforge_core::model::SpacerSize::Md => "-md",
+            dd_siteforge_core::model::SpacerSize::Lg => "-lg",
+            dd_siteforge_core::model::SpacerSize::Xl => "-xl",
+            dd_siteforge_core::model::SpacerSize::Xxl => "-xxl",
+            dd_siteforge_core::model::SpacerSize::Xxxl => "-xxxl",
         };
         let mut lines = vec![format!("- dd-spacer {size}")];
         if sp.divider {
@@ -350,7 +350,7 @@ fn component_blueprint_lines(
         }
         return lines;
     }
-    if let crate::model::SectionComponent::Card(card) = component {
+    if let dd_siteforge_core::model::SectionComponent::Card(card) = component {
         let mut lines = vec!["- dd-card".to_string()];
         for line in card_items_ascii_lines(card, inner) {
             lines.push(line);
@@ -695,7 +695,10 @@ pub(in crate::tui) fn breakpoint_for_panel_chars(panel_chars: usize) -> Responsi
     }
 }
 
-pub(in crate::tui) fn hero_ascii_map(hero: &crate::model::DdHero, panel_width: usize) -> AsciiMap {
+pub(in crate::tui) fn hero_ascii_map(
+    hero: &dd_siteforge_core::model::DdHero,
+    panel_width: usize,
+) -> AsciiMap {
     let inner_width = panel_width.saturating_sub(4).max(8);
     let border = format!("+{}+", "-".repeat(inner_width + 2));
     let state = cursor::hero_to_form_state(hero);
@@ -761,7 +764,7 @@ impl ResponsiveBp {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{
+    use dd_siteforge_core::model::{
         ButtonStyle, CardLinkTarget, CtaClass, DdCta, DdHeadline, DdSection, DdSpacer,
         HeadingLevel, SalAnimation, SectionClass, SectionColumn, SectionComponent,
         SectionItemBoxClass, SpacerSize,
@@ -913,8 +916,8 @@ mod tests {
 
     #[test]
     fn hero_blueprint_lists_title_subtitle_copy_and_link_labels() {
-        let site = crate::model::Site::starter();
-        let crate::model::PageNode::Hero(hero) = &site.pages[0].nodes[0] else {
+        let site = dd_siteforge_core::model::Site::starter();
+        let dd_siteforge_core::model::PageNode::Hero(hero) = &site.pages[0].nodes[0] else {
             panic!("starter hero");
         };
         let map = hero_ascii_map(hero, 80);
@@ -945,7 +948,7 @@ mod tests {
             parent_title: "Get in touch".to_string(),
             parent_subtitle: "Subtitle".to_string(),
             parent_copy: "Copy".to_string(),
-            links: vec![crate::model::DdLink {
+            links: vec![dd_siteforge_core::model::DdLink {
                 url: "/go".to_string(),
                 label: "Go".to_string(),
                 target: CardLinkTarget::SelfTarget,

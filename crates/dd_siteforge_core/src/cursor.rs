@@ -13,6 +13,7 @@
 
 use anyhow::{Context, Result, anyhow};
 
+use crate::editform::{self, EditFormState, FieldKind};
 use crate::model::{
     AccordionClass, AccordionItem, AccordionType, AlertClass, AlertType, AlternatingItem,
     AlternatingType, BannerClass, ButtonStyle, CardItem, CardLinkTarget, CardType, CtaClass,
@@ -28,7 +29,6 @@ use crate::model::{
     SectionPadding, Site, SliderItem, SpacerSize, TabsItem, TabsOrientation, TimelineItem,
     TwitterCard, column_id_local_part, rehome_column_id, uniquify_id,
 };
-use crate::tui::editform::{self, EditFormState, FieldKind};
 
 /// Address of any editable node in the site.
 #[allow(dead_code)]
@@ -353,7 +353,7 @@ pub fn component_to_form_state(component: &SectionComponent) -> Option<EditFormS
 
 /// Seed an `EditFormState` with current values from a `DdCta`.
 pub fn cta_to_form_state(cta: &DdCta) -> EditFormState {
-    let mut state = EditFormState::new(&crate::tui::editform::CTA_FORM);
+    let mut state = EditFormState::new(&crate::editform::CTA_FORM);
     state.set("parent_class", enum_serde_str(cta.parent_class));
     state.set("parent_image_url", cta.parent_image_url.clone());
     state.set("parent_image_alt", cta.parent_image_alt.clone());
@@ -1370,10 +1370,22 @@ fn required_pixels(raw: &str, label: &str, fallback: u32) -> Result<u32> {
     }
 }
 
-fn require_css_hex(raw: &str, field: &str) -> Result<String> {
+/// Six-digit CSS hex (`#RRGGBB`). Returns the trimmed input.
+///
+/// Site brand colors (`primary_color`, `secondary_color`, `tertiary_color`,
+/// `support_color`) reject anything else. The outer error is
+/// `invalid {field}: expected hex color like '#RRGGBB'`.
+pub fn require_css_hex(raw: &str, field: &str) -> Result<String> {
     let trimmed = raw.trim().to_string();
-    super::theme::parse_hex_color(&trimmed)
-        .with_context(|| format!("invalid {field}: expected hex color like '#RRGGBB'"))?;
+    let hex = trimmed.trim_start_matches('#');
+    if hex.len() != 6 || !hex.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err(anyhow!(
+            "expected hex color like '#RRGGBB', got '{trimmed}'"
+        ))
+        .context(format!(
+            "invalid {field}: expected hex color like '#RRGGBB'"
+        ));
+    }
     Ok(trimmed)
 }
 
@@ -1895,4 +1907,24 @@ pub fn form_field_value_count(state: &EditFormState) -> usize {
         };
     }
     count
+}
+
+#[cfg(test)]
+mod hex_rule {
+    use super::require_css_hex;
+
+    #[test]
+    fn six_digit_hex_is_trimmed_and_other_text_is_rejected() {
+        assert_eq!(
+            require_css_hex("  #88d9f7 ", "primary_color").unwrap(),
+            "#88d9f7"
+        );
+        let err = require_css_hex("red", "primary_color").unwrap_err();
+        let text = format!("{err:#}");
+        assert!(
+            text.contains("invalid primary_color: expected hex color like '#RRGGBB'"),
+            "{text}"
+        );
+        assert!(text.contains("got 'red'"), "{text}");
+    }
 }

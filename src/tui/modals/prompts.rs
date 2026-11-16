@@ -335,7 +335,7 @@ impl App {
     pub(in crate::tui) fn render_page_health_modal(
         &self,
         frame: &mut ratatui::Frame,
-        items: &[crate::health::HealthItem],
+        items: &[dd_siteforge_core::health::HealthItem],
         scroll_offset: usize,
     ) {
         let area = centered_rect(70, 60, frame.area());

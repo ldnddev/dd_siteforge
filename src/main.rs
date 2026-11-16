@@ -1,29 +1,19 @@
-mod asset_build;
-mod export;
-mod health;
-mod markdown;
-mod model;
-mod og_image;
-mod renderer;
-mod scaffold;
-mod search_index;
-mod serve;
-mod session;
-mod storage;
-mod templates;
 mod tui;
-mod validate;
 
 use anyhow::Context;
 use clap::{Parser, Subcommand};
-use export::export_site;
-use model::Site;
+use dd_siteforge_core::export::{self, export_site};
+use dd_siteforge_core::model::Site;
+use dd_siteforge_core::scaffold;
+use dd_siteforge_core::serve;
+use dd_siteforge_core::session;
+use dd_siteforge_core::storage::{load_site, save_site};
+use dd_siteforge_core::templates;
+use dd_siteforge_core::validate::validate_site_with_root;
 use std::fs;
 use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
-use storage::{load_site, save_site};
 use tui::{run_tui_open_picker, run_tui_restored};
-use validate::validate_site_with_root;
 
 #[derive(Debug, Parser)]
 #[command(

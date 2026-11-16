@@ -3,7 +3,6 @@ use std::io;
 use std::path::PathBuf;
 use std::time::Duration;
 
-pub(super) use crate::model::{PageNode, SectionColumn, Site};
 pub(super) use crossterm::event::{
     self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
     Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind,
@@ -12,6 +11,7 @@ use crossterm::execute;
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
+pub(super) use dd_siteforge_core::model::{PageNode, SectionColumn, Site};
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 pub(super) use ratatui::layout::{Constraint, Direction, Layout, Rect};
@@ -32,11 +32,10 @@ pub(super) struct FormTextUndo {
     pub(super) selection_anchor: Option<usize>,
 }
 
-mod component_kind;
-pub mod cursor;
 mod details;
 mod draw;
-pub mod editform;
+pub use dd_siteforge_core::cursor;
+pub use dd_siteforge_core::editform;
 mod events;
 mod find;
 mod form_textarea;
@@ -54,7 +53,7 @@ mod toast_chrome;
 mod tree;
 mod util;
 
-use component_kind::*;
+use dd_siteforge_core::component_kind::ComponentKind;
 use details::*;
 use form_textarea::*;
 use help::*;
@@ -177,12 +176,12 @@ pub(super) struct App {
     header_alert_selected: bool,
     /// Session trash — deleted pages pushed here for `u` undo.
     /// Not persisted. Capped at 20 entries (oldest drops off).
-    deleted_pages: Vec<crate::model::Page>,
+    deleted_pages: Vec<dd_siteforge_core::model::Page>,
     /// Site snapshots taken before structural tree edits. `u` in Layout pops.
     /// Capped at 20.
-    undo_stack: Vec<crate::model::Site>,
+    undo_stack: Vec<dd_siteforge_core::model::Site>,
     /// Snapshots undone with `u`; `Ctrl+R` pops. Cleared on a new `push_undo`.
-    redo_stack: Vec<crate::model::Site>,
+    redo_stack: Vec<dd_siteforge_core::model::Site>,
     /// Last successful insert kind, repeated with `.`.
     last_insert_kind: Option<ComponentKind>,
     /// Background `lando grunt build` / `npx grunt build`.
@@ -222,7 +221,7 @@ pub(super) struct App {
     layout_list_state: ListState,
     last_mouse_click: Option<(u16, u16, std::time::Instant)>,
     path: Option<PathBuf>,
-    preview_server: Option<crate::serve::StaticServer>,
+    preview_server: Option<dd_siteforge_core::serve::StaticServer>,
     should_quit: bool,
     modal: Option<Modal>,
     component_kind: ComponentKind,
@@ -532,16 +531,16 @@ impl App {
         });
     }
 
-    pub(super) fn current_page(&self) -> &crate::model::Page {
+    pub(super) fn current_page(&self) -> &dd_siteforge_core::model::Page {
         &self.site.pages[self.selected_page]
     }
 
-    pub(super) fn current_page_mut(&mut self) -> Option<&mut crate::model::Page> {
+    pub(super) fn current_page_mut(&mut self) -> Option<&mut dd_siteforge_core::model::Page> {
         self.site.pages.get_mut(self.selected_page)
     }
 
     pub(super) fn selected_index_for_page(
-        page: &crate::model::Page,
+        page: &dd_siteforge_core::model::Page,
         selected_node: usize,
     ) -> Option<usize> {
         if page.nodes.is_empty() {
@@ -572,7 +571,7 @@ impl App {
     /// a single serialization so the two files are guaranteed byte-identical.
     /// Refreshes the saved snapshot and clears the dirty flag on success.
     pub(super) fn commit_save_with_backup(&mut self, path: &std::path::Path) -> anyhow::Result<()> {
-        crate::storage::save_site(path, &self.site)?;
+        dd_siteforge_core::storage::save_site(path, &self.site)?;
         let backup = backup_path_for(path);
         std::fs::copy(path, &backup)?;
         self.last_saved_json = serde_json::to_string(&self.site).unwrap_or_default();
@@ -602,7 +601,7 @@ impl App {
         let Some(path) = self.path.clone() else {
             return false;
         };
-        match crate::storage::save_site(&path, &self.site) {
+        match dd_siteforge_core::storage::save_site(&path, &self.site) {
             Ok(()) => {
                 self.last_saved_json = serde_json::to_string(&self.site).unwrap_or_default();
                 self.dirty = false;

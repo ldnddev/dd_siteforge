@@ -1,0 +1,50 @@
+# License, advisory, ban, and source checks for the dd_siteforge workspace.
+# `cargo deny check` is the CI gate. GPL is not on the allow list, so a
+# GPL crate pulled in by accident fails the license check.
+
+[graph]
+targets = []
+all-features = false
+
+[advisories]
+version = 2
+yanked = "deny"
+unmaintained = "workspace"
+# These are in the lockfile today. The vulnerable pulldown-cmark option
+# (ENABLE_WIKILINKS) is not turned on. anyhow's downcast_mut and rustix's
+# xattr helpers are not called. Version bumps belong in their own PR.
+ignore = [
+    { id = "RUSTSEC-2026-0190", reason = "anyhow 1.0.101 is locked. downcast_mut is unused. Upgrade separately." },
+    { id = "RUSTSEC-2026-0414", reason = "pulldown-cmark wikilinks are off. Options used: strikethrough, tables, tasklists, heading attributes." },
+    { id = "RUSTSEC-2026-0433", reason = "Same wikilink option, which markdown.rs does not enable." },
+    { id = "RUSTSEC-2026-0486", reason = "rustix is transitive through crossterm. xattr helpers are unused. Upgrade separately." },
+]
+
+[licenses]
+version = 2
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "0BSD",
+    "CC0-1.0",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "MPL-2.0",
+]
+confidence-threshold = 0.8
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+highlight = "all"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
