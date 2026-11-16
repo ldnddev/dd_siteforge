@@ -8,10 +8,14 @@
 
 pub mod asset_build;
 pub mod component_kind;
+pub mod controls;
 pub mod cursor;
 pub mod editform;
+pub mod edits;
 pub mod export;
+pub mod gui_edit;
 pub mod health;
+pub mod history;
 pub mod labels;
 pub mod markdown;
 pub mod model;

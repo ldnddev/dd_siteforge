@@ -1424,16 +1424,38 @@ fn html_escape_attr(s: &str) -> String {
         .replace('>', "&gt;")
 }
 
+fn sort_json_keys(value: &Value) -> Value {
+    match value {
+        Value::Object(map) => {
+            let mut keys: Vec<&String> = map.keys().collect();
+            keys.sort();
+            let mut ordered = serde_json::Map::new();
+            for key in keys {
+                if let Some(child) = map.get(key) {
+                    ordered.insert(key.clone(), sort_json_keys(child));
+                }
+            }
+            Value::Object(ordered)
+        }
+        Value::Array(items) => Value::Array(items.iter().map(sort_json_keys).collect()),
+        other => other.clone(),
+    }
+}
+
 /// JSON embedded in `<script type="application/ld+json">`.
 ///
 /// `serde_json` leaves `<` intact, and an HTML parser closes the script element
 /// at the first `</script>` before it parses the JSON. Escape the characters
 /// that can break out of that element. The result is still valid JSON.
 fn json_for_html_script(value: &Value, pretty: bool) -> String {
+    // `serde_json`'s `preserve_order` feature (pulled in by the GUI crate)
+    // keeps map insertion order. The TUI build uses a sorted map. Sort here
+    // so both builds emit the same JSON-LD.
+    let value = sort_json_keys(value);
     let json = if pretty {
-        serde_json::to_string_pretty(value).unwrap_or_else(|_| "{}".to_string())
+        serde_json::to_string_pretty(&value).unwrap_or_else(|_| "{}".to_string())
     } else {
-        serde_json::to_string(value).unwrap_or_else(|_| "{}".to_string())
+        serde_json::to_string(&value).unwrap_or_else(|_| "{}".to_string())
     };
     let mut out = String::with_capacity(json.len());
     for ch in json.chars() {

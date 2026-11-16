@@ -4,6 +4,7 @@
 use std::path::{Path, PathBuf};
 
 use dd_siteforge_core::component_kind::ComponentKind;
+use dd_siteforge_core::controls::{self, FieldControl};
 use dd_siteforge_core::cursor::{
     alert_to_form_state, component_to_form_state, footer_to_form_state, header_root_to_form_state,
     hero_to_form_state, page_head_to_form_state, section_to_form_state, site_to_form_state,
@@ -149,6 +150,9 @@ pub enum FieldChrome {
     Toggle,
     Markdown,
     Collection,
+    Image,
+    Page,
+    Width,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -170,6 +174,7 @@ impl InspTab {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FieldView {
+    pub id: String,
     pub label: String,
     pub value: String,
     pub required: bool,
@@ -177,6 +182,8 @@ pub struct FieldView {
     pub error: Option<String>,
     pub meta: Option<String>,
     pub tab: InspTab,
+    /// Markdown fields draw H2 / B / I / Link / List and no preview eye.
+    pub toolbar: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -187,6 +194,8 @@ pub struct InspectorView {
     pub tabs: Vec<InspTab>,
     pub fields: Vec<FieldView>,
     pub empty: bool,
+    /// Item back bar. Shown while a collection item is drilled open.
+    pub back: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -558,6 +567,7 @@ pub fn inspector(
             tabs: Vec::new(),
             fields: Vec::new(),
             empty: true,
+            back: None,
         };
     };
     let mut fields = visible_fields(&state);
@@ -582,6 +592,38 @@ pub fn inspector(
         tabs,
         fields,
         empty: false,
+        back: None,
+    }
+}
+
+/// Inspector for a live draft, including a drilled item's back bar.
+pub fn inspector_draft(
+    state: &EditFormState,
+    breadcrumb: String,
+    tab: Option<InspTab>,
+    back: Option<String>,
+) -> InspectorView {
+    let mut fields = visible_fields(state);
+    let tabs = present_tabs(&fields);
+    let active = tab
+        .filter(|wanted| tabs.contains(wanted))
+        .or(tabs.first().copied());
+    if let Some(active) = active {
+        fields.retain(|field| field.tab == active);
+    }
+    let title = if back.is_some() {
+        format!("Item · {}", state.form.title)
+    } else {
+        state.form.title.to_string()
+    };
+    InspectorView {
+        breadcrumb,
+        kind: state.form.title.to_string(),
+        title,
+        tabs,
+        fields,
+        empty: false,
+        back,
     }
 }
 
@@ -598,6 +640,7 @@ fn components_line(
         names.join("\n")
     };
     FieldView {
+        id: "components".to_string(),
         label: "Components".to_string(),
         value,
         required: false,
@@ -605,6 +648,7 @@ fn components_line(
         error: None,
         meta: None,
         tab: InspTab::Content,
+        toolbar: false,
     }
 }
 
@@ -652,28 +696,43 @@ fn visible_fields(state: &EditFormState) -> Vec<FieldView> {
         .filter(|field| state.field_visible(field))
         .map(|field| {
             let tab = tab_of(field.id);
-            let chrome = chrome_of(&field.kind);
+            let chrome = chrome_of(field);
             let raw = match &field.kind {
-                FieldKind::SubForm { .. } => collection_value(state, field.id),
+                FieldKind::SubForm { .. } => collection_value(state, field),
                 _ => state.get(field.id).to_string(),
             };
-            let empty = raw.trim().is_empty() || raw == "(no items)";
-            let error = if field.required && raw.trim().is_empty() {
+            let empty =
+                raw.trim().is_empty() || raw == "(no items)" || raw.starts_with("(no items");
+            let error = if field.required && state.field_value_empty(field) {
                 Some(format!("{} is required.", field.label))
             } else {
                 None
             };
-            let meta = if chrome == FieldChrome::Markdown {
-                Some(format!("Markdown · {} chars", raw.chars().count()))
-            } else {
-                None
+            let meta = match chrome {
+                FieldChrome::Markdown => Some(format!("Markdown · {} chars", raw.chars().count())),
+                FieldChrome::Image => Some(if field.id.contains("mp4") {
+                    "MP4".to_string()
+                } else {
+                    "JPG, PNG, WebP, GIF, SVG".to_string()
+                }),
+                FieldChrome::Collection => {
+                    Some("A add · X remove · Shift+J/K move · Enter edit".to_string())
+                }
+                _ => None,
             };
-            let value = if empty && chrome != FieldChrome::Collection {
+            let value = if chrome == FieldChrome::Image && empty {
+                "Drop an image, or browse".to_string()
+            } else if chrome == FieldChrome::Page && empty {
+                "Choose a page…".to_string()
+            } else if empty && chrome != FieldChrome::Collection {
                 "Empty".to_string()
+            } else if chrome == FieldChrome::Image {
+                file_name(&raw)
             } else {
                 raw
             };
             FieldView {
+                id: field.id.to_string(),
                 label: field.label.to_string(),
                 value,
                 required: field.required,
@@ -681,22 +740,53 @@ fn visible_fields(state: &EditFormState) -> Vec<FieldView> {
                 error,
                 meta,
                 tab,
+                toolbar: chrome == FieldChrome::Markdown,
             }
         })
         .collect()
 }
 
-fn collection_value(state: &EditFormState, id: &str) -> String {
-    let count = state
+fn collection_value(
+    state: &EditFormState,
+    field: &dd_siteforge_core::editform::FormField,
+) -> String {
+    let summary_id = match &field.kind {
+        FieldKind::SubForm {
+            summary_field_id, ..
+        } => *summary_field_id,
+        _ => "",
+    };
+    let items = state
         .sub_state
-        .get(id)
-        .map(|items| items.len())
-        .unwrap_or(0);
-    if count == 0 {
-        "(no items)".to_string()
-    } else {
-        format!("{count} items")
+        .get(field.id)
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+    if items.is_empty() {
+        return "(no items; press A to add)".to_string();
     }
+    items
+        .iter()
+        .enumerate()
+        .map(|(index, item)| {
+            let summary = item.get(summary_id).trim();
+            let summary = if summary.is_empty() {
+                "(untitled)"
+            } else {
+                summary
+            };
+            format!("{}. {summary}", index + 1)
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn file_name(stored: &str) -> String {
+    stored
+        .rsplit(['/', '\\'])
+        .next()
+        .filter(|name| !name.is_empty())
+        .unwrap_or(stored)
+        .to_string()
 }
 
 fn tab_of(id: &str) -> InspTab {
@@ -709,26 +799,17 @@ fn tab_of(id: &str) -> InspTab {
     }
 }
 
-fn chrome_of(kind: &FieldKind) -> FieldChrome {
-    match kind {
-        FieldKind::Textarea { .. } => FieldChrome::Markdown,
-        FieldKind::SubForm { .. } => FieldChrome::Collection,
-        FieldKind::Enum { options, .. } if is_toggle(options) => FieldChrome::Toggle,
-        FieldKind::Enum { .. } => FieldChrome::Select,
-        _ => FieldChrome::Text,
+fn chrome_of(field: &dd_siteforge_core::editform::FormField) -> FieldChrome {
+    match controls::control_for(field) {
+        FieldControl::Markdown => FieldChrome::Markdown,
+        FieldControl::Collection(_) => FieldChrome::Collection,
+        FieldControl::Toggle => FieldChrome::Toggle,
+        FieldControl::Image { .. } => FieldChrome::Image,
+        FieldControl::PagePicker => FieldChrome::Page,
+        FieldControl::Width => FieldChrome::Width,
+        FieldControl::Select | FieldControl::Position | FieldControl::Media => FieldChrome::Select,
+        FieldControl::Text | FieldControl::None => FieldChrome::Text,
     }
-}
-
-fn is_toggle(options: &[&str]) -> bool {
-    if options.len() != 2 {
-        return false;
-    }
-    options.iter().all(|option| {
-        matches!(
-            option.to_ascii_lowercase().as_str(),
-            "true" | "false" | "on" | "off" | "yes" | "no"
-        )
-    })
 }
 
 fn issue_count(state: &EditFormState) -> usize {
@@ -742,7 +823,7 @@ fn issue_count(state: &EditFormState) -> usize {
         .count()
 }
 
-fn form_state(
+pub fn form_state(
     site: &Site,
     region: &SideTarget,
     page_index: usize,

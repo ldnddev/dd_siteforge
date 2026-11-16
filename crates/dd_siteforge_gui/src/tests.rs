@@ -315,6 +315,83 @@ fn golden_site_renders_read_only_tree_and_fields(cx: &mut TestAppContext) {
     });
 }
 
+#[gpui::test]
+fn ctrl_s_blocks_an_invalid_draft_then_checkpoints_a_valid_one(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("site.json");
+    save_site(&path, &Site::starter()).unwrap();
+    let shell = mount(cx, opts(dir.path(), Some(path.clone())));
+    shell.update(cx, |shell, _| {
+        shell.select_outline_label("dd-hero");
+        shell.focus_inspector();
+        assert!(shell.set_field_value("parent_title", ""));
+        shell.handle_key("ctrl-s");
+        let text = shell.visible_text();
+        assert!(text.contains("Title is required."), "{text}");
+        assert!(text.contains("Issue"), "{text}");
+        assert!(
+            !checkpoint_path(&path).is_file(),
+            "invalid draft must block the checkpoint"
+        );
+        assert!(shell.set_field_value("parent_title", "Shipped"));
+        shell.handle_key("ctrl-s");
+        assert!(checkpoint_path(&path).is_file());
+        assert!(shell.visible_text().contains("H2"));
+        assert!(shell.visible_text().contains("List"));
+        assert!(!shell.visible_text().contains("preview eye"));
+    });
+}
+
+#[gpui::test]
+fn import_rename_drag_and_markdown_go_through_the_editor(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("site.json");
+    save_site(&path, &Site::starter()).unwrap();
+    let png = {
+        let image = image::RgbImage::from_pixel(8, 8, image::Rgb([1, 2, 3]));
+        let dynamic = image::DynamicImage::ImageRgb8(image);
+        let mut bytes = Vec::new();
+        dynamic
+            .write_to(
+                &mut std::io::Cursor::new(&mut bytes),
+                image::ImageFormat::Png,
+            )
+            .unwrap();
+        let file = dir.path().join("My Shot.PNG");
+        std::fs::write(&file, bytes).unwrap();
+        file
+    };
+    let shell = mount(cx, opts(dir.path(), Some(path)));
+    shell.update(cx, |shell, _| {
+        shell.select_sidebar_label("Home");
+        shell.rename_page_to("Home Base");
+        assert!(shell.visible_text().contains("Renamed page: Home Base"));
+        shell.select_outline_label("dd-hero");
+        shell.focus_inspector();
+        assert!(shell.focus_field_id("parent_copy"));
+        assert!(shell.insert_markdown(dd_siteforge_core::controls::MarkdownInsert::H2));
+        assert!(shell.focus_field_id("media_image_url"));
+        shell.import_dropped(png, Some(false));
+        assert!(
+            shell
+                .visible_text()
+                .contains("Picked: assets/images/my-shot.png")
+        );
+        shell.handle_key("ctrl-s");
+        assert!(shell.undo_depth() >= 1);
+        shell.handle_key("/");
+        shell.handle_key("h");
+        shell.handle_key("e");
+        shell.handle_key("a");
+        shell.handle_key("d");
+        shell.handle_key("enter");
+        shell.drag_component_to(0);
+        shell.focus_inspector();
+        shell.focus_field_id("items");
+        shell.drag_collection_to(0, 0);
+    });
+}
+
 fn checkpoint_path(path: &std::path::Path) -> PathBuf {
     dd_siteforge_core::storage::checkpoint_path(path)
 }

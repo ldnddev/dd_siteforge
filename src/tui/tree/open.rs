@@ -871,51 +871,21 @@ impl App {
 
     pub(in crate::tui) fn add_selected_component_to_section(&mut self) {
         let kind = self.component_kind;
-        if matches!(kind, ComponentKind::Hero | ComponentKind::Section) {
-            self.push_toast(
-                ToastLevel::Warning,
-                "dd-hero and dd-section are top-level insert types.",
-            );
-            return;
-        }
-        let selected = self.selected_node;
-        let selected_column = self.selected_column;
-        let selected_component = self.selected_component;
-        let Some(page) = self.current_page_mut() else {
-            return;
-        };
-        if page.nodes.is_empty() {
-            self.push_toast(ToastLevel::Warning, "No selected section.");
-            return;
-        }
-        let idx = selected.min(page.nodes.len() - 1);
-        let result = match &mut page.nodes[idx] {
-            PageNode::Section(section) => {
-                normalize_section_columns(section);
-                let col_i = selected_column.min(section.columns.len().saturating_sub(1));
-                let components = &mut section.columns[col_i].components;
-                let inserted = kind.default_component();
-                let insert_at = if components.is_empty() {
-                    0
-                } else {
-                    (selected_component + 1).min(components.len())
-                };
-                components.insert(insert_at, inserted);
-                (
-                    Some(insert_at),
-                    format!(
-                        "Added {} to selected section column '{}'.",
-                        kind.label(),
-                        section.columns[col_i].id
-                    ),
-                )
+        let page = self.selected_page;
+        match dd_siteforge_core::edits::insert_page_component(
+            &mut self.site,
+            page,
+            self.selected_node,
+            self.selected_column,
+            self.selected_component,
+            kind,
+        ) {
+            Ok((index, message)) => {
+                self.selected_component = index;
+                self.selected_nested_item = 0;
+                self.push_toast(ToastLevel::Info, message);
             }
-            _ => (None, "Selected node is not a section.".to_string()),
-        };
-        if let Some(new_selected_component) = result.0 {
-            self.selected_component = new_selected_component;
-            self.selected_nested_item = 0;
+            Err(message) => self.push_toast(ToastLevel::Warning, message),
         }
-        self.push_toast(ToastLevel::Info, result.1);
     }
 }
