@@ -148,6 +148,7 @@ pub struct Shell {
     last_theme_check: Instant,
     awaiting_choose: bool,
     awaiting_save_as: bool,
+    awaiting_image: Option<String>,
 }
 
 impl Shell {
@@ -213,6 +214,7 @@ impl Shell {
             last_theme_check: Instant::now(),
             awaiting_choose: false,
             awaiting_save_as: false,
+            awaiting_image: None,
         };
         if let Some(path) = opts.path {
             shell.open_site(&path);
@@ -1510,6 +1512,9 @@ impl Shell {
         if self.awaiting_save_as {
             self.portal_save_as(cx);
         }
+        if self.awaiting_image.is_some() {
+            self.portal_image(cx);
+        }
     }
 
     fn portal_choose(&mut self, cx: &mut Context<Self>) {
@@ -2117,23 +2122,55 @@ impl Shell {
     }
 
     fn browse_focused_image(&mut self) {
-        let Some(draft) = self.edit.active() else {
+        let Some(id) = self.focused_import_field() else {
             return;
         };
-        let Some(field) = draft.state.focused() else {
+        self.awaiting_image = Some(id);
+        self.toast("Browse…");
+    }
+
+    fn portal_image(&mut self, cx: &mut Context<Self>) {
+        let Some(field_id) = self.awaiting_image.take() else {
             return;
         };
-        if !field.id.contains("image") && !field.id.contains("poster") && !field.id.contains("mp4")
-        {
+        if !self.quit_runtime {
             return;
         }
-        let id = field.id.to_string();
-        self.toast(format!("Browse… {id}"));
+        let receiver = cx.prompt_for_paths(gpui::PathPromptOptions {
+            files: true,
+            directories: false,
+            multiple: false,
+            prompt: Some("Pick image".into()),
+        });
+        cx.spawn(async move |this, cx| {
+            let Ok(Ok(Some(paths))) = receiver.await else {
+                this.update(cx, |shell, cx| {
+                    shell.toast("Image pick cancelled.");
+                    cx.notify();
+                })
+                .ok();
+                return;
+            };
+            let Some(path) = paths.into_iter().next() else {
+                return;
+            };
+            this.update(cx, |shell, cx| {
+                shell.awaiting_image = Some(field_id);
+                shell.import_dropped(path, None);
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
     }
 
     /// Portal and drag-and-drop both land here. A large raster asks before shrinking.
     pub fn import_dropped(&mut self, path: PathBuf, downscale: Option<bool>) {
-        let Some(field_id) = self.focused_import_field() else {
+        let Some(field_id) = self
+            .awaiting_image
+            .take()
+            .or_else(|| self.focused_import_field())
+        else {
             self.toast("Pick an image field first.");
             return;
         };
