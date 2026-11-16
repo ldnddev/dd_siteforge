@@ -267,12 +267,15 @@ impl App {
             .selected_sub_item
             .insert(items_field_id.clone(), safe_item_idx);
 
-        // Drill: replace the live item state with a placeholder, push a
-        // DrillFrame, install the item state as the active modal.
+        // Drill: snapshot the parent before swapping the item for a
+        // placeholder, then edit the taken item. Esc restores the snapshot.
         let template = match &parent_state.form.fields[items_field_idx].kind {
             editform::FieldKind::SubForm { template, .. } => *template,
             _ => return false,
         };
+        let parent_cursor_pos =
+            text_end(parent_state.get(parent_state.form.fields[parent_state.focused_field].id));
+        let parent_snapshot = parent_state.clone();
         let placeholder = editform::EditFormState::new(template);
         let items_vec = parent_state
             .sub_state
@@ -282,11 +285,9 @@ impl App {
         let item_cursor_pos =
             text_end(item_state.get(item_state.form.fields[item_state.focused_field].id));
 
-        let parent_cursor_pos =
-            text_end(parent_state.get(parent_state.form.fields[parent_state.focused_field].id));
         let mut drill_stack: Vec<DrillFrame> = Vec::new();
         drill_stack.push(DrillFrame {
-            parent_state,
+            parent_state: parent_snapshot,
             parent_cursor_pos,
             parent_scroll_offset: 0,
             subform_field_id: items_field_id.clone(),
@@ -388,6 +389,10 @@ impl App {
             editform::FieldKind::SubForm { template, .. } => *template,
             _ => return false,
         };
+        let parent_cursor_pos =
+            text_end(parent_state.get(parent_state.form.fields[parent_state.focused_field].id));
+        // Same order as an item drill: snapshot first, then swap.
+        let parent_snapshot = parent_state.clone();
         let placeholder = editform::EditFormState::new(col_template);
         let cols_vec = parent_state
             .sub_state
@@ -397,12 +402,9 @@ impl App {
         let col_cursor_pos =
             text_end(col_state.get(col_state.form.fields[col_state.focused_field].id));
 
-        let parent_cursor_pos =
-            text_end(parent_state.get(parent_state.form.fields[parent_state.focused_field].id));
-
         let mut drill_stack: Vec<DrillFrame> = Vec::new();
         drill_stack.push(DrillFrame {
-            parent_state,
+            parent_state: parent_snapshot,
             parent_cursor_pos,
             parent_scroll_offset: 0,
             subform_field_id: cols_field_id.clone(),

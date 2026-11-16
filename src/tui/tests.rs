@@ -1570,6 +1570,55 @@ fn tier_b_card_drill_round_trip() {
     tier_b_drill_round_trip(ComponentKind::Card);
 }
 
+/// Esc while editing a drilled collection item puts that item back as it
+/// was before the drill. A blank placeholder is the bug.
+#[test]
+fn esc_on_drilled_collection_item_restores_the_previous_item() {
+    let mut app = app_with_component(ComponentKind::Card);
+    open_form_edit_on_page_component(&mut app);
+    tab_to_items_field(&mut app);
+
+    let original = match app.modal.as_ref() {
+        Some(Modal::FormEdit { state, .. }) => state.sub_state["items"][0].clone(),
+        _ => panic!("expected FormEdit"),
+    };
+    assert_eq!(original.get("child_title"), "Title");
+    assert!(
+        !original.get("child_image_url").is_empty(),
+        "the drilled item should start with content"
+    );
+
+    send_key(&mut app, KeyCode::Enter, KeyModifiers::NONE);
+    assert_eq!(drill_stack_len(&app), 1, "Enter drills into the item");
+    send_key(&mut app, KeyCode::Char('Z'), KeyModifiers::SHIFT);
+    assert!(
+        form_value(&app, "child_image_url").ends_with('Z'),
+        "the item field should change before Esc"
+    );
+
+    send_key(&mut app, KeyCode::Esc, KeyModifiers::NONE);
+    assert_eq!(drill_stack_len(&app), 0, "Esc leaves the item edit");
+    assert!(app.modal.is_some(), "the parent form stays open");
+    assert_eq!(
+        app.toasts.last().map(|toast| toast.message.as_str()),
+        Some("Item edit cancelled.")
+    );
+
+    let restored = match app.modal.as_ref() {
+        Some(Modal::FormEdit { state, .. }) => state.sub_state["items"][0].clone(),
+        _ => panic!("expected the parent FormEdit"),
+    };
+    let blank = editform::EditFormState::new(&editform::CARD_ITEM_FORM);
+    assert_eq!(
+        restored.values, original.values,
+        "Esc restores the item from before the drill"
+    );
+    assert_ne!(
+        restored.values, blank.values,
+        "Esc must not restore a blank placeholder"
+    );
+}
+
 #[test]
 fn tier_b_filmstrip_drill_round_trip() {
     tier_b_drill_round_trip(ComponentKind::Filmstrip);

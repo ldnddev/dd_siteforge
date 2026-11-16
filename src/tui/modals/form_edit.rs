@@ -301,6 +301,10 @@ impl App {
                                 editform::FieldKind::SubForm { template, .. } => *template,
                                 _ => unreachable!("is_subform was true but kind is not SubForm"),
                             };
+                            // Snapshot before the swap. Esc restores this parent,
+                            // which still holds the item. The placeholder only
+                            // frees the slot the editor takes; it is not kept.
+                            let parent_snapshot = state.clone();
                             let placeholder = editform::EditFormState::new(template);
                             let items = state
                                 .sub_state
@@ -311,7 +315,7 @@ impl App {
                                 item_state.get(item_state.form.fields[item_state.focused_field].id),
                             );
                             drill_stack.push(DrillFrame {
-                                parent_state: state,
+                                parent_state: parent_snapshot,
                                 parent_cursor_pos: cursor_pos,
                                 parent_scroll_offset: scroll_offset,
                                 subform_field_id: field_id.to_string(),
