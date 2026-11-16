@@ -139,9 +139,7 @@ pub(super) fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect 
 }
 
 pub(super) fn backup_path_for(path: &std::path::Path) -> std::path::PathBuf {
-    let mut s = path.as_os_str().to_owned();
-    s.push(".backup");
-    std::path::PathBuf::from(s)
+    dd_siteforge_core::storage::checkpoint_path(path)
 }
 
 pub(super) fn chrono_like_format(t: std::time::SystemTime) -> Option<String> {

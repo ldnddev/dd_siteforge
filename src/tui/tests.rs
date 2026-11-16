@@ -4324,6 +4324,43 @@ fn tick_autosave_writes_when_dirty_and_debounce_elapsed() {
 }
 
 #[test]
+fn autosave_refuses_to_overwrite_an_external_change() {
+    let tmp_dir = std::env::temp_dir().join(format!(
+        "dd_autosave_conflict_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&tmp_dir).unwrap();
+    let json_path = tmp_dir.join("site.json");
+    dd_siteforge_core::storage::save_site(&json_path, &Site::starter()).unwrap();
+
+    let mut app = App::new(
+        Site::starter(),
+        Some(json_path.clone()),
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    std::fs::write(&json_path, "{\"external\":true}").unwrap();
+    app.site.pages[0].head.title = "Mine".to_string();
+    app.mark_dirty_if_changed();
+    let due = app.dirty_since.unwrap() + std::time::Duration::from_millis(2_100);
+    assert!(app.tick_autosave(due));
+    assert_eq!(std::fs::read(&json_path).unwrap(), b"{\"external\":true}");
+    assert!(
+        app.toasts
+            .iter()
+            .any(|toast| toast.message.contains("Changed on disk")),
+        "the TUI toasts the same core conflict: {:?}",
+        app.toasts.iter().map(|t| &t.message).collect::<Vec<_>>()
+    );
+    assert!(app.dirty, "the in-memory edit is kept");
+    std::fs::remove_dir_all(&tmp_dir).ok();
+}
+
+#[test]
 fn tick_autosave_holds_off_within_debounce_window() {
     let mut app = App::new(
         Site::starter(),
@@ -4361,8 +4398,10 @@ fn manual_save_writes_backup_alongside_main_file() {
     );
     app.site.pages[0].head.title = "Pre-save".to_string();
 
-    app.commit_save_with_backup(&json_path)
-        .expect("manual save should succeed");
+    assert!(
+        matches!(app.commit_save_with_backup(&json_path), SaveOutcome::Saved),
+        "manual save should succeed"
+    );
 
     assert!(json_path.exists(), "main file written");
     assert!(backup_path.exists(), "backup written");

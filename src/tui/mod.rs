@@ -203,6 +203,11 @@ pub(super) struct App {
     /// JSON snapshot of the site at the most recent successful disk write.
     /// Used both for dirty detection and for skipping no-op autosaves.
     last_saved_json: String,
+    /// Hash of `site.json` at the last load or successful save.
+    /// `None` means the file was absent. A mismatch blocks the next write.
+    disk_hash: Option<dd_siteforge_core::storage::ContentHash>,
+    /// Autosave already reported an external change. Ctrl+S keeps ours.
+    disk_conflict: bool,
     list_area: Rect,
     details_area: Rect,
     details_scroll_row: usize,
@@ -309,6 +314,9 @@ impl App {
             _ => None,
         };
 
+        let disk_hash = path
+            .as_ref()
+            .and_then(|p| dd_siteforge_core::storage::file_hash(p).ok().flatten());
         let mut app = Self {
             site,
             theme,
@@ -390,6 +398,8 @@ impl App {
             dirty: false,
             dirty_since: None,
             last_saved_json,
+            disk_hash,
+            disk_conflict: false,
         };
 
         if let Some(p) = app.path.as_ref() {
@@ -517,10 +527,13 @@ impl App {
     pub(super) fn begin_save_prompt(&mut self) {
         if let Some(path) = self.path.clone() {
             match self.commit_save_with_backup(&path) {
-                Ok(()) => {
+                SaveOutcome::Saved => {
                     self.push_toast(ToastLevel::Success, format!("Saved {}", path.display()));
                 }
-                Err(e) => {
+                SaveOutcome::Conflict => {
+                    self.note_disk_conflict();
+                }
+                SaveOutcome::Failed(e) => {
                     self.push_toast(ToastLevel::Error, format!("Failed to save: {}", e));
                 }
             }
@@ -569,16 +582,51 @@ impl App {
 
     /// Write `self.site` to `path` AND to `<path>.backup`. Both writes share
     /// a single serialization so the two files are guaranteed byte-identical.
-    /// Refreshes the saved snapshot and clears the dirty flag on success.
-    pub(super) fn commit_save_with_backup(&mut self, path: &std::path::Path) -> anyhow::Result<()> {
-        dd_siteforge_core::storage::save_site(path, &self.site)?;
-        let backup = backup_path_for(path);
-        std::fs::copy(path, &backup)?;
+    /// Refuses when the file changed since it was loaded. A second Ctrl+S
+    /// while that refusal is showing keeps the in-memory site.
+    pub(super) fn commit_save_with_backup(&mut self, path: &std::path::Path) -> SaveOutcome {
+        use dd_siteforge_core::storage::{SiteSave, checkpoint_overwriting, checkpoint_site};
+        if self.disk_conflict {
+            return match checkpoint_overwriting(path, &self.site) {
+                Ok(hash) => {
+                    self.note_saved(path, hash);
+                    SaveOutcome::Saved
+                }
+                Err(e) => SaveOutcome::Failed(e),
+            };
+        }
+        match checkpoint_site(path, &self.site, self.disk_hash) {
+            Ok(SiteSave::Written { hash }) => {
+                self.note_saved(path, hash);
+                SaveOutcome::Saved
+            }
+            Ok(SiteSave::Conflict { .. }) => SaveOutcome::Conflict,
+            Err(e) => SaveOutcome::Failed(e),
+        }
+    }
+
+    fn note_saved(
+        &mut self,
+        path: &std::path::Path,
+        hash: dd_siteforge_core::storage::ContentHash,
+    ) {
         self.last_saved_json = serde_json::to_string(&self.site).unwrap_or_default();
         self.dirty = false;
         self.dirty_since = None;
+        self.disk_hash = Some(hash);
+        self.disk_conflict = false;
         self.path = Some(path.to_path_buf());
-        Ok(())
+    }
+
+    pub(super) fn note_disk_conflict(&mut self) {
+        if self.disk_conflict {
+            return;
+        }
+        self.disk_conflict = true;
+        self.push_toast(
+            ToastLevel::Warning,
+            "Changed on disk. Not overwritten. Ctrl+S keeps yours.".to_string(),
+        );
     }
 
     /// If the site is dirty, has a path, and the debounce window has elapsed,
@@ -601,11 +649,19 @@ impl App {
         let Some(path) = self.path.clone() else {
             return false;
         };
-        match dd_siteforge_core::storage::save_site(&path, &self.site) {
-            Ok(()) => {
+        if self.disk_conflict {
+            return false;
+        }
+        match dd_siteforge_core::storage::save_site_checked(&path, &self.site, self.disk_hash) {
+            Ok(dd_siteforge_core::storage::SiteSave::Written { hash }) => {
                 self.last_saved_json = serde_json::to_string(&self.site).unwrap_or_default();
                 self.dirty = false;
                 self.dirty_since = None;
+                self.disk_hash = Some(hash);
+                true
+            }
+            Ok(dd_siteforge_core::storage::SiteSave::Conflict { .. }) => {
+                self.note_disk_conflict();
                 true
             }
             Err(e) => {
@@ -615,4 +671,10 @@ impl App {
             }
         }
     }
+}
+
+pub(super) enum SaveOutcome {
+    Saved,
+    Conflict,
+    Failed(anyhow::Error),
 }

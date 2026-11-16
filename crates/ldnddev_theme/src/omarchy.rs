@@ -136,6 +136,16 @@ impl OmarchyColors {
     pub fn get(&self, key: &str) -> Option<Rgb> {
         self.values.get(key).copied()
     }
+
+    /// Every derived hex slot. The GUI resolver walks these; it does not blend.
+    pub fn slots(&self) -> impl Iterator<Item = (&str, Rgb)> + '_ {
+        self.values.iter().map(|(key, rgb)| (key.as_str(), *rgb))
+    }
+
+    /// Build a palette from an already-derived slot map (golden fixtures, tests).
+    pub fn from_slots(mode: ThemeMode, values: BTreeMap<String, Rgb>) -> Self {
+        Self { mode, values }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

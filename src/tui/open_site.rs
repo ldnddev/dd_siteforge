@@ -85,6 +85,8 @@ impl App {
         self.last_saved_json = serde_json::to_string(&self.site).unwrap_or_default();
         self.dirty = false;
         self.dirty_since = None;
+        self.disk_hash = dd_siteforge_core::storage::file_hash(&path).ok().flatten();
+        self.disk_conflict = false;
         self.undo_stack.clear();
         self.redo_stack.clear();
         self.clipboard = None;

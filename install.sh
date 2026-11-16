@@ -10,6 +10,7 @@
 #   ./install.sh install          # same as above
 #   ./install.sh --from-release   # always download the matching GitHub Release
 #   ./install.sh --from-source    # always cargo-build (clone only)
+#   ./install.sh --gui            # also install the glibc dd_siteforge-gui binary
 #   ./install.sh uninstall        # remove the binary, theme, launcher, and icon
 #   ./install.sh --help           # this help
 #
@@ -44,6 +45,7 @@ PREFIX="${PREFIX:-$HOME/.local}"
 BIN_DIR="${BIN_DIR:-$PREFIX/bin}"
 CONFIG_DIR="${CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/ldnddev}"
 BIN_NAME="dd_siteforge"
+GUI=0
 THEME_FILE="dd_siteforge_theme.yml"
 GITHUB_REPO="${GITHUB_REPO:-ldnddev/dd_siteforge}"
 VERSION="${VERSION:-}"
@@ -79,7 +81,9 @@ Usage:
   ./install.sh install          same as above
   ./install.sh --from-release   always download the matching GitHub Release
   ./install.sh --from-source    always cargo-build (clone only)
+  ./install.sh --gui            install the glibc dd_siteforge-gui binary
   ./install.sh uninstall        remove the binary, theme, launcher, and icon
+  ./install.sh uninstall --gui  remove only the GUI binary and its launcher
   ./install.sh --help           this help
 
 On Linux the install also writes a desktop launcher (Terminal=true) so the
@@ -137,7 +141,13 @@ detect_target() {
     esac
 
     case "$kernel" in
-        linux)  TARGET="${machine}-unknown-linux-musl" ;;
+        linux)
+            if [ "$GUI" = 1 ]; then
+                TARGET="${machine}-unknown-linux-gnu"
+            else
+                TARGET="${machine}-unknown-linux-musl"
+            fi
+            ;;
         darwin) TARGET="${machine}-apple-darwin" ;;
         mingw*|msys*|cygwin*)
             red "This installer is for Linux and macOS."
@@ -346,10 +356,18 @@ write_desktop() {
         printf '%s\n' "Version=1.0"
         printf '%s\n' "Name=${BIN_NAME}"
         printf '%s\n' "GenericName=Site editor"
-        printf '%s\n' "Comment=Edit a static site in the terminal"
+        if [ "$GUI" = 1 ]; then
+            printf '%s\n' "Comment=Edit a static site"
+        else
+            printf '%s\n' "Comment=Edit a static site in the terminal"
+        fi
         printf '%s\n' "Exec=${exec_q}"
         printf '%s\n' "TryExec=${bin}"
-        printf '%s\n' "Terminal=true"
+        if [ "$GUI" = 1 ]; then
+            printf '%s\n' "Terminal=false"
+        else
+            printf '%s\n' "Terminal=true"
+        fi
         printf '%s\n' "Categories=Development;"
         printf '%s\n' "Keywords=site;cms;html;static;tui;"
         printf '%s\n' "StartupNotify=false"
@@ -424,8 +442,14 @@ do_install_from_source() {
     [ -f Cargo.toml ] || { red "No Cargo.toml in $root — run install.sh from the repo root, or omit --from-source."; exit 1; }
     [ -f "$THEME_FILE" ] || { red "Missing $THEME_FILE in $root."; exit 1; }
 
-    cyan "Building $BIN_NAME (release)…"
-    cargo build --release
+    if [ "$GUI" = 1 ]; then
+        BIN_NAME="dd_siteforge-gui"
+        cyan "Building $BIN_NAME (release)…"
+        cargo build --release -p dd_siteforge_gui
+    else
+        cyan "Building $BIN_NAME (release)…"
+        cargo build --release
+    fi
 
     src_bin="target/release/$BIN_NAME"
     [ -x "$src_bin" ] || { red "Build did not produce $src_bin"; exit 1; }
@@ -439,6 +463,9 @@ do_install_from_source() {
 }
 
 do_install_from_release() {
+    if [ "$GUI" = 1 ]; then
+        BIN_NAME="dd_siteforge-gui"
+    fi
     detect_target
     normalize_version
 
@@ -523,6 +550,30 @@ do_install() {
 }
 
 do_uninstall() {
+    if [ "$GUI" = 1 ]; then
+        BIN_NAME="dd_siteforge-gui"
+        local bin_dst="$BIN_DIR/$BIN_NAME"
+        local desktop_dst
+        desktop_dst="$(apps_dir)/${BIN_NAME}.desktop"
+        local removed_any=0
+        local path
+        for path in "$bin_dst" "$desktop_dst"; do
+            if [ -f "$path" ] || [ -L "$path" ]; then
+                rm -f -- "$path"
+                green "Removed $path"
+                removed_any=1
+            else
+                yellow "Not installed: $path"
+            fi
+        done
+        if [ "$removed_any" -eq 0 ]; then
+            yellow "Nothing to uninstall."
+        else
+            green ""
+            green "Uninstall complete."
+        fi
+        return 0
+    fi
     local bin_dst="$BIN_DIR/$BIN_NAME"
     local theme_dst="$CONFIG_DIR/$THEME_FILE"
     local desktop_dst icon_dst
@@ -577,6 +628,7 @@ while [ $# -gt 0 ]; do
         uninstall|remove|--uninstall)
                             cmd="uninstall"; shift ;;
         --from-source)      mode="source"; shift ;;
+        --gui)              GUI=1; shift ;;
         --from-release|--binary)
                             mode="release"; shift ;;
         --version)
