@@ -1,0 +1,288 @@
+{
+ "theme": "catppuccin-latte",
+ "mode": "light",
+ "fixture": "golden test fixture for crates/ldnddev_theme runtime resolution; not shipped",
+ "primary_button": "outlined",
+ "on_surface_base": {
+  "status.success": "status.success-text",
+  "preview.state.live": "status.success-text"
+ },
+ "slots": {
+  "accent": "#1e66f5",
+  "selection": "#ccd0da",
+  "muted": "#acb0be",
+  "background": "#eff1f5",
+  "dark_background": "#e3e4e8",
+  "darker_background": "#d7d8dc",
+  "lighter_background": "#dce0e8",
+  "foreground": "#4c4f69",
+  "dark_foreground": "#9ca0b0",
+  "light_foreground": "#5c5f77",
+  "bright_foreground": "#4c4f69",
+  "red": "#d20f39",
+  "yellow": "#df8e1d",
+  "orange": "#d84e2b",
+  "green": "#40a02b",
+  "cyan": "#179299",
+  "blue": "#1e66f5",
+  "magenta": "#ea76cb",
+  "brown": "#6c2715",
+  "bright_red": "#d20f39",
+  "bright_yellow": "#df8e1d",
+  "bright_green": "#40a02b",
+  "bright_cyan": "#179299",
+  "bright_blue": "#1e66f5",
+  "bright_magenta": "#ea76cb",
+  "color0": "#eff1f5",
+  "color7": "#4c4f69",
+  "cursor": "#4c4f69",
+  "selection_background": "#ccd0da",
+  "selection_foreground": "#4c4f69"
+ },
+ "tokens": {
+  "surface.base": {
+   "hex": "#e3e4e8",
+   "slot": "dark_background"
+  },
+  "surface.panel": {
+   "hex": "#eff1f5",
+   "slot": "background"
+  },
+  "surface.raised": {
+   "hex": "#dce0e8",
+   "slot": "lighter_background"
+  },
+  "surface.overlay": {
+   "hex": "#eff1f5",
+   "slot": "background"
+  },
+  "surface.input": {
+   "hex": "#eff1f5",
+   "slot": "background"
+  },
+  "state.hover": {
+   "hex": "#e5e7ed",
+   "slot": "foreground @ 6% over surface.panel"
+  },
+  "state.pressed": {
+   "hex": "#dfe1e7",
+   "slot": "foreground @ 10% over surface.panel"
+  },
+  "selection.bg": {
+   "hex": "#d0dcf5",
+   "slot": "accent @ 15% over surface.panel"
+  },
+  "text.primary": {
+   "hex": "#4c4f69",
+   "slot": "foreground"
+  },
+  "text.secondary": {
+   "hex": "#5c5f77",
+   "slot": "light_foreground"
+  },
+  "text.placeholder": {
+   "hex": "#5c5f77",
+   "slot": "light_foreground"
+  },
+  "text.disabled": {
+   "hex": "#acb0be",
+   "slot": "muted"
+  },
+  "text.accent": {
+   "hex": "#4c4f69",
+   "slot": "foreground"
+  },
+  "text.selected": {
+   "hex": "#4c4f69",
+   "slot": "selection_foreground"
+  },
+  "accent.fill": {
+   "hex": "#1e66f5",
+   "slot": "accent"
+  },
+  "text.on-accent": {
+   "hex": "#eff1f5",
+   "slot": "background"
+  },
+  "state.on-accent-hover": {
+   "hex": "#2c5fcb",
+   "slot": "foreground @ 30% over accent.fill"
+  },
+  "state.on-accent-pressed": {
+   "hex": "#305dbd",
+   "slot": "foreground @ 40% over accent.fill"
+  },
+  "focus.ring": {
+   "hex": "#1e66f5",
+   "slot": "accent"
+  },
+  "border.input": {
+   "hex": "#5c5f77",
+   "slot": "light_foreground"
+  },
+  "border.subtle": {
+   "hex": "#dce0e8",
+   "slot": "lighter_background"
+  },
+  "border.card": {
+   "hex": "#b4b7c4",
+   "slot": "foreground @ 28% over surface.raised"
+  },
+  "border.active": {
+   "hex": "#1e66f5",
+   "slot": "accent"
+  },
+  "caret": {
+   "hex": "#4c4f69",
+   "slot": "cursor"
+  },
+  "scrollbar.thumb": {
+   "hex": "#5c5f77",
+   "slot": "light_foreground"
+  },
+  "scrollbar.thumb-hover": {
+   "hex": "#1e66f5",
+   "slot": "accent"
+  },
+  "status.success": {
+   "hex": "#179299",
+   "slot": "cyan"
+  },
+  "status.success-text": {
+   "hex": "#5c5f77",
+   "slot": "light_foreground"
+  },
+  "status.warning": {
+   "hex": "#d84e2b",
+   "slot": "orange"
+  },
+  "status.warning-text": {
+   "hex": "#6c2715",
+   "slot": "brown"
+  },
+  "status.error": {
+   "hex": "#d20f39",
+   "slot": "red"
+  },
+  "status.error-text": {
+   "hex": "#5c5f77",
+   "slot": "light_foreground"
+  },
+  "status.info": {
+   "hex": "#1e66f5",
+   "slot": "blue"
+  },
+  "status.info-text": {
+   "hex": "#5c5f77",
+   "slot": "light_foreground"
+  },
+  "status.success-subtle": {
+   "hex": "#d7e6d9",
+   "slot": "green @ 14% over surface.panel"
+  },
+  "status.warning-subtle": {
+   "hex": "#ede3d7",
+   "slot": "yellow @ 14% over surface.panel"
+  },
+  "status.error-subtle": {
+   "hex": "#ebd1db",
+   "slot": "red @ 14% over surface.panel"
+  },
+  "status.info-subtle": {
+   "hex": "#d1e4e8",
+   "slot": "cyan @ 14% over surface.panel"
+  },
+  "tree.folder": {
+   "hex": "#5c5f77",
+   "slot": "light_foreground"
+  },
+  "tree.file": {
+   "hex": "#4c4f69",
+   "slot": "foreground"
+  },
+  "preview.frame": {
+   "hex": "#e3e4e8",
+   "slot": "dark_background"
+  },
+  "preview.toolbar": {
+   "hex": "#eff1f5",
+   "slot": "background"
+  },
+  "preview.viewport-border": {
+   "hex": "#5c5f77",
+   "slot": "light_foreground"
+  },
+  "preview.state.live": {
+   "hex": "#179299",
+   "slot": "cyan"
+  },
+  "preview.state.building": {
+   "hex": "#1e66f5",
+   "slot": "accent"
+  },
+  "preview.state.stale": {
+   "hex": "#d84e2b",
+   "slot": "orange"
+  },
+  "preview.state.error": {
+   "hex": "#d20f39",
+   "slot": "red"
+  },
+  "preview.scrim": {
+   "hex": "#dedfe3",
+   "slot": "darker_background @ 72% over surface.panel"
+  },
+  "md.heading": {
+   "hex": "#4c4f69",
+   "slot": "foreground"
+  },
+  "md.strong": {
+   "hex": "#4c4f69",
+   "slot": "bright_foreground"
+  },
+  "md.link": {
+   "hex": "#5c5f77",
+   "slot": "light_foreground"
+  },
+  "md.code": {
+   "hex": "#5c5f77",
+   "slot": "light_foreground"
+  },
+  "md.quote": {
+   "hex": "#5c5f77",
+   "slot": "light_foreground"
+  },
+  "md.marker": {
+   "hex": "#5c5f77",
+   "slot": "light_foreground"
+  },
+  "syntax.keyword": {
+   "hex": "#5c5f77",
+   "slot": "light_foreground"
+  },
+  "syntax.string": {
+   "hex": "#5c5f77",
+   "slot": "light_foreground"
+  },
+  "syntax.number": {
+   "hex": "#5c5f77",
+   "slot": "light_foreground"
+  },
+  "syntax.attribute": {
+   "hex": "#5c5f77",
+   "slot": "light_foreground"
+  },
+  "syntax.tag": {
+   "hex": "#5c5f77",
+   "slot": "light_foreground"
+  },
+  "syntax.comment": {
+   "hex": "#5c5f77",
+   "slot": "light_foreground"
+  },
+  "syntax.punctuation": {
+   "hex": "#5c5f77",
+   "slot": "light_foreground"
+  }
+ }
+}

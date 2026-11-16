@@ -78,6 +78,51 @@ jobs:
           build-tool: cargo
           ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', github.event.inputs.tag) || github.ref }}
 
+  # Separate glibc build. The musl archives above stay the TUI binary.
+  upload-gui:
+    needs: create-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-24.04-arm
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
+      - name: Install GPUI system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config \
+            libwayland-dev \
+            libxkbcommon-dev \
+            libxkbcommon-x11-dev \
+            libvulkan-dev \
+            libfontconfig1-dev \
+            libxcb1-dev \
+            libx11-dev \
+            libxcursor-dev \
+            libxi-dev \
+            libxrandr-dev
+      - uses: taiki-e/upload-rust-binary-action@v1
+        with:
+          bin: dd_siteforge-gui
+          package: dd_siteforge_gui
+          target: ${{ matrix.target }}
+          archive: $bin-$target
+          tar: unix
+          zip: none
+          checksum: sha256
+          include: LICENSE,dd_siteforge_theme.yml
+          locked: true
+          build-tool: cargo
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', github.event.inputs.tag) || github.ref }}
+
   smoke:
     needs: upload-assets
     runs-on: ubuntu-latest

@@ -1,0 +1,29 @@
+[package]
+name = "dd_siteforge_gui"
+version = "1.31.2"
+edition = "2024"
+license = "MIT"
+publish = false
+description = "GPUI frontend for dd_siteforge"
+
+[[bin]]
+name = "dd_siteforge-gui"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1.0"
+dd_siteforge_core = { path = "../dd_siteforge_core", version = "1.31.2" }
+gpui = { package = "gpui-pre", version = "=0.3.12" }
+# Linux windows need a backend. wayland and x11 are off by default.
+gpui_platform = { package = "gpui-pre-platform", version = "=0.3.12", features = [
+    "wayland",
+    "x11",
+] }
+gpui_macros = { package = "gpui-pre-macros", version = "=0.3.12" }
+gpui-component = { version = "=0.9.1" }
+ldnddev_theme = { path = "../ldnddev_theme", version = "0.1.0" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[dev-dependencies]
+tempfile = "3"

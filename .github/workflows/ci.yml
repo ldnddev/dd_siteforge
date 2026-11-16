@@ -32,11 +32,12 @@ jobs:
       # The tree already fails `cargo clippy -- -D warnings`. This step
       # fails on clippy errors and stays green for those existing lints.
       - name: clippy
-        run: cargo clippy --workspace --all-targets --locked
+        # The GUI crate needs Wayland and Vulkan headers. It has its own job.
+        run: cargo clippy --workspace --all-targets --locked --exclude dd_siteforge_gui
       - name: test
         # --no-fail-fast so a core or theme failure is still reported when the
         # known Omarchy theme test fails on a runner that has no Omarchy install.
-        run: cargo test --workspace --locked --no-fail-fast
+        run: cargo test --workspace --locked --no-fail-fast --exclude dd_siteforge_gui
 
   # Separate job so a failing test (the Omarchy theme check on runners
   # without Omarchy) does not skip the license and advisory gate.
@@ -66,3 +67,31 @@ jobs:
           targets: x86_64-unknown-linux-musl
       - name: Build TUI for x86_64-unknown-linux-musl
         run: cargo build --release --locked --target x86_64-unknown-linux-musl -p dd_siteforge
+
+  # glibc GUI binary. The musl job above stays the TUI package only.
+  gui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Install GPUI system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config \
+            libwayland-dev \
+            libxkbcommon-dev \
+            libxkbcommon-x11-dev \
+            libvulkan-dev \
+            libfontconfig1-dev \
+            libxcb1-dev \
+            libx11-dev \
+            libxcursor-dev \
+            libxi-dev \
+            libxrandr-dev
+      - name: clippy
+        run: cargo clippy --locked -p dd_siteforge_gui --all-targets
+      - name: test
+        run: cargo test --locked -p dd_siteforge_gui --all-targets

@@ -1,14 +1,118 @@
 use std::fs;
-use std::path::Path;
+use std::io;
+use std::path::{Path, PathBuf};
 
 use anyhow::Context;
+use sha2::{Digest, Sha256};
 
 use crate::model::Site;
 
+/// SHA-256 of the exact `site.json` bytes last read or written.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ContentHash(pub [u8; 32]);
+
+impl ContentHash {
+    pub fn of(bytes: &[u8]) -> Self {
+        let digest = Sha256::digest(bytes);
+        let mut hash = [0u8; 32];
+        hash.copy_from_slice(&digest);
+        Self(hash)
+    }
+}
+
+/// Result of a write that refuses to replace bytes it did not last see.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SiteSave {
+    Written {
+        hash: ContentHash,
+    },
+    /// `expected` is the hash from the last load or save. `found` is what is
+    /// on disk now (`None` when the file is gone).
+    Conflict {
+        expected: Option<ContentHash>,
+        found: Option<ContentHash>,
+    },
+}
+
 pub fn save_site<P: AsRef<Path>>(path: P, site: &Site) -> anyhow::Result<()> {
-    let json = serde_json::to_string_pretty(site).context("failed to serialize site to JSON")?;
+    let json = site_json(site)?;
     atomic_write(path.as_ref(), json.as_bytes()).context("failed to write site JSON")?;
     Ok(())
+}
+
+/// Hash of `path`, or `None` when the file is not there.
+pub fn file_hash(path: &Path) -> anyhow::Result<Option<ContentHash>> {
+    match fs::read(path) {
+        Ok(bytes) => Ok(Some(ContentHash::of(&bytes))),
+        Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(err) => Err(err).with_context(|| format!("failed to read '{}'", path.display())),
+    }
+}
+
+pub fn load_site_with_hash<P: AsRef<Path>>(path: P) -> anyhow::Result<(Site, ContentHash)> {
+    let path = path.as_ref();
+    let bytes = fs::read(path).context("failed to read site JSON")?;
+    let hash = ContentHash::of(&bytes);
+    let site = serde_json::from_slice(&bytes).context("failed to parse site JSON")?;
+    Ok((site, hash))
+}
+
+/// Write `site` only when the file's current hash equals `expected`.
+/// `expected == None` creates the file and refuses when something is already there.
+pub fn save_site_checked<P: AsRef<Path>>(
+    path: P,
+    site: &Site,
+    expected: Option<ContentHash>,
+) -> anyhow::Result<SiteSave> {
+    let path = path.as_ref();
+    let found = file_hash(path)?;
+    if found != expected {
+        return Ok(SiteSave::Conflict { expected, found });
+    }
+    let json = site_json(site)?;
+    atomic_write(path, json.as_bytes()).context("failed to write site JSON")?;
+    Ok(SiteSave::Written {
+        hash: ContentHash::of(json.as_bytes()),
+    })
+}
+
+/// `<path>.backup`. Same suffix the TUI has always used (`site.json.backup`).
+pub fn checkpoint_path(path: &Path) -> PathBuf {
+    let mut name = path.as_os_str().to_owned();
+    name.push(".backup");
+    PathBuf::from(name)
+}
+
+/// Checked write of `site.json`, then a byte-identical `.backup` copy.
+/// The backup is written only after the checked write succeeds.
+pub fn checkpoint_site<P: AsRef<Path>>(
+    path: P,
+    site: &Site,
+    expected: Option<ContentHash>,
+) -> anyhow::Result<SiteSave> {
+    let path = path.as_ref();
+    let saved = save_site_checked(path, site, expected)?;
+    if matches!(saved, SiteSave::Written { .. }) {
+        let backup = checkpoint_path(path);
+        fs::copy(path, &backup)
+            .with_context(|| format!("failed to write checkpoint '{}'", backup.display()))?;
+    }
+    Ok(saved)
+}
+
+/// Ctrl+S after the user chooses Keep mine. Replaces the file and writes `.backup`.
+pub fn checkpoint_overwriting<P: AsRef<Path>>(path: P, site: &Site) -> anyhow::Result<ContentHash> {
+    let path = path.as_ref();
+    let json = site_json(site)?;
+    atomic_write(path, json.as_bytes()).context("failed to write site JSON")?;
+    let backup = checkpoint_path(path);
+    fs::copy(path, &backup)
+        .with_context(|| format!("failed to write checkpoint '{}'", backup.display()))?;
+    Ok(ContentHash::of(json.as_bytes()))
+}
+
+fn site_json(site: &Site) -> anyhow::Result<String> {
+    serde_json::to_string_pretty(site).context("failed to serialize site to JSON")
 }
 
 fn atomic_write(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
@@ -43,7 +147,10 @@ pub fn load_site<P: AsRef<Path>>(path: P) -> anyhow::Result<Site> {
 
 #[cfg(test)]
 mod tests {
-    use super::{load_site, save_site};
+    use super::{
+        ContentHash, SiteSave, checkpoint_overwriting, checkpoint_path, checkpoint_site, file_hash,
+        load_site, save_site, save_site_checked,
+    };
     use crate::model::{SectionComponent, Site};
     use std::time::{SystemTime, UNIX_EPOCH};
     #[test]
@@ -543,5 +650,83 @@ mod tests {
         let site: crate::model::Site = serde_json::from_str(json).expect("legacy JSON should load");
         assert_eq!(site.lang, "en");
         assert!(site.base_url.is_none());
+    }
+
+    #[test]
+    fn checked_save_matches_unconditional_bytes_and_refuses_a_changed_file() {
+        let tmp = unique_temp_path("dd_site_checked");
+        let site = crate::model::Site::starter();
+        save_site(&tmp, &site).expect("seed");
+        let original = std::fs::read(&tmp).unwrap();
+        let hash = ContentHash::of(&original);
+
+        let mut edited = site.clone();
+        edited.name = "Edited".to_string();
+        let written = save_site_checked(&tmp, &edited, Some(hash)).expect("checked");
+        let SiteSave::Written { hash: next } = written else {
+            panic!("matching hash should write");
+        };
+        let after = std::fs::read(&tmp).unwrap();
+        assert_eq!(next, ContentHash::of(&after));
+        assert_ne!(after, original);
+
+        // The unconditional writer and the checked writer serialize the same way.
+        let other = unique_temp_path("dd_site_checked_plain");
+        save_site(&other, &edited).expect("plain");
+        assert_eq!(
+            std::fs::read(&other).unwrap(),
+            after,
+            "GUI and TUI saves of the same model are the same bytes"
+        );
+
+        std::fs::write(&tmp, b"{ \"external\": true }\n").unwrap();
+        let external = std::fs::read(&tmp).unwrap();
+        let conflict = save_site_checked(&tmp, &site, Some(next)).expect("detect");
+        assert!(matches!(conflict, SiteSave::Conflict { .. }));
+        assert_eq!(
+            std::fs::read(&tmp).unwrap(),
+            external,
+            "a changed file is left untouched"
+        );
+        std::fs::remove_file(&tmp).ok();
+        std::fs::remove_file(&other).ok();
+    }
+
+    #[test]
+    fn checkpoint_copies_identical_bytes_and_skips_backup_on_conflict() {
+        let tmp = unique_temp_path("dd_site_checkpoint");
+        let site = crate::model::Site::starter();
+        let created = save_site_checked(&tmp, &site, None).expect("create");
+        let SiteSave::Written { hash } = created else {
+            panic!("absent file should be created");
+        };
+        let mut edited = site.clone();
+        edited.name = "Checkpoint".to_string();
+        let saved = checkpoint_site(&tmp, &edited, Some(hash)).expect("checkpoint");
+        assert!(matches!(saved, SiteSave::Written { .. }));
+        let backup = checkpoint_path(&tmp);
+        assert_eq!(
+            std::fs::read(&tmp).unwrap(),
+            std::fs::read(&backup).unwrap()
+        );
+
+        std::fs::write(&tmp, b"{\"someone\":\"else\"}").unwrap();
+        let before = std::fs::read(&tmp).unwrap();
+        let SiteSave::Written { hash } = saved else {
+            unreachable!();
+        };
+        let conflict = checkpoint_site(&tmp, &site, Some(hash)).expect("conflict");
+        assert!(matches!(conflict, SiteSave::Conflict { .. }));
+        assert_eq!(std::fs::read(&tmp).unwrap(), before);
+        assert_ne!(std::fs::read(&backup).unwrap(), before);
+
+        let kept = checkpoint_overwriting(&tmp, &edited).expect("keep mine");
+        assert_eq!(Some(kept), file_hash(&tmp).unwrap());
+        assert_eq!(
+            std::fs::read(&tmp).unwrap(),
+            std::fs::read(&backup).unwrap()
+        );
+        std::fs::remove_file(&tmp).ok();
+        std::fs::remove_file(&backup).ok();
     }
 }

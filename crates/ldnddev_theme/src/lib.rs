@@ -5,12 +5,18 @@
 
 mod editor;
 mod fields;
+mod gui_theme;
 mod omarchy;
 mod palette;
 mod paths;
 mod picker;
 mod rgb;
 mod yaml;
+
+pub use gui_theme::{
+    resolve_gui_theme, FontStack, GuiTheme, GuiToken, Metrics, PrimaryButton, TypeScale,
+    FONT_DEFAULT,
+};
 
 pub use editor::{
     theme_editor_rows, EditorKey, EditorOutcome, ThemeEditor, ThemeEditorRow, ThemeSaveTarget,
