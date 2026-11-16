@@ -8,7 +8,7 @@ use dd_siteforge_core::storage::save_site;
 use gpui::{AppContext, TestAppContext};
 
 use crate::document::SavePhase;
-use crate::keys::DOCK_TOGGLE_KEY;
+use crate::keys::{self, INSPECTOR_KBD, SIDEBAR_KBD};
 use crate::shell::{Shell, ShellOptions};
 
 fn opts(dir: &std::path::Path, path: Option<PathBuf>) -> ShellOptions {
@@ -201,6 +201,44 @@ fn load_error_offers_retry_choose_reveal_and_backup(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn dock_shortcuts_match_the_title_bar_toggles(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("site.json");
+    save_site(&path, &Site::starter()).unwrap();
+    let shell = mount(cx, opts(dir.path(), Some(path)));
+    shell.update(cx, |shell, _| {
+        assert_eq!(shell.docks_visible(), (true, true));
+        let before = shell.visible_text();
+
+        shell.handle_key(keys::TOGGLE_SIDEBAR_KEY);
+        assert_eq!(shell.docks_visible(), (false, true));
+        let text = shell.visible_text();
+        assert!(text.contains("Show sidebar"), "{text}");
+        assert!(text.contains(SIDEBAR_KBD), "{text}");
+        assert_eq!(shell.dock_notes(1280.0), vec![keys::show_sidebar_tooltip()]);
+
+        shell.handle_key(keys::TOGGLE_SIDEBAR_KEY);
+        assert_eq!(shell.docks_visible(), (true, true));
+
+        shell.handle_key(keys::TOGGLE_INSPECTOR_KEY);
+        assert_eq!(shell.docks_visible(), (true, false));
+        let text = shell.visible_text();
+        assert!(text.contains("Show inspector"), "{text}");
+        assert!(text.contains(INSPECTOR_KBD), "{text}");
+        assert_eq!(
+            shell.dock_notes(1280.0),
+            vec![keys::show_inspector_tooltip()]
+        );
+
+        shell.handle_key(keys::TOGGLE_INSPECTOR_KEY);
+        assert_eq!(shell.docks_visible(), (true, true));
+        shell.handle_key("ctrl-b");
+        assert_eq!(shell.docks_visible(), (true, true));
+        assert_eq!(shell.visible_text(), before);
+    });
+}
+
+#[gpui::test]
 fn golden_site_renders_read_only_tree_and_fields(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("site.json");
@@ -255,18 +293,21 @@ fn golden_site_renders_read_only_tree_and_fields(cx: &mut TestAppContext) {
         assert!(text.contains("column-row 1/1"), "{text}");
         assert!(text.contains("col 1 dd-u-1-1 empty"), "{text}");
         assert_eq!(shell.column_row_mode(720.0), "row");
-        assert_eq!(DOCK_TOGGLE_KEY, None);
         shell.handle_key("ctrl-b");
         assert!(shell.visible_text().contains("Header"));
         let narrow = shell.dock_notes(960.0);
         assert!(
-            narrow.iter().any(|line| line == "Show inspector"),
+            narrow
+                .iter()
+                .any(|line| line.contains("Show inspector") && line.contains(INSPECTOR_KBD)),
             "{narrow:?}"
         );
-        assert!(narrow.iter().all(|line| line != "Show sidebar"));
+        assert!(narrow.iter().all(|line| !line.contains("Show sidebar")));
         let tighter = shell.dock_notes(700.0);
         assert!(
-            tighter.iter().any(|line| line == "Show sidebar"),
+            tighter
+                .iter()
+                .any(|line| line.contains("Show sidebar") && line.contains(SIDEBAR_KBD)),
             "{tighter:?}"
         );
         shell.show_loading("Acme Docs");

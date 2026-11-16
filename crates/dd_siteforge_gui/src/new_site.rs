@@ -1,5 +1,8 @@
 //! New site sheet. Same writes as the TUI picker: folder, starter `site.json`,
-//! kit files only, then templates. The site name stays "My Site" (J8).
+//! kit files only, then templates.
+//!
+//! Jared, Nov 16 (J8, J9): the site name stays "My Site". The sheet writes the
+//! kit slug only and always seeds the kit.
 
 use std::path::{Path, PathBuf};
 

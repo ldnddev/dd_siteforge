@@ -14,7 +14,7 @@ use gpui::{
 use gpui_component::button::Button;
 
 use crate::document::{Document, SavePhase};
-use crate::keys::{self, DOCK_TOGGLE_KEY};
+use crate::keys::{self, show_inspector_tooltip, show_sidebar_tooltip};
 use crate::new_site::{self, CreatedSite};
 use crate::paint::{self, token};
 use crate::present::{
@@ -116,6 +116,8 @@ pub struct Shell {
     pub quit: bool,
     /// Set when Ctrl+R is handled. Redo itself arrives with phase 3's stack.
     pub redo_handled: bool,
+    /// Last window width, so key toggles use the same width as the title-bar buttons.
+    last_width: f32,
     last_theme_check: Instant,
     awaiting_choose: bool,
     awaiting_save_as: bool,
@@ -172,6 +174,7 @@ impl Shell {
             revealed: None,
             quit: false,
             redo_handled: false,
+            last_width: 1280.0,
             last_theme_check: Instant::now(),
             awaiting_choose: false,
             awaiting_save_as: false,
@@ -461,6 +464,7 @@ impl Shell {
         if self.sidebar_collapsed_for(1280.0) {
             // Width-specific tooltips are added by `dock_notes` from render.
         }
+        lines.extend(self.dock_notes(self.last_width));
         lines.extend(self.toasts.iter().cloned());
         if !self.preview_note.is_empty() {
             lines.push(self.preview_note.clone());
@@ -468,14 +472,18 @@ impl Shell {
         lines
     }
 
+    pub fn docks_visible(&self) -> (bool, bool) {
+        self.docks(self.last_width)
+    }
+
     pub fn dock_notes(&self, width: f32) -> Vec<String> {
         let mut notes = Vec::new();
         let (sidebar, inspector) = self.docks(width);
         if !inspector {
-            notes.push("Show inspector".to_string());
+            notes.push(show_inspector_tooltip());
         }
         if !sidebar {
-            notes.push("Show sidebar".to_string());
+            notes.push(show_sidebar_tooltip());
         }
         notes
     }
@@ -500,8 +508,17 @@ impl Shell {
 
     pub fn handle_key(&mut self, key: &str) {
         let key = key.to_ascii_lowercase();
-        if key == "ctrl-b" || DOCK_TOGGLE_KEY == Some(key.as_str()) {
-            // J4 is open. Ctrl+B is Build CSS/JS, not a dock toggle.
+        if key == "ctrl-b" {
+            // Build CSS/JS. Not a dock toggle.
+            return;
+        }
+        // Same actions as the title-bar buttons (J4).
+        if key == keys::TOGGLE_SIDEBAR_KEY {
+            self.toggle_sidebar(self.last_width);
+            return;
+        }
+        if key == keys::TOGGLE_INSPECTOR_KEY && self.screen == Screen::Editor {
+            self.toggle_inspector(self.last_width);
             return;
         }
         if self.quit_dialog {
@@ -1457,6 +1474,7 @@ impl Render for Shell {
             cx.quit();
         }
         let width = f32::from(window.viewport_size().width);
+        self.last_width = width;
         let theme = &self.theme.gui;
         let base = token(theme, "surface.base");
         let panel = token(theme, "surface.panel");
@@ -1801,9 +1819,9 @@ fn title_bar(
         .child(
             Button::new("toggle-sidebar")
                 .label(if sidebar_on {
-                    "Sidebar"
+                    "Sidebar".to_string()
                 } else {
-                    "Show sidebar"
+                    show_sidebar_tooltip()
                 })
                 .on_click(cx.listener(|shell, _: &ClickEvent, window, cx| {
                     let width = f32::from(window.viewport_size().width);
@@ -1835,9 +1853,9 @@ fn title_bar(
             row.child(
                 Button::new("toggle-inspector")
                     .label(if inspector_on {
-                        "Inspector"
+                        "Inspector".to_string()
                     } else {
-                        "Show inspector"
+                        show_inspector_tooltip()
                     })
                     .on_click(cx.listener(|shell, _: &ClickEvent, window, cx| {
                         let width = f32::from(window.viewport_size().width);
