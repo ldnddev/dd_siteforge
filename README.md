@@ -32,6 +32,113 @@ cargo install --path .            # ~/.cargo/bin
 ./install.sh uninstall
 ```
 
+For the desktop editor, see [GUI](#gui).
+
+## GUI
+
+The GUI is a desktop editor for the same `site.json` sites as the TUI. The binary is `dd_siteforge-gui` (Cargo package `dd_siteforge_gui`).
+
+### Install
+
+You need Rust 1.85 or newer (edition 2024) and a working Vulkan driver.
+
+On Arch:
+
+```bash
+sudo pacman -S --needed base-devel git rustup wayland libxkbcommon libxkbcommon-x11 vulkan-icd-loader vulkan-headers fontconfig libxcb libx11 libxcursor libxi libxrandr
+rustup default stable
+```
+
+On Debian or Ubuntu:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y --no-install-recommends \
+  build-essential \
+  git \
+  curl \
+  pkg-config \
+  libwayland-dev \
+  libxkbcommon-dev \
+  libxkbcommon-x11-dev \
+  libvulkan-dev \
+  libfontconfig1-dev \
+  libxcb1-dev \
+  libx11-dev \
+  libxcursor-dev \
+  libxi-dev \
+  libxrandr-dev
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+. "$HOME/.cargo/env"
+```
+
+From a clone, build and install with:
+
+```bash
+./install.sh --gui
+```
+
+That runs `cargo build --release -p dd_siteforge_gui`, installs `~/.local/bin/dd_siteforge-gui`, and on Linux writes the application-menu launcher `~/.local/share/applications/dd_siteforge-gui.desktop` (`Terminal=false`). You can run the same Cargo command yourself if you only need the binary in `target/release/`.
+
+`./install.sh --from-release --gui` downloads a prebuilt glibc GUI binary when a release includes one. Those assets are Linux only (`x86_64-unknown-linux-gnu` and `aarch64-unknown-linux-gnu`). There is no macOS GUI release, and the GUI is not tested in CI on macOS, so build it on Linux. The current release, v1.31.2, has no GUI asset, so use `./install.sh --gui` from a clone until one does.
+
+Remove the GUI binary and its launcher with:
+
+```bash
+./install.sh uninstall --gui
+```
+
+That leaves `gui.json` and the rest of `~/.config/ldnddev/dd_siteforge/` in place.
+
+### Launch
+
+```bash
+dd_siteforge-gui [site path]
+```
+
+`site path` can be a folder or a `site.json` file. A folder opens the `site.json` inside it. With no path, the GUI opens `./site.json` when that file exists in the current directory. On Linux you can also open it from the application menu.
+
+### Keys
+
+Press `F1` or `Ctrl+/` to open the shortcut sheet. The GUI and the TUI share the same keymap.
+
+A few of the keys:
+
+- `F2` opens Settings › Appearance (theme, density, and the Vim keys toggle)
+- `Ctrl+P` preview
+- `F5` refresh preview
+- `Ctrl+K` command palette
+- `Ctrl+Q` quit
+
+Vim keys are on by default. In the outline, sidebar, lists, and pickers, `j` `k` move, `g` `G` go to first or last, and `h` `l` collapse or expand. Turn them off in Settings › Appearance. They are never active inside text fields.
+
+### Preferences (`gui.json`)
+
+GUI-only preferences live in `$XDG_CONFIG_HOME/ldnddev/dd_siteforge/gui.json` (default `~/.config/ldnddev/dd_siteforge/gui.json`). They are not stored in `site.json`. If the file is missing, the app writes one with the defaults below.
+
+| Key | Type | Default | What it stores |
+|---|---|---|---|
+| `density` | `"comfortable"` or `"compact"` | `"comfortable"` | Control spacing |
+| `vim_keys` | boolean | `true` | Vim movement keys in lists and trees |
+| `reduced_motion` | boolean | `false` | Less UI motion |
+
+`reduced_motion` has no control in Settings › Appearance yet. Edit `gui.json` to change it.
+
+### Hyprland / Omarchy
+
+Once team ticket #121 ships, or from the release that includes it, the windows use these app ids so you can write window rules (for example, to float the preview):
+
+- Main window: `dev.ldnddev.dd_siteforge`
+- Preview companion: `dev.ldnddev.dd_siteforge.preview`
+
+Example Hyprland rule for the preview window, after that change (Hyprland 0.53+ syntax, as used in current Omarchy):
+
+```
+windowrule = float on, match:class ^(dev\.ldnddev\.dd_siteforge\.preview)$
+```
+
+Use the main window id the same way if you want a rule for the editor itself.
+
 ## Quick start
 
 ```bash
