@@ -504,6 +504,39 @@ pub fn push_keyboard_enhancement(supported: bool) -> bool {
     supported
 }
 
+/// True when `TMUX` is set and not empty. Callers pass the variable so tests
+/// can inject it instead of reading the process environment.
+pub fn tmux_var_is_set(value: Option<&str>) -> bool {
+    value.is_some_and(|value| !value.is_empty())
+}
+
+/// Status-line text for a one-time alias. The binding is unchanged.
+/// Under tmux, do not name Ctrl+B or a Ctrl+Shift+letter: those chords do
+/// not arrive. Name the key that does.
+pub fn alias_hint_text(hint: &'static str, in_tmux: bool) -> &'static str {
+    if !in_tmux {
+        return hint;
+    }
+    match hint {
+        "Build is now Ctrl+B" => "Build is Shift+B (or use the palette)",
+        other => other,
+    }
+}
+
+/// TUI help key. Outside tmux the sheet label is returned as stored.
+/// Under tmux, Ctrl+B and Ctrl+Shift+letter are replaced with the fallback
+/// that arrives: Shift+B for Build, the palette for New site.
+pub fn tui_help_key(label: &'static str, in_tmux: bool) -> &'static str {
+    if !in_tmux {
+        return label;
+    }
+    match label {
+        "Ctrl B" => "Shift+B",
+        "Ctrl Shift N" => "palette",
+        other => other,
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BindingKind {
     Primary,
@@ -1375,6 +1408,38 @@ mod tests {
         assert!(text.contains("Undo · Ctrl Z · Ctrl Z"));
         assert!(!text.contains("J2"));
         assert!(!text.contains("Shift+A"));
+    }
+
+    #[test]
+    fn tmux_alias_hints_and_help_name_a_chord_that_arrives() {
+        assert!(!tmux_var_is_set(None));
+        assert!(!tmux_var_is_set(Some("")));
+        assert!(tmux_var_is_set(Some("/tmp/tmux-1000/default,1,0")));
+
+        assert_eq!(
+            alias_hint_text("Build is now Ctrl+B", false),
+            "Build is now Ctrl+B"
+        );
+        assert_eq!(
+            alias_hint_text("Build is now Ctrl+B", true),
+            "Build is Shift+B (or use the palette)"
+        );
+        for hint in [
+            "Export is now Ctrl+E",
+            "Preview is now Ctrl+P",
+            "Save is now Ctrl+S",
+        ] {
+            assert_eq!(alias_hint_text(hint, true), hint);
+            assert_eq!(alias_hint_text(hint, false), hint);
+        }
+
+        assert_eq!(tui_help_key("Ctrl B", false), "Ctrl B");
+        assert_eq!(tui_help_key("Ctrl Shift N", false), "Ctrl Shift N");
+        assert_eq!(tui_help_key("Ctrl B", true), "Shift+B");
+        assert_eq!(tui_help_key("Ctrl Shift N", true), "palette");
+        assert_eq!(tui_help_key("Ctrl E", true), "Ctrl E");
+        assert_eq!(tui_help_key("Ctrl R", true), "Ctrl R");
+        assert_eq!(tui_help_key("Ctrl S", true), "Ctrl S");
     }
 
     #[test]

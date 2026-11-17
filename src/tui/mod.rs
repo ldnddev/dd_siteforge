@@ -112,6 +112,13 @@ fn launch_app(mut app: App, load_warning: Option<String>) -> anyhow::Result<()> 
     run_res
 }
 
+fn detect_tmux() -> bool {
+    if cfg!(test) {
+        return false;
+    }
+    dd_siteforge_core::commands::tmux_var_is_set(std::env::var("TMUX").ok().as_deref())
+}
+
 fn load_vim_keys() -> bool {
     if cfg!(test) {
         return true;
@@ -284,6 +291,8 @@ pub(super) struct App {
     collapsed_page_ids: HashSet<String>,
     /// Kitty, legacy, or tmux. Tests stay on legacy unless they set this.
     input_mode: dd_siteforge_core::commands::InputMode,
+    /// `TMUX` is set and non-empty. Tests set this instead of the environment.
+    in_tmux: bool,
     /// Shared with the GUI `gui.json` `vim_keys` flag. On by default.
     vim_keys: bool,
     regions_open: bool,
@@ -404,6 +413,7 @@ impl App {
             header_column_expanded: true,
             collapsed_page_ids: HashSet::new(),
             input_mode: dd_siteforge_core::commands::InputMode::Legacy,
+            in_tmux: detect_tmux(),
             vim_keys: load_vim_keys(),
             regions_open: true,
             details_open: true,

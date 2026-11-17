@@ -7926,7 +7926,7 @@ fn gui_parity_site(mut site: Site) -> Site {
 }
 
 #[test]
-fn shift_b_shows_the_build_hint_once_in_the_status_line() {
+fn shift_b_outside_tmux_still_says_ctrl_b_once() {
     let mut app = App::new(
         Site::starter(),
         None,
@@ -7934,12 +7934,30 @@ fn shift_b_shows_the_build_hint_once_in_the_status_line() {
         "default".to_string(),
         None,
     );
-    app.input_mode = dd_siteforge_core::commands::InputMode::Tmux;
+    assert!(!app.in_tmux);
     send_key(&mut app, KeyCode::Char('B'), KeyModifiers::SHIFT);
     assert_eq!(app.footer_hint(80), "Build is now Ctrl+B");
     send_key(&mut app, KeyCode::Char('B'), KeyModifiers::SHIFT);
     assert_ne!(app.footer_hint(80), "Build is now Ctrl+B");
-    assert!(app.footer_hint(120).contains("F1:Help"));
+}
+
+#[test]
+fn shift_b_inside_tmux_names_shift_b_and_the_palette_once() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    app.in_tmux = true;
+    app.input_mode = dd_siteforge_core::commands::InputMode::Tmux;
+    send_key(&mut app, KeyCode::Char('B'), KeyModifiers::SHIFT);
+    assert_eq!(app.footer_hint(80), "Build is Shift+B (or use the palette)");
+    send_key(&mut app, KeyCode::Char('B'), KeyModifiers::SHIFT);
+    assert_ne!(app.footer_hint(80), "Build is Shift+B (or use the palette)");
+    send_key(&mut app, KeyCode::Char('E'), KeyModifiers::SHIFT);
+    assert_eq!(app.footer_hint(80), "Export is now Ctrl+E");
 }
 
 #[test]
