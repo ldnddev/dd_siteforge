@@ -880,4 +880,244 @@ mod tests {
         let _ = std::fs::remove_dir_all(project);
         let _ = std::fs::remove_dir_all(root);
     }
+
+    fn load_yaml(label: &str, yaml: &str) -> (AppTheme, String, Option<String>) {
+        let project = temp_dir(label);
+        std::fs::write(project.join(THEME_FILENAME), yaml).expect("write theme");
+        let loaded = AppTheme::load_resolved(
+            &project,
+            None,
+            &ldnddev_theme::OmarchyPaths::from_root(&project),
+        );
+        let _ = std::fs::remove_dir_all(project);
+        loaded
+    }
+
+    fn assert_default_shell(theme: &AppTheme) {
+        assert_eq!(
+            color_to_hex(theme.base_background).to_ascii_uppercase(),
+            "#0F1114"
+        );
+        assert_eq!(theme.header_quotes, default_header_quotes());
+        assert!(theme.omarchy.is_none());
+        assert!(theme.overrides.is_empty());
+    }
+
+    #[test]
+    fn shipped_theme_header_is_accepted() {
+        let project = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let (theme, source, warning) =
+            AppTheme::load_resolved(project, None, &OmarchyPaths::system());
+        if let Some(warning) = warning {
+            assert!(!warning.contains("invalid theme file"), "{warning}");
+            assert!(!warning.contains("missing required"), "{warning}");
+            assert!(
+                warning.contains("omarchy theme failed") || warning.contains("color parse error"),
+                "{warning}"
+            );
+            assert_eq!(source, "default");
+            assert_default_shell(&theme);
+        } else {
+            assert_eq!(source, "local");
+            assert_eq!(
+                theme.omarchy,
+                Some(ldnddev_theme::OmarchyChoice::Theme("retro-82".into()))
+            );
+            assert_eq!(
+                theme.header_quotes,
+                vec![
+                    "Drafts are just commits that lost their nerve.".to_string(),
+                    "Saved. Probably. Hopefully. Definitely. (It saved.).".to_string(),
+                    "This post is live, which means it's officially out of your hands.".to_string(),
+                    "Scheduled for later \u{2014} future you can deal with the typos.".to_string(),
+                    "Deleted. We won't talk about it again. (We both saw it.)".to_string(),
+                ]
+            );
+        }
+    }
+
+    #[test]
+    fn representative_theme_colors_and_quotes_reach_the_tui() {
+        let raw = std::fs::read_to_string(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("crates/ldnddev_theme/tests/fixtures/themes/representative.yml"),
+        )
+        .expect("representative fixture");
+        let (theme, source, warning) = load_yaml("yaml_representative", &raw);
+        assert!(warning.is_none(), "{warning:?}");
+        assert_eq!(source, "local");
+        assert!(theme.omarchy.is_none());
+        assert!(theme.overrides.is_empty());
+        assert_eq!(
+            theme.header_quotes,
+            vec![
+                "Quoted ampersand & parentheses (kept).".to_string(),
+                "Scheduled later \u{2014} em dash stays.".to_string(),
+                "Single quoted #010203 is text, not a comment.".to_string(),
+                "multilinequote".to_string(),
+            ]
+        );
+        for (key, color, hex) in [
+            ("base", theme.base_background, "#010203"),
+            ("body", theme.body_background, "#000000"),
+            ("modal", theme.modal_background, "#808080"),
+            ("text", theme.text_primary, "#445566"),
+            ("secondary", theme.text_secondary, "#778899"),
+            ("labels", theme.text_labels, "#abcdef"),
+            ("disabled", theme.text_disabled, "#2b2c2d"),
+            ("inverse", theme.text_inverse, "#2e2f30"),
+            ("selection", theme.selection, "#313233"),
+            ("border", theme.border, "#040404"),
+            ("input", theme.input_text_default, "#0a0b0c"),
+            ("files", theme.files, "#222324"),
+            ("links", theme.links, "#252627"),
+        ] {
+            assert_eq!(color_to_hex(color), hex, "{key}");
+        }
+    }
+
+    #[test]
+    fn legacy_aliases_promote_only_when_the_canonical_key_is_absent() {
+        let (theme, source, warning) = load_yaml(
+            "yaml_legacy",
+            "\
+version: 1
+colors:
+  base_background: \"#010203\"
+  text: \"#112233\"
+  subtext0: \"#445566\"
+  input_default: \"#778899\"
+  input_focus: \"#AABBCC\"
+",
+        );
+        assert!(warning.is_none(), "{warning:?}");
+        assert_eq!(source, "local");
+        assert_eq!(color_to_hex(theme.base_background), "#010203");
+        assert_eq!(color_to_hex(theme.text_primary), "#112233");
+        assert_eq!(color_to_hex(theme.text_secondary), "#445566");
+        assert_eq!(color_to_hex(theme.input_border_default), "#778899");
+        assert_eq!(color_to_hex(theme.input_text_default), "#778899");
+        assert_eq!(color_to_hex(theme.input_border_focus), "#aabbcc");
+        assert_eq!(color_to_hex(theme.input_text_focus), "#aabbcc");
+
+        let (both, _, warning) = load_yaml(
+            "yaml_legacy_both",
+            "\
+version: 1
+colors:
+  base_background: \"#010203\"
+  text: \"#112233\"
+  text_primary: \"#ABCDEF\"
+  input_default: \"#778899\"
+  input_border_default: \"#010101\"
+",
+        );
+        assert!(warning.is_none(), "{warning:?}");
+        assert_eq!(color_to_hex(both.text_primary), "#abcdef");
+        assert_eq!(color_to_hex(both.input_border_default), "#010101");
+        assert_eq!(color_to_hex(both.input_text_default), "#778899");
+    }
+
+    #[test]
+    fn omitted_quotes_keep_the_builtin_lines() {
+        let (theme, source, warning) = load_yaml("yaml_no_quotes", "version: 1\n");
+        assert!(warning.is_none(), "{warning:?}");
+        assert_eq!(source, "local");
+        assert_eq!(theme.header_quotes, default_header_quotes());
+        assert_eq!(
+            color_to_hex(theme.base_background).to_ascii_uppercase(),
+            "#0F1114"
+        );
+    }
+
+    #[test]
+    fn tui_rejects_malformed_yaml_and_bad_versions() {
+        let (theme, source, warning) = load_yaml("yaml_malformed", "version: [\n");
+        let warning = warning.expect("malformed");
+        assert!(warning.contains("invalid theme file"), "{warning}");
+        assert_eq!(source, "default");
+        assert_default_shell(&theme);
+
+        let (theme, source, warning) = load_yaml(
+            "yaml_missing_version",
+            "colors:\n  base_background: \"#010203\"\n",
+        );
+        let warning = warning.expect("missing version");
+        assert!(
+            warning.contains("missing required 'version: 1'"),
+            "{warning}"
+        );
+        assert_eq!(source, "default");
+        assert_default_shell(&theme);
+
+        let (theme, source, warning) = load_yaml(
+            "yaml_bad_version",
+            "version: 2\ncolors:\n  base_background: \"#010203\"\n",
+        );
+        let warning = warning.expect("version 2");
+        assert!(warning.contains("declares version 2"), "{warning}");
+        assert_eq!(source, "default");
+        assert_default_shell(&theme);
+
+        let (theme, source, warning) = load_yaml(
+            "yaml_quoted_version",
+            "version: \"1\"\ncolors:\n  base_background: \"#010203\"\n",
+        );
+        let warning = warning.expect("quoted version");
+        assert!(warning.contains("invalid theme file"), "{warning}");
+        assert_eq!(source, "default");
+        assert_default_shell(&theme);
+
+        // `01` is the string "01" to an untyped value, which does not fit `u32`.
+        let (theme, source, warning) = load_yaml("yaml_leading_zero", "version: 01\n");
+        let warning = warning.expect("leading zero");
+        assert!(warning.contains("invalid theme file"), "{warning}");
+        assert_eq!(source, "default");
+        assert_default_shell(&theme);
+
+        // Untyped `0x10` is the integer 16.
+        let (theme, source, warning) = load_yaml("yaml_hex_version", "version: 0x10\n");
+        let warning = warning.expect("hex version");
+        assert!(warning.contains("declares version 16"), "{warning}");
+        assert_eq!(source, "default");
+        assert_default_shell(&theme);
+    }
+
+    #[test]
+    fn tui_color_parse_errors_keep_builtin_colors() {
+        let cases = [
+            (
+                "version: 1\ncolors:\n  base_background: \"\"\n",
+                "Missing color value",
+            ),
+            (
+                "version: 1\ncolors:\n  base_background: 010203\n",
+                "color parse error",
+            ),
+            (
+                "version: 1\ncolors:\n  base_background: #010203\n",
+                "color parse error",
+            ),
+            (
+                "version: &v 1\ncolors:\n  base_background: \"#010203\"\n",
+                "anchors and aliases",
+            ),
+        ];
+        for (yaml, needle) in cases {
+            let (theme, source, warning) = load_yaml("yaml_color_err", yaml);
+            let warning = warning.expect(needle);
+            assert!(warning.contains(needle), "{warning}");
+            assert_eq!(source, "default");
+            assert_default_shell(&theme);
+        }
+
+        let (theme, source, warning) = load_yaml(
+            "yaml_numeric_hex",
+            "version: 1\ncolors:\n  base_background: \"#010203\"\n  body_background: \"#000000\"\n",
+        );
+        assert!(warning.is_none(), "{warning:?}");
+        assert_eq!(source, "local");
+        assert_eq!(color_to_hex(theme.base_background), "#010203");
+        assert_eq!(color_to_hex(theme.body_background), "#000000");
+    }
 }

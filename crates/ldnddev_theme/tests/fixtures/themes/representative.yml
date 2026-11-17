@@ -1,0 +1,48 @@
+# Representative hand-authored theme. Not shipped.
+# Pins quoted and unquoted scalars, a multiline string, and hex colors
+# whose digits look like numbers (000000, 010203, 808080).
+version: 1
+header_quotes:
+  - "Quoted ampersand & parentheses (kept)."
+  - "Scheduled later — em dash stays."
+  - 'Single quoted #010203 is text, not a comment.'
+  - |-
+    multiline
+    quote
+colors:
+  base_background: "#010203"
+  body_background: "#000000"
+  modal_background: "#808080"
+  selected_background: "#112233"
+
+  text_primary: '#445566'
+  text_secondary: "#778899"
+  text_labels: "#ABCDEF"
+  text_active_focus: "#010101"
+  modal_labels: "#020202"
+  modal_text: "#030303"
+  modal_header: "#28292A"
+  text_disabled: "#2B2C2D"
+  text_inverse: "#2E2F30"
+
+  border_default: "#040404"
+  border_active: "#050505"
+  scrollbar: "#060606"
+  scrollbar_hover: "#070707"
+  selection: "#313233"
+
+  input_border_default: "#080808"
+  input_border_focus: "#090909"
+  input_text_default: "#0A0B0C"
+  input_text_focus: "#0D0E0F"
+  cursor: "#101112"
+
+  success: "#131415"
+  warning: "#161718"
+  error: "#191A1B"
+  info: "#1C1D1E"
+
+  folders: "#1F2021"
+  files: "#222324"
+  links: "#252627"
+  custom_extra: "#343536"
