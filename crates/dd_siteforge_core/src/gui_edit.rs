@@ -576,6 +576,37 @@ impl GuiEdit {
         Ok(format!("Added column to section. {id}"))
     }
 
+    pub fn remove_column(
+        &mut self,
+        site: &mut Site,
+        page: usize,
+        node: usize,
+        column: usize,
+    ) -> Result<String, String> {
+        let before = site.clone();
+        let page = site
+            .pages
+            .get_mut(page)
+            .ok_or_else(|| "No page.".to_string())?;
+        let node = page
+            .nodes
+            .get_mut(node)
+            .ok_or_else(|| "No section.".to_string())?;
+        let crate::model::PageNode::Section(section) = node else {
+            return Err("Selected node is not a section.".to_string());
+        };
+        edits::normalize_section_columns(section);
+        if section.columns.len() <= 1 {
+            return Err("Section must keep at least one column.".to_string());
+        }
+        if column >= section.columns.len() {
+            return Err("No column selected.".to_string());
+        }
+        section.columns.remove(column);
+        self.history.push(before);
+        Ok("Removed selected column.".to_string())
+    }
+
     pub fn delete_component(
         &mut self,
         site: &mut Site,

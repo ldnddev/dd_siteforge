@@ -110,6 +110,282 @@ impl App {
         self.push_toast(ToastLevel::Info, "New page: choose a template.");
     }
 
+    /// Core chord table. `Some` means the key was a command or a Vim letter.
+    fn dispatch_listed_key(&mut self, key: &event::KeyEvent) -> Option<bool> {
+        use dd_siteforge_core::commands::{Hit, Query, Surface, lookup};
+        let owned = super::keys::event_chord(key)?;
+        let hit = lookup(Query {
+            surface: Surface::Tui,
+            mode: self.input_mode,
+            vim: self.vim_keys,
+            in_text: false,
+            chord: owned.as_chord(),
+        })?;
+        match hit {
+            Hit::Command { command, hint, .. } => {
+                if let Some(hint) = hint {
+                    self.note_alias(hint);
+                }
+                Some(self.run_command_key(command))
+            }
+            Hit::Vim(action) => Some(self.run_vim(action)),
+        }
+    }
+
+    fn note_alias(&mut self, hint: &'static str) {
+        if self.seen_alias_hints.insert(hint) {
+            self.alias_hint = Some(hint);
+        }
+    }
+
+    pub(in crate::tui) fn run_command_key(
+        &mut self,
+        command: dd_siteforge_core::commands::Command,
+    ) -> bool {
+        use dd_siteforge_core::commands::Command;
+        match command {
+            Command::Export => {
+                self.begin_export_flow();
+                true
+            }
+            Command::Preview => {
+                self.begin_preview_flow();
+                true
+            }
+            Command::RefreshPreview => {
+                self.refresh_preview_if_running();
+                if self.preview_server.is_none() {
+                    self.push_toast(ToastLevel::Info, "Preview is not running.");
+                }
+                false
+            }
+            Command::Validate | Command::ToggleIssues => {
+                self.open_validation_modal();
+                false
+            }
+            Command::Save => {
+                self.begin_save_prompt();
+                false
+            }
+            Command::Help => {
+                self.overlay = Some(Overlay::Help { scroll: 0 });
+                false
+            }
+            Command::Theme => {
+                self.open_theme_ui();
+                false
+            }
+            Command::Find => {
+                self.open_find();
+                false
+            }
+            Command::Insert => {
+                self.open_component_picker();
+                false
+            }
+            Command::AddPage => {
+                self.begin_add_page();
+                false
+            }
+            Command::BuildAssets => {
+                self.start_asset_build();
+                false
+            }
+            Command::PageHealth => {
+                self.open_page_health();
+                false
+            }
+            Command::Redo => {
+                self.redo_last();
+                true
+            }
+            Command::Quit => {
+                self.request_quit();
+                false
+            }
+            Command::NewSite | Command::Open => {
+                self.open_site_picker();
+                false
+            }
+            Command::ToggleRegions => {
+                self.toggle_regions_pane();
+                false
+            }
+            Command::ToggleDetails => {
+                self.toggle_details_pane();
+                false
+            }
+            Command::Palette => {
+                self.open_palette();
+                false
+            }
+            Command::FocusSidebar => {
+                self.focus_pane(SidebarSection::Regions);
+                false
+            }
+            Command::FocusPages => {
+                self.focus_pane(SidebarSection::Pages);
+                false
+            }
+            Command::FocusLayouts | Command::FocusOutline => {
+                self.focus_pane(SidebarSection::Layouts);
+                false
+            }
+            Command::FocusDetails => {
+                self.focus_pane(SidebarSection::Details);
+                false
+            }
+            Command::Undo => {
+                self.undo_last();
+                true
+            }
+            Command::DeleteRow => {
+                self.delete_selected_row();
+                true
+            }
+            Command::ToggleSidebar
+            | Command::ToggleInspector
+            | Command::InitKit
+            | Command::InitTemplates => false,
+        }
+    }
+
+    fn run_vim(&mut self, action: dd_siteforge_core::commands::VimAction) -> bool {
+        use dd_siteforge_core::commands::VimAction;
+        match action {
+            VimAction::Down => {
+                if self.selected_sidebar_section == SidebarSection::Details {
+                    self.scroll_details_by(1);
+                } else {
+                    self.handle_down();
+                }
+                false
+            }
+            VimAction::Up => {
+                if self.selected_sidebar_section == SidebarSection::Details {
+                    self.scroll_details_by(-1);
+                } else {
+                    self.handle_up();
+                }
+                false
+            }
+            VimAction::First => {
+                match self.selected_sidebar_section {
+                    SidebarSection::Details => self.details_scroll_row = 0,
+                    SidebarSection::Pages => self.jump_visible_page_to_end(false),
+                    _ => self.vim_jump_to_first_row(),
+                }
+                false
+            }
+            VimAction::Last => {
+                match self.selected_sidebar_section {
+                    SidebarSection::Details => {
+                        self.details_scroll_row = self.details_max_scroll();
+                    }
+                    SidebarSection::Pages => self.jump_visible_page_to_end(true),
+                    _ => self.vim_jump_to_last_row(),
+                }
+                false
+            }
+            VimAction::Collapse => {
+                self.vim_collapse_selected_row();
+                false
+            }
+            VimAction::Expand => {
+                self.vim_expand_selected_row();
+                false
+            }
+            VimAction::ToggleExpand => {
+                self.toggle_selected_tree_expanded();
+                false
+            }
+            VimAction::Repeat => {
+                self.repeat_last_insert();
+                true
+            }
+            VimAction::Copy => {
+                self.copy_selected_row();
+                false
+            }
+            VimAction::Paste => {
+                self.paste_clipboard();
+                true
+            }
+            VimAction::Delete => {
+                self.delete_selected_row();
+                true
+            }
+            VimAction::Undo => {
+                self.undo_last();
+                true
+            }
+            VimAction::Rename => {
+                self.begin_edit_selected_column_id();
+                false
+            }
+            VimAction::AddItem => {
+                self.add_selected_collection_item();
+                true
+            }
+            VimAction::RemoveItem => {
+                self.remove_selected_collection_item();
+                true
+            }
+            VimAction::MoveDown => {
+                self.move_selected_row(1);
+                true
+            }
+            VimAction::MoveUp => {
+                self.move_selected_row(-1);
+                true
+            }
+            VimAction::PrevColumn => {
+                self.select_prev_column();
+                false
+            }
+            VimAction::NextColumn => {
+                self.select_next_column();
+                false
+            }
+            VimAction::AddColumn => {
+                self.add_column();
+                true
+            }
+            VimAction::RemoveColumn => {
+                self.remove_selected_column();
+                true
+            }
+        }
+    }
+
+    fn focus_pane(&mut self, pane: SidebarSection) {
+        match pane {
+            SidebarSection::Regions => self.regions_open = true,
+            SidebarSection::Details => self.details_open = true,
+            SidebarSection::Pages | SidebarSection::Layouts => {}
+        }
+        self.selected_sidebar_section = pane;
+        if pane == SidebarSection::Pages {
+            self.selected_region = SelectedRegion::Page;
+            self.selected_tree_row = 0;
+            self.sync_tree_row_with_selection();
+        }
+    }
+
+    fn toggle_regions_pane(&mut self) {
+        self.regions_open = !self.regions_open;
+        if !self.regions_open && self.selected_sidebar_section == SidebarSection::Regions {
+            self.selected_sidebar_section = SidebarSection::Pages;
+        }
+    }
+
+    fn toggle_details_pane(&mut self) {
+        self.details_open = !self.details_open;
+        if !self.details_open && self.selected_sidebar_section == SidebarSection::Details {
+            self.selected_sidebar_section = SidebarSection::Layouts;
+        }
+    }
+
     pub(super) fn handle_event(&mut self, evt: Event) -> anyhow::Result<bool> {
         if matches!(evt, Event::FocusGained) {
             return Ok(self.refresh_followed_theme());
@@ -259,240 +535,57 @@ impl App {
 
         let mutated = match evt {
             Event::Key(k) => {
+                self.alias_hint = None;
                 if self.selected_sidebar_section == SidebarSection::Pages
+                    && self.vim_keys
                     && self.try_handle_pages_panel_key(&k)
                 {
                     self.sync_tree_row_with_selection();
-                    return Ok(matches!(
+                    matches!(
                         k.code,
                         KeyCode::Char('u') | KeyCode::Char('J') | KeyCode::Char('K')
-                    ));
-                }
-                match k.code {
-                    KeyCode::F(1) => {
-                        self.overlay = Some(Overlay::Help { scroll: 0 });
-                        false
-                    }
-                    KeyCode::F(2) => {
-                        self.open_theme_ui();
-                        false
-                    }
-                    KeyCode::F(3) => {
-                        self.open_validation_modal();
-                        false
-                    }
-                    KeyCode::F(4) => {
-                        self.open_page_health();
-                        false
-                    }
-                    KeyCode::Char('?') => {
-                        self.open_find();
-                        false
-                    }
-                    KeyCode::Char('f') if k.modifiers.contains(KeyModifiers::CONTROL) => {
-                        self.open_find();
-                        false
-                    }
-                    KeyCode::Char('F') if k.modifiers.contains(KeyModifiers::CONTROL) => {
-                        self.open_find();
-                        false
-                    }
-                    KeyCode::Char(':') => {
-                        self.open_palette();
-                        false
-                    }
-                    KeyCode::Char('k') | KeyCode::Char('K')
-                        if k.modifiers.contains(KeyModifiers::CONTROL) =>
-                    {
-                        self.open_palette();
-                        false
-                    }
-                    KeyCode::Char('B') | KeyCode::Char('b')
-                        if k.modifiers.contains(KeyModifiers::SHIFT) =>
-                    {
-                        self.start_asset_build();
-                        false
-                    }
-                    KeyCode::Char('r') | KeyCode::Char('R')
-                        if k.modifiers.contains(KeyModifiers::CONTROL) =>
-                    {
-                        self.redo_last();
-                        true
-                    }
-                    KeyCode::Char('.') => {
-                        self.repeat_last_insert();
-                        true
-                    }
-                    KeyCode::Char('E') if k.modifiers.contains(KeyModifiers::SHIFT) => {
-                        self.begin_export_flow();
-                        true
-                    }
-                    KeyCode::Char('P') if k.modifiers.contains(KeyModifiers::SHIFT) => {
-                        self.begin_preview_flow();
-                        true
-                    }
-                    KeyCode::Char('q') if k.modifiers.contains(KeyModifiers::CONTROL) => {
-                        self.request_quit();
-                        false
-                    }
-                    KeyCode::Up => {
-                        self.handle_up();
-                        false
-                    }
-                    KeyCode::Down => {
-                        self.handle_down();
-                        false
-                    }
-                    KeyCode::Char('k') => {
-                        if self.selected_sidebar_section == SidebarSection::Details {
-                            self.scroll_details_by(-1);
-                        } else {
+                    )
+                } else if let Some(changed) = self.dispatch_listed_key(&k) {
+                    changed
+                } else {
+                    match k.code {
+                        KeyCode::Up => {
                             self.handle_up();
+                            false
                         }
-                        false
-                    }
-                    KeyCode::Char('j') => {
-                        if self.selected_sidebar_section == SidebarSection::Details {
-                            self.scroll_details_by(1);
-                        } else {
+                        KeyCode::Down => {
                             self.handle_down();
+                            false
                         }
-                        false
-                    }
-                    KeyCode::Char('h') => {
-                        self.vim_collapse_selected_row();
-                        false
-                    }
-                    KeyCode::Char('l') => {
-                        self.vim_expand_selected_row();
-                        false
-                    }
-                    KeyCode::Char('g') => {
-                        match self.selected_sidebar_section {
-                            SidebarSection::Details => self.details_scroll_row = 0,
-                            SidebarSection::Pages => self.jump_visible_page_to_end(false),
-                            _ => self.vim_jump_to_first_row(),
+                        KeyCode::PageUp => {
+                            self.page_focused_pane(-5);
+                            false
                         }
-                        false
-                    }
-                    KeyCode::Char('G') => {
-                        match self.selected_sidebar_section {
-                            SidebarSection::Details => {
-                                self.details_scroll_row = self.details_max_scroll();
-                            }
-                            SidebarSection::Pages => self.jump_visible_page_to_end(true),
-                            _ => self.vim_jump_to_last_row(),
+                        KeyCode::PageDown => {
+                            self.page_focused_pane(5);
+                            false
                         }
-                        false
+                        KeyCode::Enter => {
+                            self.handle_enter_on_selected_row();
+                            false
+                        }
+                        KeyCode::Tab => {
+                            self.select_next_page();
+                            false
+                        }
+                        KeyCode::BackTab => {
+                            self.select_prev_page();
+                            false
+                        }
+                        KeyCode::Char('f')
+                            if !k.modifiers.contains(KeyModifiers::CONTROL)
+                                && !k.modifiers.contains(KeyModifiers::ALT) =>
+                        {
+                            self.begin_edit_selected_column_width_class();
+                            false
+                        }
+                        _ => false,
                     }
-                    KeyCode::PageUp => {
-                        self.page_focused_pane(-5);
-                        false
-                    }
-                    KeyCode::PageDown => {
-                        self.page_focused_pane(5);
-                        false
-                    }
-                    KeyCode::Char(' ') => {
-                        self.toggle_selected_tree_expanded();
-                        false
-                    }
-                    KeyCode::Enter => {
-                        self.handle_enter_on_selected_row();
-                        false
-                    }
-                    KeyCode::Tab => {
-                        self.select_next_page();
-                        false
-                    }
-                    KeyCode::BackTab => {
-                        self.select_prev_page();
-                        false
-                    }
-                    KeyCode::Char('s') => {
-                        self.begin_save_prompt();
-                        false
-                    }
-                    KeyCode::Char('/') => {
-                        self.open_component_picker();
-                        false
-                    }
-                    KeyCode::Char('d') => {
-                        self.delete_selected_row();
-                        true
-                    }
-                    KeyCode::Char('y') => {
-                        self.copy_selected_row();
-                        false
-                    }
-                    KeyCode::Char('p') if !k.modifiers.contains(KeyModifiers::CONTROL) => {
-                        self.paste_clipboard();
-                        true
-                    }
-                    KeyCode::Char('u') => {
-                        self.undo_last();
-                        true
-                    }
-                    KeyCode::Char('J') => {
-                        self.move_selected_row(1);
-                        true
-                    }
-                    KeyCode::Char('K') => {
-                        self.move_selected_row(-1);
-                        true
-                    }
-                    KeyCode::Char('C') => {
-                        self.add_column();
-                        true
-                    }
-                    KeyCode::Char('V') => {
-                        self.remove_selected_column();
-                        true
-                    }
-                    KeyCode::Char('c') => {
-                        self.select_prev_column();
-                        false
-                    }
-                    KeyCode::Char('v') => {
-                        self.select_next_column();
-                        false
-                    }
-                    KeyCode::Char('r') => {
-                        self.begin_edit_selected_column_id();
-                        false
-                    }
-                    KeyCode::Char('f') => {
-                        self.begin_edit_selected_column_width_class();
-                        false
-                    }
-                    KeyCode::Char('A') => {
-                        self.add_selected_collection_item();
-                        true
-                    }
-                    KeyCode::Char('X') => {
-                        self.remove_selected_collection_item();
-                        true
-                    }
-                    KeyCode::Char('1') => {
-                        self.selected_sidebar_section = SidebarSection::Regions;
-                        false
-                    }
-                    KeyCode::Char('2') => {
-                        self.selected_sidebar_section = SidebarSection::Pages;
-                        self.selected_region = SelectedRegion::Page;
-                        self.selected_tree_row = 0;
-                        self.sync_tree_row_with_selection();
-                        false
-                    }
-                    KeyCode::Char('3') => {
-                        self.selected_sidebar_section = SidebarSection::Layouts;
-                        false
-                    }
-                    KeyCode::Char('4') => {
-                        self.selected_sidebar_section = SidebarSection::Details;
-                        false
-                    }
-                    _ => false,
                 }
             }
             Event::Paste(_) => false,

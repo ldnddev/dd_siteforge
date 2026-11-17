@@ -66,8 +66,8 @@ pub(crate) fn build_help_text(theme: &AppTheme, width: usize) -> Text<'static> {
 
     fn add_section(
         lines: &mut Vec<Line<'static>>,
-        title: &'static str,
-        items: &[(&'static str, &'static str)],
+        title: &str,
+        items: &[(&str, &str)],
         icon: &str,
         h_style: Style,
         k_style: Style,
@@ -107,252 +107,35 @@ pub(crate) fn build_help_text(theme: &AppTheme, width: usize) -> Text<'static> {
 
     let mut lines: Vec<Line<'static>> = Vec::new();
 
-    // Global
-    add_section(
-        &mut lines,
-        "Global",
-        &[
-            ("F1", "Open/close this help"),
-            (
-                "F2",
-                "Open/close Omarchy themes (Enter apply, e edit, s save)",
-            ),
-            ("F3", "Validate site (shows errors in a modal)"),
-            (
-                "F4",
-                "Page health (SEO, alt text, headings, internal links)",
-            ),
-            (
-                "Shift+E",
-                "Export site to HTML (validates first; prompts for output dir on first use)",
-            ),
-            (
-                "Shift+P",
-                "Preview current page: export, start local HTTP server, open browser. Repeat to re-export without opening a new tab. Local preview HTML live-reloads after save/export/build",
-            ),
-            (
-                "Shift+B",
-                "Build CSS/JS: `lando grunt build` when .lando.yml exists, else `npx grunt build`",
-            ),
-            (
-                "? / Ctrl+F",
-                "Find in the site (titles, copy, field values)",
-            ),
-            (": / Ctrl+K", "Command palette"),
-            ("Ctrl+R", "Redo last tree edit"),
-            (".", "Repeat last insert"),
-            ("Ctrl+Q", "Quit"),
-            (
-                "s",
-                "Open save modal and enter file path (also writes a .backup checkpoint)",
-            ),
-            ("Tab / Shift+Tab", "Next/previous page"),
-            ("1 / 2 / 3 / 4", "Focus Regions / Pages / Layout / Details"),
-        ],
-        "•",
-        h_style,
-        k_style,
-        div_style,
-        width,
-    );
+    let mut sections: Vec<(&str, Vec<(&str, &str)>)> = Vec::new();
+    for row in dd_siteforge_core::commands::shortcut_sheet() {
+        if sections.last().map(|(name, _)| *name) != Some(row.section) {
+            sections.push((row.section, Vec::new()));
+        }
+        sections
+            .last_mut()
+            .expect("section")
+            .1
+            .push((row.tui, row.action));
+    }
+    for (title, items) in &sections {
+        add_section(
+            &mut lines, title, items, "•", h_style, k_style, div_style, width,
+        );
+    }
 
-    // Autosave (descriptive paragraph-style note under its header)
+    // Autosave is not a chord. The .backup is the manual checkpoint (Ctrl+S).
     lines.push(Line::from(Span::styled("Autosave", h_style)));
-    lines.push(Line::from("")); // padding top inside section
-    let note = "2s after a change, the active site JSON is rewritten. The .backup is only refreshed by manual `s` saves; on next load the TUI surfaces a toast when site.json and site.json.backup differ.";
+    lines.push(Line::from(""));
+    let note = "2s after a change, the active site JSON is rewritten. The .backup is only refreshed by a manual Ctrl+S checkpoint; on next load the TUI surfaces a toast when site.json and site.json.backup differ.";
     for chunk in wrap_to_lines(note, width.saturating_sub(2)) {
         lines.push(Line::from(Span::raw(format!("  {}", chunk))));
     }
-    lines.push(Line::from("")); // padding bottom inside section
-    // divider after autosave section
+    lines.push(Line::from(""));
     let rule_len = width.saturating_sub(4).clamp(12, 50);
     let rule = "─".repeat(rule_len);
     lines.push(Line::from(Span::styled(format!("  {}", rule), div_style)));
     lines.push(Line::from(""));
-
-    // Node navigation and edits
-    add_section(
-        &mut lines,
-        "Node navigation and edits",
-        &[
-            ("Up/Down or wheel", "Select row in Layout tree"),
-            (
-                "PageUp/PageDown",
-                "Page the focused pane (Layout tree / Pages list / Details)",
-            ),
-            ("Enter", "Edit selected row"),
-            (
-                "Space",
-                "Expand/collapse selected section or accordion/alternating/card/filmstrip/milestones/slider items",
-            ),
-            (
-                "/",
-                "Open insert fuzzy finder (hero/section/cta/.../slider); inserts after the selected row",
-            ),
-            (
-                "A / X",
-                "Add/remove dd-accordion, dd-alternating, dd-card, dd-filmstrip, dd-milestones, or dd-slider item",
-            ),
-            (
-                "d",
-                "Delete selected row (node, component, or collection item)",
-            ),
-            (
-                "y",
-                "Copy selected row (node, component, or collection item)",
-            ),
-            ("p", "Paste the copied row after the current selection"),
-            ("u", "Undo last tree edit (session snapshots, cap 20)"),
-            ("Ctrl+R", "Redo last tree edit"),
-            (".", "Repeat last component insert"),
-            (
-                "J / K",
-                "Move selected row down / up (node, component, item, or column)",
-            ),
-        ],
-        "•",
-        h_style,
-        k_style,
-        div_style,
-        width,
-    );
-
-    // Pages panel
-    add_section(
-        &mut lines,
-        "Pages panel ([2] Pages)",
-        &[
-            (
-                "Shift+A",
-                "Add page (template picker, then page HEAD form: title, slug, meta, SEO)",
-            ),
-            (
-                "Shift+X",
-                "Delete current page (confirms; refuses if only 1 page)",
-            ),
-            ("u", "Undo last page deletion (session trash)"),
-            (
-                "Shift+J / Shift+K",
-                "Move current page down / up among siblings (also = sitemap order)",
-            ),
-            (
-                "Space / h / l",
-                "Expand/collapse a parent page to show or hide nested slug children (blog/entry under blog)",
-            ),
-            (
-                "PageUp/PageDown",
-                "Jump ±5 visible pages (clamped, no wrap)",
-            ),
-            (
-                "r",
-                "Rename page label (auto-slug until first disk save). [HEAD] edits Title, Slug/path (blog/entry), Meta Title, Meta Description, SEO",
-            ),
-        ],
-        "•",
-        h_style,
-        k_style,
-        div_style,
-        width,
-    );
-
-    // Section layout
-    add_section(
-        &mut lines,
-        "Section layout",
-        &[
-            ("C / V", "Add/remove selected column"),
-            ("c / v", "Select previous/next column"),
-            (
-                "J / K",
-                "Move selected grain down/up (column when a column row is selected)",
-            ),
-            (
-                "r / f",
-                "Edit selected column id / width class (column ids are prefixed with the section id)",
-            ),
-        ],
-        "•",
-        h_style,
-        k_style,
-        div_style,
-        width,
-    );
-
-    // Details pane
-    add_section(
-        &mut lines,
-        "Details pane ([4] Details)",
-        &[
-            ("j / k", "Scroll the blueprint one row"),
-            ("PageUp/PageDown", "Scroll the blueprint five rows"),
-            ("g / G", "Jump to top / bottom of the blueprint"),
-            ("Click", "Focus Details and select the matching tree grain"),
-            ("Double-click", "Edit the current selection"),
-        ],
-        "•",
-        h_style,
-        k_style,
-        div_style,
-        width,
-    );
-
-    // Edit modal
-    add_section(
-        &mut lines,
-        "Edit modal (unified FormEdit)",
-        &[
-            ("Tab / Shift+Tab", "Next/previous editable field"),
-            (
-                "Ctrl+P (image)",
-                "Open image picker (./source/images/). File URL fields also have a Browse button",
-            ),
-            ("Ctrl+P (link)", "Open page picker (lists site pages)"),
-            ("Ctrl+E", "Expand focused textarea to a full-size editor"),
-            ("←/→ (options)", "Cycle choices for type/option fields"),
-            ("Ctrl+← / Ctrl+→", "Jump by word in a text field"),
-            (
-                "Shift+←/→/↑/↓",
-                "Select by character or visual row (Home/End/Ctrl+arrows too)",
-            ),
-            ("Ctrl+A", "Select the entire field"),
-            (
-                "Enter",
-                "Newline in textarea / next field / drill into SubForm item",
-            ),
-            (
-                "Shift+J / Shift+K",
-                "Move the highlighted subform item (menu items and nested sub-menus) among its siblings",
-            ),
-            (
-                "Home / End",
-                "Start/end of the current wrapped line in a textarea",
-            ),
-            ("Ctrl+S", "Save (also refreshes a running preview)"),
-            ("Ctrl+Z", "Undo last text edit or paste in this form"),
-            ("Esc", "Close expanded textarea, or cancel edit"),
-            (
-                "Backspace / Delete",
-                "Delete previous / next character, or the selection",
-            ),
-            (
-                "Ctrl+Backspace",
-                "Delete the previous word, or the selection",
-            ),
-            (
-                "Paste",
-                "Terminal paste inserts the clipboard in one shot (replaces a selection)",
-            ),
-            (
-                "multiline ↑/↓/Enter",
-                "Move/copy lines; Enter newline; Ctrl+S saves",
-            ),
-        ],
-        "•",
-        h_style,
-        k_style,
-        div_style,
-        width,
-    );
 
     // Mouse (using safe bullet icon)
     add_section(
