@@ -134,7 +134,10 @@ impl App {
 
     fn note_alias(&mut self, hint: &'static str) {
         if self.seen_alias_hints.insert(hint) {
-            self.alias_hint = Some(hint);
+            self.alias_hint = Some(dd_siteforge_core::commands::alias_hint_text(
+                hint,
+                self.in_tmux,
+            ));
         }
     }
 

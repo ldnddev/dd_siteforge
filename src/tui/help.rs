@@ -55,7 +55,7 @@ fn wrap_to_lines(text: &str, width: usize) -> Vec<String> {
     out
 }
 
-pub(crate) fn build_help_text(theme: &AppTheme, width: usize) -> Text<'static> {
+pub(crate) fn build_help_text(theme: &AppTheme, width: usize, in_tmux: bool) -> Text<'static> {
     let h_style = Style::default()
         .fg(theme.modal_header)
         .add_modifier(Modifier::BOLD);
@@ -112,11 +112,10 @@ pub(crate) fn build_help_text(theme: &AppTheme, width: usize) -> Text<'static> {
         if sections.last().map(|(name, _)| *name) != Some(row.section) {
             sections.push((row.section, Vec::new()));
         }
-        sections
-            .last_mut()
-            .expect("section")
-            .1
-            .push((row.tui, row.action));
+        sections.last_mut().expect("section").1.push((
+            dd_siteforge_core::commands::tui_help_key(row.tui, in_tmux),
+            row.action,
+        ));
     }
     for (title, items) in &sections {
         add_section(
@@ -287,4 +286,42 @@ pub(crate) fn build_theme_text(
 
 pub(crate) fn count_lines(text: &Text, _width: usize) -> usize {
     text.lines.len()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn plain(in_tmux: bool) -> String {
+        let text = build_help_text(&AppTheme::default(), 80, in_tmux);
+        text.lines
+            .iter()
+            .map(|line| {
+                line.spans
+                    .iter()
+                    .map(|span| span.content.to_string())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    #[test]
+    fn f1_outside_tmux_keeps_ctrl_b_and_ctrl_shift_n() {
+        let text = plain(false);
+        assert!(text.contains("Ctrl B"), "{text}");
+        assert!(text.contains("Ctrl Shift N"), "{text}");
+        assert!(!text.contains("Shift+B"), "{text}");
+    }
+
+    #[test]
+    fn f1_inside_tmux_names_shift_b_and_the_palette() {
+        let text = plain(true);
+        assert!(text.contains("Shift+B"), "{text}");
+        assert!(text.contains("palette"), "{text}");
+        assert!(!text.contains("Ctrl B"), "{text}");
+        assert!(!text.contains("Ctrl Shift N"), "{text}");
+        assert!(text.contains("Ctrl E"), "{text}");
+        assert!(text.contains("Ctrl R"), "{text}");
+    }
 }

@@ -505,7 +505,7 @@ impl App {
 
                 // Build rich help (section headers in modal_header, 2-col key/action with
                 // wrapping that preserves columns, icons, internal padding + dividers).
-                let help = build_help_text(&self.theme, body_w as usize);
+                let help = build_help_text(&self.theme, body_w as usize, self.in_tmux);
                 let wrapped_total = count_lines(&help, body_w as usize);
                 let visible = inner.height as usize;
                 let max_scroll = wrapped_total.saturating_sub(visible) as u16;
