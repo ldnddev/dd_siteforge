@@ -235,6 +235,14 @@ impl GuiEdit {
         self.set_field(&id, next)
     }
 
+    pub fn focused_is_textarea(&self) -> bool {
+        self.active().is_some_and(|draft| {
+            draft.state.focused().is_some_and(|field| {
+                matches!(field.kind, crate::editform::FieldKind::Textarea { .. })
+            })
+        })
+    }
+
     pub fn toggle_expanded(&mut self) -> bool {
         let Some(draft) = self.active_mut() else {
             return false;

@@ -7,8 +7,12 @@ use dd_siteforge_core::component_kind::{ComponentKind, InsertRegion};
 use dd_siteforge_core::controls::MarkdownInsert;
 use dd_siteforge_core::cursor::Cursor;
 use dd_siteforge_core::editform::SubChange;
+use dd_siteforge_core::export::join_inside;
 use dd_siteforge_core::gui_edit::{Commit, GuiEdit};
-use dd_siteforge_core::model::{Page, PageTemplate, Site};
+use dd_siteforge_core::health::page_health;
+use dd_siteforge_core::issue::{Issue, IssueNode};
+use dd_siteforge_core::model::{Page, PageTemplate, Site, page_file_name};
+use dd_siteforge_core::serve::StaticServer;
 use dd_siteforge_core::session;
 use dd_siteforge_core::storage::{self, checkpoint_path};
 use dd_siteforge_core::validate::validate_site_with_root;
@@ -17,6 +21,8 @@ use gpui::{
     Render, StatefulInteractiveElement, Styled, Window, div, prelude::*, px,
 };
 use gpui_component::button::Button;
+use std::sync::mpsc::Receiver;
+use std::time::SystemTime;
 
 use crate::document::{Document, SavePhase};
 use crate::keys::{self, show_inspector_tooltip, show_sidebar_tooltip};
@@ -29,6 +35,7 @@ use crate::present::{
     welcome_rows,
 };
 use crate::preview;
+use crate::publish::{self, PreviewChrome, PreviewView};
 use crate::settings::GuiSettings;
 use crate::theme_load::LiveTheme;
 
@@ -85,6 +92,27 @@ struct LoadFailure {
     path: PathBuf,
     message: String,
     folder: String,
+}
+
+struct PathSheet {
+    preview: bool,
+    path: String,
+    error: Option<String>,
+}
+
+struct IssuesPane {
+    open: bool,
+    health: bool,
+    index: usize,
+    validation: Vec<Issue>,
+    health_items: Vec<dd_siteforge_core::health::HealthItem>,
+    page: String,
+}
+
+struct PendingExport {
+    preview: bool,
+    refresh: bool,
+    edits_at_start: u64,
 }
 
 struct NewSiteForm {
@@ -149,6 +177,31 @@ pub struct Shell {
     awaiting_choose: bool,
     awaiting_save_as: bool,
     awaiting_image: Option<String>,
+    build_status: String,
+    build_rx: Option<Receiver<Result<String, String>>>,
+    export_rx: Option<Receiver<Result<publish::RanExport, String>>>,
+    export_job: Option<PendingExport>,
+    export_progress: String,
+    export_again: Option<(String, bool)>,
+    path_sheet: Option<PathSheet>,
+    export_failure: Option<String>,
+    export_reveal: Option<PathBuf>,
+    preview_server: Option<StaticServer>,
+    preview_window_open: bool,
+    preview_follow: bool,
+    preview_building: bool,
+    preview_failed: bool,
+    preview_rendered_edits: u64,
+    preview_at: SystemTime,
+    browser_urls: Vec<String>,
+    open_companion: bool,
+    browser_fallback: bool,
+    issues_open: bool,
+    issues_health: bool,
+    issues_index: usize,
+    issues_keys: bool,
+    validation: Vec<Issue>,
+    init_rx: Option<Receiver<Result<Vec<String>, String>>>,
 }
 
 impl Shell {
@@ -215,6 +268,31 @@ impl Shell {
             awaiting_choose: false,
             awaiting_save_as: false,
             awaiting_image: None,
+            build_status: publish::BUILD_IDLE.to_string(),
+            build_rx: None,
+            export_rx: None,
+            export_job: None,
+            export_progress: String::new(),
+            export_again: None,
+            path_sheet: None,
+            export_failure: None,
+            export_reveal: None,
+            preview_server: None,
+            preview_window_open: false,
+            preview_follow: true,
+            preview_building: false,
+            preview_failed: false,
+            preview_rendered_edits: 0,
+            preview_at: SystemTime::UNIX_EPOCH,
+            browser_urls: Vec::new(),
+            open_companion: false,
+            browser_fallback: false,
+            issues_open: false,
+            issues_health: false,
+            issues_index: 0,
+            issues_keys: false,
+            validation: Vec::new(),
+            init_rx: None,
         };
         if let Some(path) = opts.path {
             shell.open_site(&path);
@@ -258,9 +336,11 @@ impl Shell {
                 // Theme swap is applied on the next render via `apply` in the caller.
             }
         }
-        if let Some(doc) = self.document.as_mut() {
-            doc.autosave(now);
+        let saved = self.document.as_mut().is_some_and(|doc| doc.autosave(now));
+        if saved && self.preview_server.is_some() {
+            self.refresh_preview();
         }
+        self.poll_jobs();
         self.take_notice();
     }
 
@@ -436,7 +516,45 @@ impl Shell {
             }
         }
         if self.screen == Screen::Editor || self.screen == Screen::Welcome {
-            lines.push("Preview closed · Ctrl+P".to_string());
+            lines.push(self.preview_status_text());
+        }
+        if self.screen == Screen::Editor {
+            lines.push(self.build_status.clone());
+            if !self.export_progress.is_empty() {
+                lines.push(self.export_progress.clone());
+            }
+            if self.issues_open {
+                self.push_issue_lines(&mut lines);
+            }
+            if let Some(sheet) = &self.path_sheet {
+                lines.push(if sheet.preview {
+                    "Preview — output directory".to_string()
+                } else {
+                    "Export — output directory".to_string()
+                });
+                lines.push(sheet.path.clone());
+                if let Some(err) = &sheet.error {
+                    lines.push(err.clone());
+                }
+                lines.push("Cancel".to_string());
+                lines.push(if sheet.preview {
+                    "Build preview".to_string()
+                } else {
+                    "Export".to_string()
+                });
+            }
+            if let Some(err) = &self.export_failure {
+                lines.push("Export failed".to_string());
+                lines.push(err.clone());
+                lines.push("Close".to_string());
+                lines.push("Retry".to_string());
+            }
+            if self.export_reveal.is_some() {
+                lines.push("Reveal".to_string());
+            }
+            if self.browser_fallback {
+                lines.push("Open in browser".to_string());
+            }
         }
         if let Some(doc) = &self.document {
             if self.screen == Screen::Editor {
@@ -592,7 +710,13 @@ impl Shell {
     pub fn handle_key(&mut self, key: &str) {
         let key = key.to_ascii_lowercase();
         if key == "ctrl-b" {
-            // Build CSS/JS. Not a dock toggle.
+            if self.screen == Screen::Editor
+                && self.path_sheet.is_none()
+                && self.export_failure.is_none()
+                && !self.new_site.open
+            {
+                self.begin_build();
+            }
             return;
         }
         // Same actions as the title-bar buttons (J4).
@@ -624,6 +748,17 @@ impl Shell {
             self.key_switcher(&key);
             return;
         }
+        if self.path_sheet.is_some() {
+            self.key_path_sheet(&key);
+            return;
+        }
+        if self.export_failure.is_some() {
+            self.key_export_failure(&key);
+            return;
+        }
+        if self.issues_keys && self.key_issues(&key) {
+            return;
+        }
         if self.screen == Screen::Editor && self.edit_key(&key) {
             return;
         }
@@ -634,7 +769,12 @@ impl Shell {
             keys::THEME_KEY => self.open_theme(),
             keys::REDO_KEY => self.redo(),
             keys::OPEN_KEY => self.request_choose_file(),
-            "ctrl-p" => self.open_preview(),
+            "ctrl-p" => self.begin_preview(),
+            "ctrl-e" => self.begin_export(),
+            "ctrl-4" => self.toggle_issues(),
+            "f3" => self.open_validation(),
+            "f4" => self.open_health(),
+            "f5" => self.refresh_preview(),
             "ctrl-s" => self.checkpoint(),
             "ctrl-1" => self.zone_sidebar(),
             "ctrl-2" => self.zone_outline(),
@@ -1310,27 +1450,686 @@ impl Shell {
     }
 
     fn open_preview(&mut self) {
+        self.begin_preview();
+    }
+
+    fn site_root_of(&self) -> Option<PathBuf> {
+        self.document.as_ref().map(|doc| site_root_path(&doc.path))
+    }
+
+    fn begin_export(&mut self) {
+        self.begin_publish(false);
+    }
+
+    fn begin_preview(&mut self) {
+        self.begin_publish(true);
+    }
+
+    fn begin_publish(&mut self, preview: bool) {
+        if self.screen != Screen::Editor {
+            return;
+        }
+        let Some(root) = self.site_root_of() else {
+            self.toast("Open a site.json to preview.");
+            return;
+        };
         let Some(doc) = self.document.as_ref() else {
-            self.preview_note = "Open a site.json to preview.".into();
             return;
         };
-        let Some(dir) = doc.site.export_dir.as_deref() else {
-            self.preview_note = "Preview opens in the browser once an export folder is set.".into();
+        let issues = validate_site_with_root(&doc.site, Some(&root));
+        if !issues.is_empty() {
+            self.validation = issues;
+            self.issues_open = true;
+            self.issues_health = false;
+            self.issues_index = 0;
+            self.issues_keys = true;
             return;
-        };
-        let root = doc.path.parent().unwrap_or(Path::new(".")).join(dir);
-        match dd_siteforge_core::serve::StaticServer::start(root) {
-            Ok(server) => {
-                let url = server.url_for("index", doc.site.pretty_urls);
-                let url_for_note = url.clone();
-                std::mem::forget(server);
-                if let Err(err) = preview::open_in_browser(&url) {
-                    self.preview_note = format!("Couldn't open the browser: {err}");
-                } else {
-                    self.preview_note = format!("Opened {url_for_note} in the browser");
+        }
+        match doc.site.export_dir.clone() {
+            Some(dir) if !dir.trim().is_empty() => self.start_export(dir, preview, false),
+            _ => {
+                self.path_sheet = Some(PathSheet {
+                    preview,
+                    path: "./web/".to_string(),
+                    error: None,
+                });
+                if preview {
+                    self.preview_window_open = true;
                 }
             }
-            Err(err) => self.preview_note = format!("Couldn't start preview: {err}"),
+        }
+    }
+
+    fn start_export(&mut self, rel: String, preview: bool, refresh: bool) {
+        if self.export_rx.is_some() {
+            self.export_again = Some((rel, preview));
+            return;
+        }
+        let Some(doc) = self.document.as_ref() else {
+            return;
+        };
+        let root = site_root_path(&doc.path);
+        let site = doc.site.clone();
+        let edits_at_start = doc.edits;
+        let pages = site.pages.len();
+        let normalized = publish::normalize_relative_path(&rel);
+        let display = if normalized.is_empty() {
+            root.display().to_string()
+        } else {
+            format!("./{normalized}/")
+        };
+        self.export_progress = publish::exporting_line(pages, &display);
+        if preview || refresh {
+            self.preview_building = true;
+            self.preview_failed = false;
+            self.preview_window_open = true;
+            self.open_companion = true;
+        }
+        self.export_job = Some(PendingExport {
+            preview: preview || refresh,
+            refresh,
+            edits_at_start,
+        });
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(publish::run_export(&site, &root, &rel));
+        });
+        self.export_rx = Some(rx);
+    }
+
+    pub fn refresh_preview(&mut self) {
+        if self.screen != Screen::Editor {
+            return;
+        }
+        let Some(dir) = self
+            .document
+            .as_ref()
+            .and_then(|doc| doc.site.export_dir.clone())
+            .filter(|dir| !dir.trim().is_empty())
+        else {
+            self.begin_preview();
+            return;
+        };
+        if self.preview_server.is_none() && !self.preview_window_open {
+            self.begin_preview();
+            return;
+        }
+        self.start_export(dir, true, true);
+    }
+
+    fn finish_export(&mut self, result: Result<publish::RanExport, String>) {
+        let job = self.export_job.take();
+        let pending = job.unwrap_or(PendingExport {
+            preview: false,
+            refresh: false,
+            edits_at_start: 0,
+        });
+        self.export_progress.clear();
+        self.preview_building = false;
+        match result {
+            Ok(ran) => {
+                if let Some(doc) = self.document.as_mut() {
+                    doc.site.export_dir = Some(ran.normalized.clone());
+                    doc.mark_dirty_quiet();
+                }
+                self.toast(publish::export_toast(&ran.report, &ran.display));
+                if !pending.preview {
+                    self.export_reveal = Some(ran.output.clone());
+                }
+                if pending.preview {
+                    self.preview_rendered_edits = pending.edits_at_start;
+                    self.preview_at = SystemTime::now();
+                    self.preview_failed = false;
+                    self.finish_preview_server(ran.output, pending.refresh);
+                }
+            }
+            Err(message) => {
+                if pending.refresh {
+                    let detail = message
+                        .strip_prefix("Export failed: ")
+                        .unwrap_or(&message)
+                        .to_string();
+                    self.toast(format!("Preview refresh failed: {detail}"));
+                    self.preview_failed = true;
+                } else if pending.preview {
+                    let detail = message
+                        .strip_prefix("Export failed: ")
+                        .unwrap_or(&message)
+                        .to_string();
+                    self.toast(format!("Preview failed: {detail}"));
+                    self.preview_failed = true;
+                    self.export_failure = Some(detail);
+                } else {
+                    let detail = message
+                        .strip_prefix("Export failed: ")
+                        .unwrap_or(&message)
+                        .to_string();
+                    self.export_failure = Some(detail);
+                }
+            }
+        }
+        if let Some((rel, preview)) = self.export_again.take() {
+            self.start_export(rel, preview, false);
+        }
+    }
+
+    fn finish_preview_server(&mut self, output: PathBuf, refresh: bool) {
+        let slug = self.current_slug();
+        let pretty = self
+            .document
+            .as_ref()
+            .is_some_and(|doc| doc.site.pretty_urls);
+        if let Some(server) = self.preview_server.as_ref() {
+            server.set_root(output);
+            self.sync_follow();
+            let url = server.url_for(&slug, pretty);
+            self.browser_urls.push(url.clone());
+            if refresh {
+                self.toast(format!("Preview updated — refresh {url}"));
+            }
+            return;
+        }
+        match StaticServer::start(output) {
+            Ok(server) => {
+                let url = server.url_for(&slug, pretty);
+                self.preview_server = Some(server);
+                self.sync_follow();
+                self.launch_browser(&url);
+            }
+            Err(err) => {
+                self.preview_failed = true;
+                self.toast(format!("Preview server failed: {err}"));
+            }
+        }
+    }
+
+    fn launch_browser(&mut self, url: &str) {
+        self.browser_urls.push(url.to_string());
+        if !self.quit_runtime {
+            self.toast(format!("Opening {url} in browser…"));
+            return;
+        }
+        match preview::open_in_browser(url) {
+            Ok(()) => self.toast(format!("Opening {url} in browser…")),
+            Err(err) => self.toast(format!("Browser open failed: {err}")),
+        }
+    }
+
+    fn current_slug(&self) -> String {
+        let Some(doc) = self.document.as_ref() else {
+            return "index".to_string();
+        };
+        doc.site
+            .pages
+            .get(self.page_index)
+            .map(|page| page.slug.clone())
+            .filter(|slug| !slug.trim().is_empty())
+            .unwrap_or_else(|| "index".to_string())
+    }
+
+    fn current_preview_file(&self) -> String {
+        let pretty = self
+            .document
+            .as_ref()
+            .is_some_and(|doc| doc.site.pretty_urls);
+        page_file_name(&self.current_slug(), pretty)
+    }
+
+    fn sync_follow(&self) {
+        let Some(server) = self.preview_server.as_ref() else {
+            return;
+        };
+        if self.preview_follow {
+            server.set_follow(&self.current_preview_file());
+        } else {
+            server.set_follow("");
+        }
+    }
+
+    pub fn toggle_follow(&mut self) {
+        self.preview_follow = !self.preview_follow;
+        self.sync_follow();
+    }
+
+    pub fn preview_chrome(&self) -> PreviewChrome {
+        PreviewChrome {
+            url: self
+                .browser_urls
+                .last()
+                .cloned()
+                .unwrap_or_else(|| "Preview".to_string()),
+            status: self.preview_status_text(),
+            follow: self.preview_follow,
+        }
+    }
+
+    fn preview_view(&self) -> PreviewView {
+        if self.preview_building {
+            return PreviewView::Building;
+        }
+        if self.preview_failed {
+            return PreviewView::Error;
+        }
+        if self.preview_server.is_none() {
+            return if self.preview_window_open {
+                PreviewView::NotBuilt
+            } else {
+                PreviewView::Closed
+            };
+        }
+        let edits = self.document.as_ref().map(|doc| doc.edits).unwrap_or(0);
+        if edits > self.preview_rendered_edits {
+            PreviewView::Stale {
+                edits: edits - self.preview_rendered_edits,
+            }
+        } else {
+            PreviewView::Live
+        }
+    }
+
+    fn preview_status_text(&self) -> String {
+        if self.screen == Screen::Error {
+            return "Couldn't load site.json".to_string();
+        }
+        if self.screen == Screen::Loading {
+            return "Loading…".to_string();
+        }
+        publish::preview_status(self.preview_view(), self.preview_at)
+    }
+
+    fn begin_build(&mut self) {
+        if self.build_rx.is_some() {
+            self.toast(publish::BUILD_ALREADY);
+            return;
+        }
+        let Some(root) = self.site_root_of() else {
+            return;
+        };
+        let cmd = dd_siteforge_core::asset_build::asset_build_command(&root);
+        self.build_status = publish::build_running(&cmd);
+        self.toast(self.build_status.clone());
+        self.build_rx = Some(dd_siteforge_core::asset_build::spawn_asset_build(root));
+    }
+
+    fn begin_init_kit(&mut self) {
+        self.spawn_init(true);
+    }
+
+    fn begin_init_templates(&mut self) {
+        self.spawn_init(false);
+    }
+
+    fn spawn_init(&mut self, kit: bool) {
+        if self.init_rx.is_some() {
+            return;
+        }
+        let Some(doc) = self.document.as_ref() else {
+            return;
+        };
+        let root = site_root_path(&doc.path);
+        let project = root
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "site".to_string());
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let result = if kit {
+                publish::seed_kit(&root, &project)
+            } else {
+                publish::seed_template_files(&root)
+            };
+            let _ = tx.send(result);
+        });
+        self.init_rx = Some(rx);
+    }
+
+    pub fn poll_jobs(&mut self) {
+        if let Some(rx) = self.build_rx.as_ref() {
+            match rx.try_recv() {
+                Ok(Ok(message)) => {
+                    self.build_rx = None;
+                    self.build_status = message.clone();
+                    if let Some(server) = self.preview_server.as_ref() {
+                        server.bump_generation();
+                    }
+                    self.toast(message);
+                }
+                Ok(Err(message)) => {
+                    self.build_rx = None;
+                    self.build_status = message.clone();
+                    self.toast(message);
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {}
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    self.build_rx = None;
+                    self.build_status = publish::BUILD_STOPPED.to_string();
+                    self.toast(publish::BUILD_STOPPED);
+                }
+            }
+        }
+        if let Some(rx) = self.export_rx.as_ref() {
+            match rx.try_recv() {
+                Ok(result) => {
+                    self.export_rx = None;
+                    self.finish_export(result);
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {}
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    self.export_rx = None;
+                    self.finish_export(Err("Export failed: export thread stopped.".to_string()));
+                }
+            }
+        }
+        if let Some(rx) = self.init_rx.as_ref() {
+            match rx.try_recv() {
+                Ok(Ok(notes)) => {
+                    self.init_rx = None;
+                    for note in notes {
+                        self.toast(note);
+                    }
+                }
+                Ok(Err(err)) => {
+                    self.init_rx = None;
+                    self.toast(err);
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {}
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    self.init_rx = None;
+                }
+            }
+        }
+    }
+
+    fn key_path_sheet(&mut self, key: &str) {
+        let preview = self.path_sheet.as_ref().is_some_and(|sheet| sheet.preview);
+        match key {
+            "escape" => {
+                self.path_sheet = None;
+                if preview {
+                    self.preview_window_open = self.preview_server.is_some();
+                }
+                self.toast(if preview {
+                    "Preview cancelled."
+                } else {
+                    "Export cancelled."
+                });
+            }
+            "enter" | "ctrl-s" => {
+                let path = self
+                    .path_sheet
+                    .as_ref()
+                    .map(|sheet| sheet.path.clone())
+                    .unwrap_or_default();
+                self.commit_path(path, preview);
+            }
+            "backspace" => {
+                if let Some(sheet) = self.path_sheet.as_mut() {
+                    sheet.path.pop();
+                    sheet.error = None;
+                }
+            }
+            other if is_text(other) => {
+                if let Some(sheet) = self.path_sheet.as_mut() {
+                    sheet.path.push_str(other);
+                    sheet.error = None;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn commit_path(&mut self, path: String, preview: bool) {
+        let trimmed = path.trim().to_string();
+        if trimmed.is_empty() {
+            let message = if preview {
+                "Preview path required."
+            } else {
+                "Export path required."
+            };
+            if let Some(sheet) = self.path_sheet.as_mut() {
+                sheet.error = Some(message.to_string());
+            }
+            return;
+        }
+        let Some(root) = self.site_root_of() else {
+            return;
+        };
+        if join_inside(&root, &trimmed).is_none() {
+            if let Some(sheet) = self.path_sheet.as_mut() {
+                sheet.error = Some("Export path must stay inside the site directory.".to_string());
+            }
+            return;
+        }
+        self.path_sheet = None;
+        self.start_export(trimmed, preview, false);
+    }
+
+    fn key_export_failure(&mut self, key: &str) {
+        match key {
+            "escape" => self.export_failure = None,
+            "enter" => {
+                self.export_failure = None;
+                self.begin_export();
+            }
+            _ => {}
+        }
+    }
+
+    fn toggle_issues(&mut self) {
+        if self.screen != Screen::Editor {
+            return;
+        }
+        self.issues_open = !self.issues_open;
+        if self.issues_open {
+            self.refresh_validation();
+            self.issues_keys = true;
+        } else {
+            self.issues_keys = false;
+        }
+    }
+
+    fn open_validation(&mut self) {
+        if self.screen != Screen::Editor {
+            return;
+        }
+        self.refresh_validation();
+        self.issues_open = true;
+        self.issues_health = false;
+        self.issues_index = 0;
+        self.issues_keys = true;
+        if self.validation.is_empty() {
+            self.toast("No validation errors.");
+        }
+    }
+
+    fn open_health(&mut self) {
+        if self.screen != Screen::Editor {
+            return;
+        }
+        self.issues_open = true;
+        self.issues_health = true;
+        self.issues_index = 0;
+        self.issues_keys = true;
+    }
+
+    fn refresh_validation(&mut self) {
+        let Some(root) = self.site_root_of() else {
+            self.validation.clear();
+            return;
+        };
+        let Some(doc) = self.document.as_ref() else {
+            return;
+        };
+        self.validation = validate_site_with_root(&doc.site, Some(&root));
+    }
+
+    fn key_issues(&mut self, key: &str) -> bool {
+        let len = if self.issues_health {
+            self.health_items().len()
+        } else {
+            self.validation.len()
+        };
+        match key {
+            "up" | "k" => {
+                self.issues_index = self.issues_index.saturating_sub(1);
+                true
+            }
+            "down" | "j" => {
+                if self.issues_index + 1 < len {
+                    self.issues_index += 1;
+                }
+                true
+            }
+            "pageup" => {
+                self.issues_index = self.issues_index.saturating_sub(5);
+                true
+            }
+            "pagedown" => {
+                if len > 0 {
+                    self.issues_index = (self.issues_index + 5).min(len - 1);
+                }
+                true
+            }
+            "enter" => {
+                self.activate_issue();
+                true
+            }
+            "escape" => {
+                self.issues_keys = false;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    fn health_items(&self) -> Vec<dd_siteforge_core::health::HealthItem> {
+        let Some(doc) = self.document.as_ref() else {
+            return Vec::new();
+        };
+        page_health(&doc.site, self.page_index)
+    }
+
+    fn activate_issue(&mut self) {
+        if self.issues_health {
+            return;
+        }
+        let Some(issue) = self.validation.get(self.issues_index).cloned() else {
+            return;
+        };
+        let Some(target) = issue.target.clone() else {
+            return;
+        };
+        self.jump_to_target(&target);
+    }
+
+    pub fn jump_to_issue(&mut self, index: usize) -> bool {
+        self.issues_index = index;
+        let Some(issue) = self.validation.get(index).cloned() else {
+            return false;
+        };
+        let Some(target) = issue.target else {
+            return false;
+        };
+        self.jump_to_target(&target);
+        true
+    }
+
+    fn jump_to_target(&mut self, target: &dd_siteforge_core::IssueTarget) {
+        let field = target.field.clone();
+        match &target.node {
+            IssueNode::Site => {
+                self.region = SideTarget::Site;
+                self.target = Target::SiteSettings;
+            }
+            IssueNode::Page(index) => {
+                self.region = SideTarget::Page(*index);
+                self.page_index = *index;
+                self.target = Target::PageHead;
+            }
+            IssueNode::Hero { page, node } => {
+                self.region = SideTarget::Page(*page);
+                self.page_index = *page;
+                self.target = Target::Hero(*node);
+            }
+            IssueNode::Section { page, node } => {
+                self.region = SideTarget::Page(*page);
+                self.page_index = *page;
+                self.target = Target::Section(*node);
+            }
+            IssueNode::Column { page, node, column } => {
+                self.region = SideTarget::Page(*page);
+                self.page_index = *page;
+                self.target = Target::Column {
+                    node: *node,
+                    column: *column,
+                };
+            }
+            IssueNode::Component {
+                page,
+                node,
+                column,
+                component,
+            } => {
+                self.region = SideTarget::Page(*page);
+                self.page_index = *page;
+                self.target = Target::Component {
+                    node: *node,
+                    column: *column,
+                    component: *component,
+                };
+            }
+            IssueNode::Header => {
+                self.region = SideTarget::Header;
+                self.target = Target::RegionRoot;
+            }
+            IssueNode::HeaderSection(index) => {
+                self.region = SideTarget::Header;
+                self.target = Target::RegionSection(*index);
+            }
+            IssueNode::HeaderColumn { section, column } => {
+                self.region = SideTarget::Header;
+                self.target = Target::RegionColumn {
+                    section: *section,
+                    column: *column,
+                };
+            }
+            IssueNode::Footer => {
+                self.region = SideTarget::Footer;
+                self.target = Target::RegionRoot;
+            }
+            IssueNode::FooterSection(index) => {
+                self.region = SideTarget::Footer;
+                self.target = Target::RegionSection(*index);
+            }
+            IssueNode::FooterColumn { section, column } => {
+                self.region = SideTarget::Footer;
+                self.target = Target::RegionColumn {
+                    section: *section,
+                    column: *column,
+                };
+            }
+        }
+        self.zone = Zone::Inspector;
+        self.inspector_open = true;
+        self.sync_selection_indices();
+        self.open_current_draft();
+        if let Some(field) = field.as_deref() {
+            let _ = self.focus_field_id(field);
+        }
+        self.sync_follow();
+    }
+
+    fn sync_selection_indices(&mut self) {
+        let Some(doc) = self.document.as_ref() else {
+            return;
+        };
+        let (rows, _) = sidebar_rows(&doc.site, &self.filter);
+        if let Some(index) = rows.iter().position(|row| row.target == self.region) {
+            self.sidebar_index = index;
+        }
+        let outline = outline_rows(&doc.site, &self.region, self.page_index);
+        if let Some(index) = outline.iter().position(|row| row.target == self.target) {
+            self.outline_index = index;
         }
     }
 
@@ -1351,6 +2150,7 @@ impl Shell {
         self.outline_index = 0;
         self.tab = None;
         self.remember_selection();
+        self.sync_follow();
     }
 
     pub fn select_outline(&mut self, index: usize) {
@@ -1359,6 +2159,7 @@ impl Shell {
         self.outline_index = index;
         self.activate_outline();
         self.remember_selection();
+        self.sync_follow();
     }
 
     pub fn select_tab(&mut self, tab: InspTab) {
@@ -1466,6 +2267,57 @@ impl Shell {
         )
     }
 
+    fn page_name(&self) -> String {
+        self.document
+            .as_ref()
+            .and_then(|doc| doc.site.pages.get(self.page_index))
+            .map(|page| {
+                let title = page.head.title.trim();
+                if title.is_empty() {
+                    page.slug.clone()
+                } else {
+                    title.to_string()
+                }
+            })
+            .unwrap_or_else(|| "page".to_string())
+    }
+
+    fn push_issue_lines(&self, lines: &mut Vec<String>) {
+        let health = self.health_items();
+        let health_issues = health.iter().filter(|item| !item.ok).count();
+        lines.push(format!("Validation {}", self.validation.len()));
+        lines.push(format!(
+            "Page health · {} {health_issues}",
+            self.page_name()
+        ));
+        if self.issues_health {
+            for (index, item) in health.iter().enumerate() {
+                let mark = if item.ok { "OK" } else { "!!" };
+                lines.push(format!("{mark}  {}", item.message));
+                if index == self.issues_index {
+                    lines.push("selected".to_string());
+                }
+            }
+        } else if self.validation.is_empty() {
+            lines.push("No validation errors.".to_string());
+        } else {
+            for (index, issue) in self.validation.iter().enumerate() {
+                lines.push(format!("{}. {}", index + 1, issue.message));
+                if issue.target.is_some() && index == self.issues_index {
+                    lines.push("Go to field".to_string());
+                }
+            }
+        }
+        lines.push(
+            if self.issues_health {
+                "F4 re-check"
+            } else {
+                "F3 re-validate"
+            }
+            .to_string(),
+        );
+    }
+
     fn issue_count(&self) -> usize {
         let Some(doc) = &self.document else { return 0 };
         validate_site_with_root(&doc.site, doc.path.parent()).len()
@@ -1506,6 +2358,10 @@ impl Shell {
 
     fn on_key_down(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) {
         self.handle_key(&chord(event));
+        if self.open_companion {
+            self.open_companion = false;
+            self.open_preview_window(cx);
+        }
         if self.awaiting_choose {
             self.portal_choose(cx);
         }
@@ -1514,6 +2370,21 @@ impl Shell {
         }
         if self.awaiting_image.is_some() {
             self.portal_image(cx);
+        }
+    }
+
+    fn open_preview_window(&mut self, cx: &mut Context<Self>) {
+        if !self.quit_runtime {
+            self.preview_window_open = true;
+            return;
+        }
+        let shell = cx.entity();
+        if !crate::preview_window::open(shell, cx) {
+            self.preview_window_open = false;
+            self.browser_fallback = true;
+            self.toast("Couldn't open the preview window");
+        } else {
+            self.preview_window_open = true;
         }
     }
 
@@ -1617,7 +2488,7 @@ impl Shell {
                 self.checkpoint();
                 true
             }
-            "ctrl-e" if self.zone == Zone::Inspector => {
+            "ctrl-e" if self.edit.focused_is_textarea() => {
                 let _ = self.edit.toggle_expanded();
                 true
             }
@@ -2232,12 +3103,55 @@ impl Shell {
         self.edit.focus_field(id)
     }
 
+    pub fn focused_field_id(&self) -> Option<String> {
+        self.edit
+            .active()
+            .and_then(|draft| draft.state.focused().map(|field| field.id.to_string()))
+    }
+
     pub fn insert_markdown(&mut self, which: MarkdownInsert) -> bool {
         self.edit.insert_markdown(which)
     }
 
     pub fn undo_depth(&self) -> usize {
         self.edit.undo_len()
+    }
+
+    fn portal_export_folder(&mut self, cx: &mut Context<Self>) {
+        if !self.quit_runtime {
+            return;
+        }
+        let receiver = cx.prompt_for_paths(gpui::PathPromptOptions {
+            files: false,
+            directories: true,
+            multiple: false,
+            prompt: Some("Output folder".into()),
+        });
+        cx.spawn(async move |this, cx| {
+            let Ok(Ok(Some(paths))) = receiver.await else {
+                return;
+            };
+            let Some(path) = paths.into_iter().next() else {
+                return;
+            };
+            this.update(cx, |shell, cx| {
+                let relative = shell
+                    .site_root_of()
+                    .and_then(|root| {
+                        path.strip_prefix(&root)
+                            .ok()
+                            .map(|rel| rel.display().to_string())
+                    })
+                    .unwrap_or_else(|| path.display().to_string());
+                if let Some(sheet) = shell.path_sheet.as_mut() {
+                    sheet.path = relative;
+                    sheet.error = None;
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
     }
 
     fn portal_folder(&mut self, cx: &mut Context<Self>) {
@@ -2351,6 +3265,28 @@ impl Render for Shell {
             .as_ref()
             .and_then(|doc| doc.save_error.clone());
         let new_site_open = self.new_site.open;
+        let preview_text = self.preview_status_text();
+        let build_text = self.build_status.clone();
+        let issues_pane = IssuesPane {
+            open: self.issues_open,
+            health: self.issues_health,
+            index: self.issues_index,
+            validation: self.validation.clone(),
+            health_items: if self.issues_open {
+                self.health_items()
+            } else {
+                Vec::new()
+            },
+            page: self.page_name(),
+        };
+        let path_sheet = self
+            .path_sheet
+            .as_ref()
+            .map(|sheet| (sheet.preview, sheet.path.clone(), sheet.error.clone()));
+        let export_failure = self.export_failure.clone();
+        let export_progress = self.export_progress.clone();
+        let show_reveal = self.export_reveal.is_some();
+        let browser_fallback = self.browser_fallback;
         let folder_value = self.new_site.folder.clone();
         let slug = if new_site_open {
             self.slug_preview()
@@ -2514,6 +3450,7 @@ impl Render for Shell {
                             border_card,
                             border_active,
                             text,
+                            issues_pane,
                         ))
                     }),
             )
@@ -2522,6 +3459,8 @@ impl Render for Shell {
                 &save,
                 meta.as_deref().unwrap_or(""),
                 issues,
+                &preview_text,
+                &build_text,
                 secondary,
                 placeholder,
                 error,
@@ -2529,6 +3468,70 @@ impl Render for Shell {
                 status_h,
                 cx,
             ))
+            .when(path_sheet.is_some(), |row| {
+                let (preview, path, sheet_error) =
+                    path_sheet.clone().unwrap_or((false, String::new(), None));
+                row.child(path_sheet_view(
+                    cx,
+                    preview,
+                    &path,
+                    sheet_error.as_deref(),
+                    panel,
+                    border,
+                    secondary,
+                    error,
+                ))
+            })
+            .when(export_failure.is_some(), |row| {
+                row.child(export_failure_view(
+                    cx,
+                    export_failure.clone().unwrap_or_default(),
+                    panel,
+                    border,
+                    secondary,
+                ))
+            })
+            .when(!export_progress.is_empty(), |row| {
+                row.child(
+                    div()
+                        .px(px(12.0))
+                        .py(px(8.0))
+                        .child(export_progress.clone()),
+                )
+            })
+            .when(show_reveal, |row| {
+                row.child(
+                    Button::new("reveal-export")
+                        .label("Reveal")
+                        .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
+                            if let Some(path) = shell.export_reveal.clone() {
+                                shell.revealed = Some(path.clone());
+                                if shell.quit_runtime {
+                                    let _ = std::process::Command::new("xdg-open")
+                                        .arg(&path)
+                                        .stdin(std::process::Stdio::null())
+                                        .stdout(std::process::Stdio::null())
+                                        .stderr(std::process::Stdio::null())
+                                        .spawn();
+                                }
+                            }
+                            cx.notify();
+                        })),
+                )
+            })
+            .when(browser_fallback, |row| {
+                row.child(
+                    Button::new("open-in-browser")
+                        .label("Open in browser")
+                        .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
+                            if let Some(url) = shell.browser_urls.last().cloned() {
+                                shell.launch_browser(&url);
+                            }
+                            shell.browser_fallback = false;
+                            cx.notify();
+                        })),
+                )
+            })
             .when(new_site_open, |row| {
                 row.child(new_site_sheet(
                     cx,
@@ -2659,6 +3662,42 @@ fn title_bar(
         .child(div().flex_1())
         .when(editor, |row| {
             row.child(
+                Button::new("init-kit")
+                    .label("Init site kit")
+                    .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
+                        shell.begin_init_kit();
+                        cx.notify();
+                    })),
+            )
+            .child(
+                Button::new("init-templates")
+                    .label("Init templates")
+                    .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
+                        shell.begin_init_templates();
+                        cx.notify();
+                    })),
+            )
+            .child(
+                Button::new("export-site")
+                    .label("Export")
+                    .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
+                        shell.begin_export();
+                        cx.notify();
+                    })),
+            )
+            .child(
+                Button::new("preview-site")
+                    .label("Preview")
+                    .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
+                        shell.begin_preview();
+                        if shell.open_companion {
+                            shell.open_companion = false;
+                            shell.open_preview_window(cx);
+                        }
+                        cx.notify();
+                    })),
+            )
+            .child(
                 Button::new("toggle-inspector")
                     .label(if inspector_on {
                         "Inspector".to_string()
@@ -2945,29 +3984,16 @@ fn editor_body(
     border_card: gpui::Hsla,
     border_active: gpui::Hsla,
     text: gpui::Hsla,
+    issues: IssuesPane,
 ) -> gpui::Div {
     let rows = sidebar.clone().map(|(rows, _)| rows).unwrap_or_default();
     let count = sidebar.clone().map(|(_, count)| count).unwrap_or_default();
     let outline = outline.unwrap_or_default();
     let (heading, cap) = caption.unwrap_or_default();
-    div()
+    let workspace = div()
         .flex()
         .flex_1()
         .overflow_hidden()
-        .when(sidebar_on, |body| {
-            body.child(sidebar_view(
-                cx,
-                &rows,
-                &count,
-                &filter,
-                sidebar_index,
-                panel,
-                selected,
-                secondary,
-                border,
-                accent,
-            ))
-        })
         .child(outline_view(
             cx,
             &heading,
@@ -3001,7 +4027,274 @@ fn editor_body(
                 border,
                 text,
             ))
+        });
+    div()
+        .flex()
+        .flex_1()
+        .overflow_hidden()
+        .when(sidebar_on, |body| {
+            body.child(sidebar_view(
+                cx,
+                &rows,
+                &count,
+                &filter,
+                sidebar_index,
+                panel,
+                selected,
+                secondary,
+                border,
+                accent,
+            ))
         })
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .flex_1()
+                .h_full()
+                .overflow_hidden()
+                .child(workspace)
+                .when(issues.open, |col| {
+                    col.child(issues_drawer(
+                        cx, &issues, panel, secondary, error, accent, border, selected,
+                    ))
+                }),
+        )
+}
+
+fn issues_drawer(
+    cx: &mut Context<Shell>,
+    issues: &IssuesPane,
+    panel: gpui::Hsla,
+    secondary: gpui::Hsla,
+    error: gpui::Hsla,
+    accent: gpui::Hsla,
+    border: gpui::Hsla,
+    selected: gpui::Hsla,
+) -> gpui::Div {
+    let health_count = issues.health_items.iter().filter(|item| !item.ok).count();
+    div()
+        .h(px(280.0))
+        .w_full()
+        .bg(panel)
+        .border_t_1()
+        .border_color(border)
+        .flex()
+        .flex_col()
+        .p(px(8.0))
+        .gap(px(4.0))
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(8.0))
+                .child(
+                    Button::new("issues-validation")
+                        .label(format!("Validation {}", issues.validation.len()))
+                        .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
+                            shell.issues_health = false;
+                            shell.issues_index = 0;
+                            shell.refresh_validation();
+                            cx.notify();
+                        })),
+                )
+                .child(
+                    Button::new("issues-health")
+                        .label(format!("Page health · {} {health_count}", issues.page))
+                        .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
+                            shell.open_health();
+                            cx.notify();
+                        })),
+                )
+                .child(div().flex_1())
+                .child(div().text_color(secondary).child(if issues.health {
+                    "F4 re-check"
+                } else {
+                    "F3 re-validate"
+                }))
+                .child(
+                    Button::new("issues-close")
+                        .label("Close")
+                        .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
+                            shell.issues_open = false;
+                            shell.issues_keys = false;
+                            cx.notify();
+                        })),
+                ),
+        )
+        .child(if issues.health {
+            let rows = issues.health_items.clone();
+            div()
+                .flex()
+                .flex_col()
+                .children(rows.iter().enumerate().map(|(index, item)| {
+                    let mark = if item.ok { "OK" } else { "!!" };
+                    div()
+                        .px(px(8.0))
+                        .py(px(4.0))
+                        .when(index == issues.index, |row| row.bg(selected))
+                        .text_color(if item.ok { secondary } else { error })
+                        .child(format!("{mark}  {}", item.message))
+                }))
+        } else if issues.validation.is_empty() {
+            div().text_color(accent).child("No validation errors.")
+        } else {
+            let rows = issues.validation.clone();
+            div()
+                .flex()
+                .flex_col()
+                .children(rows.iter().enumerate().map(|(index, issue)| {
+                    let go = issue.target.is_some();
+                    div()
+                        .id(gpui::ElementId::Name(format!("issue-{index}").into()))
+                        .px(px(8.0))
+                        .py(px(4.0))
+                        .when(index == issues.index, |row| row.bg(selected))
+                        .child(format!("{}. {}", index + 1, issue.message))
+                        .when(go && index == issues.index, |row| {
+                            row.child(div().text_color(secondary).child("Go to field"))
+                        })
+                        .on_click(cx.listener(move |shell, _: &ClickEvent, _, cx| {
+                            shell.issues_index = index;
+                            shell.jump_to_issue(index);
+                            cx.notify();
+                        }))
+                }))
+        })
+}
+
+fn path_sheet_view(
+    cx: &mut Context<Shell>,
+    preview: bool,
+    path: &str,
+    error: Option<&str>,
+    panel: gpui::Hsla,
+    border: gpui::Hsla,
+    secondary: gpui::Hsla,
+    error_color: gpui::Hsla,
+) -> gpui::Div {
+    let title = if preview {
+        "Preview — output directory"
+    } else {
+        "Export — output directory"
+    };
+    let hint = if preview {
+        "Enter or Ctrl+S: preview  |  Esc: cancel"
+    } else {
+        "Enter or Ctrl+S: export  |  Esc: cancel"
+    };
+    let primary = if preview { "Build preview" } else { "Export" };
+    div()
+        .absolute()
+        .inset_0()
+        .flex()
+        .items_center()
+        .justify_center()
+        .child(
+            div()
+                .id("output-folder")
+                .w(px(440.0))
+                .p(px(16.0))
+                .bg(panel)
+                .border_1()
+                .border_color(border)
+                .flex()
+                .flex_col()
+                .gap(px(8.0))
+                .child(div().child(title))
+                .child(div().child("Path (relative to site JSON)"))
+                .child(div().child(path.to_string()))
+                .when(error.is_some(), |col| {
+                    col.child(
+                        div()
+                            .text_color(error_color)
+                            .child(error.unwrap_or_default().to_string()),
+                    )
+                })
+                .child(div().text_color(secondary).child(hint))
+                .child(
+                    div()
+                        .flex()
+                        .gap(px(8.0))
+                        .child(
+                            Button::new("path-cancel")
+                                .label("Cancel")
+                                .on_click(cx.listener(move |shell, _: &ClickEvent, _, cx| {
+                                    shell.key_path_sheet("escape");
+                                    cx.notify();
+                                })),
+                        )
+                        .child(
+                            Button::new("path-choose")
+                                .label("Choose…")
+                                .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
+                                    shell.portal_export_folder(cx);
+                                    cx.notify();
+                                })),
+                        )
+                        .child(Button::new("path-go").label(primary).on_click(cx.listener(
+                            move |shell, _: &ClickEvent, _, cx| {
+                                shell.key_path_sheet("enter");
+                                if shell.open_companion {
+                                    shell.open_companion = false;
+                                    shell.open_preview_window(cx);
+                                }
+                                cx.notify();
+                            },
+                        ))),
+                ),
+        )
+}
+
+fn export_failure_view(
+    cx: &mut Context<Shell>,
+    detail: String,
+    panel: gpui::Hsla,
+    border: gpui::Hsla,
+    secondary: gpui::Hsla,
+) -> gpui::Div {
+    div()
+        .absolute()
+        .inset_0()
+        .flex()
+        .items_center()
+        .justify_center()
+        .child(
+            div()
+                .id("export-failed")
+                .w(px(440.0))
+                .p(px(16.0))
+                .bg(panel)
+                .border_1()
+                .border_color(border)
+                .flex()
+                .flex_col()
+                .gap(px(8.0))
+                .child(div().child("Export failed"))
+                .child(div().text_color(secondary).child(detail))
+                .child(
+                    div()
+                        .flex()
+                        .gap(px(8.0))
+                        .child(
+                            Button::new("export-close")
+                                .label("Close")
+                                .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
+                                    shell.export_failure = None;
+                                    cx.notify();
+                                })),
+                        )
+                        .child(
+                            Button::new("export-retry")
+                                .label("Retry")
+                                .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
+                                    shell.export_failure = None;
+                                    shell.begin_export();
+                                    cx.notify();
+                                })),
+                        ),
+                ),
+        )
 }
 
 fn sidebar_view(
@@ -3394,6 +4687,8 @@ fn status_bar(
     save: &str,
     meta: &str,
     issues: usize,
+    preview: &str,
+    build: &str,
     secondary: gpui::Hsla,
     placeholder: gpui::Hsla,
     error: gpui::Hsla,
@@ -3401,12 +4696,7 @@ fn status_bar(
     height: f32,
     cx: &mut Context<Shell>,
 ) -> gpui::Div {
-    let preview = match screen {
-        Screen::Error => "Couldn't load site.json",
-        Screen::Loading => "Loading…",
-        _ => "Preview closed · Ctrl+P",
-    };
-    let preview_color = if screen == Screen::Error {
+    let preview_color = if screen == Screen::Error || preview.contains("failed") {
         error
     } else {
         placeholder
@@ -3423,9 +4713,13 @@ fn status_bar(
             div()
                 .id("preview-status")
                 .text_color(preview_color)
-                .child(preview)
+                .child(preview.to_string())
                 .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
                     shell.open_preview();
+                    if shell.open_companion {
+                        shell.open_companion = false;
+                        shell.open_preview_window(cx);
+                    }
                     cx.notify();
                 })),
         )
@@ -3433,10 +4727,25 @@ fn status_bar(
         .when(screen == Screen::Editor, |row| {
             row.child(
                 div()
+                    .id("issues-count")
                     .text_color(secondary)
-                    .child(format!("Issues {issues}")),
+                    .child(format!("Issues {issues}"))
+                    .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
+                        shell.toggle_issues();
+                        cx.notify();
+                    })),
             )
             .child(div().text_color(secondary).child(meta.to_string()))
+            .child(
+                div()
+                    .id("build-indicator")
+                    .text_color(secondary)
+                    .child(build.to_string())
+                    .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
+                        shell.begin_build();
+                        cx.notify();
+                    })),
+            )
         })
         .when(screen == Screen::Error, |row| {
             row.child(div().text_color(secondary).child("Issues 1"))
@@ -3704,7 +5013,7 @@ fn centered(lines: Vec<String>, secondary: gpui::Hsla) -> gpui::Div {
         }))
 }
 
-fn chord(event: &KeyDownEvent) -> String {
+pub(crate) fn chord(event: &KeyDownEvent) -> String {
     let mut parts: Vec<String> = Vec::new();
     let mods = event.keystroke.modifiers;
     if mods.control || mods.platform {
@@ -3731,6 +5040,13 @@ fn region_name(region: &SideTarget) -> &'static str {
         SideTarget::Site => "site",
         _ => "page",
     }
+}
+
+fn site_root_path(path: &Path) -> PathBuf {
+    path.parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("."))
 }
 
 fn resolve_site_path(path: &Path) -> PathBuf {

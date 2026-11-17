@@ -9,10 +9,16 @@ use std::time::UNIX_EPOCH;
 use crate::model::page_file_name;
 
 const RELOAD_PATH: &str = "/__siteforge/reload";
+const FOLLOW_PATH: &str = "/__siteforge/follow";
 const RELOAD_SNIPPET: &str = r#"<script>
 (function(){
   var last=null;
   function tick(){
+    fetch("/__siteforge/follow",{cache:"no-store"}).then(function(r){return r.text();}).then(function(path){
+      if(!path) return;
+      var here=location.pathname.replace(/^\/+/,"");
+      if(here!==path) location.assign("/"+path);
+    }).catch(function(){});
     fetch("/__siteforge/reload",{cache:"no-store"}).then(function(r){return r.text();}).then(function(t){
       if(last===null) last=t;
       else if(t!==last) location.reload();
@@ -27,6 +33,7 @@ pub struct StaticServer {
     pub port: u16,
     root: Arc<Mutex<PathBuf>>,
     generation: Arc<AtomicU64>,
+    follow: Arc<Mutex<String>>,
 }
 
 impl StaticServer {
@@ -35,15 +42,18 @@ impl StaticServer {
         let port = listener.local_addr()?.port();
         let root = Arc::new(Mutex::new(root));
         let generation = Arc::new(AtomicU64::new(0));
+        let follow = Arc::new(Mutex::new(String::new()));
         let serve_root = Arc::clone(&root);
         let serve_gen = Arc::clone(&generation);
+        let serve_follow = Arc::clone(&follow);
         thread::spawn(move || {
             for stream in listener.incoming() {
                 if let Ok(stream) = stream {
                     let serve_root = Arc::clone(&serve_root);
                     let serve_gen = Arc::clone(&serve_gen);
+                    let serve_follow = Arc::clone(&serve_follow);
                     thread::spawn(move || {
-                        let _ = handle_client(stream, &serve_root, &serve_gen);
+                        let _ = handle_client(stream, &serve_root, &serve_gen, &serve_follow);
                     });
                 }
             }
@@ -52,6 +62,7 @@ impl StaticServer {
             port,
             root,
             generation,
+            follow,
         })
     }
 
@@ -64,6 +75,14 @@ impl StaticServer {
 
     pub fn bump_generation(&self) {
         self.generation.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Page file the open browser should show. Empty leaves the tab where it is.
+    /// The injected script reads `/__siteforge/follow`. The TUI never sets this.
+    pub fn set_follow(&self, path: &str) {
+        if let Ok(mut guard) = self.follow.lock() {
+            *guard = path.trim_start_matches('/').to_string();
+        }
     }
 
     pub fn url_for(&self, slug: &str, pretty: bool) -> String {
@@ -89,7 +108,8 @@ pub fn serve_dir_blocking(root: PathBuf, port: u16) -> std::io::Result<()> {
             let root = Arc::clone(&root);
             let generation = Arc::clone(&generation);
             thread::spawn(move || {
-                let _ = handle_client(stream, &root, &generation);
+                let follow = Arc::new(Mutex::new(String::new()));
+                let _ = handle_client(stream, &root, &generation, &follow);
             });
         }
     }
@@ -100,6 +120,7 @@ fn handle_client(
     mut stream: TcpStream,
     root: &Arc<Mutex<PathBuf>>,
     generation: &Arc<AtomicU64>,
+    follow: &Arc<Mutex<String>>,
 ) -> std::io::Result<()> {
     let mut buf = [0u8; 4096];
     let n = stream.read(&mut buf)?;
@@ -131,6 +152,16 @@ fn handle_client(
         );
         stream.write_all(header.as_bytes())?;
         stream.write_all(token.as_bytes())?;
+        return Ok(());
+    }
+    if path == FOLLOW_PATH {
+        let body = follow.lock().map(|guard| guard.clone()).unwrap_or_default();
+        let header = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nCache-Control: no-store\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            body.len()
+        );
+        stream.write_all(header.as_bytes())?;
+        stream.write_all(body.as_bytes())?;
         return Ok(());
     }
 
@@ -393,6 +424,14 @@ mod tests {
             body.contains("/__siteforge/reload"),
             "preview HTML should inject live-reload: {body}"
         );
+        assert!(
+            body.contains("/__siteforge/follow"),
+            "preview HTML should inject follow: {body}"
+        );
+        server.set_follow("about/index.html");
+        let follow = http_get(server.port, "/__siteforge/follow");
+        let follow_body = follow.split("\r\n\r\n").nth(1).unwrap_or("");
+        assert_eq!(follow_body, "about/index.html");
         let denied = http_get(server.port, "/../Cargo.toml");
         assert!(denied.contains("Not Found") || denied.contains("404"));
         let reload = http_get(server.port, "/__siteforge/reload");

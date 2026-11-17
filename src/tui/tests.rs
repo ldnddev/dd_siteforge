@@ -3726,20 +3726,34 @@ fn open_validation_modal_with_errors_opens_modal_with_error_list() {
     // Force an error: empty slug.
     app.site.pages[0].slug = "".to_string();
     app.open_validation_modal();
-    match &app.modal {
+    let (errors, scroll_offset) = match &app.modal {
         Some(Modal::ValidationErrors {
             errors,
             scroll_offset,
-        }) => {
-            assert!(!errors.is_empty());
-            assert_eq!(*scroll_offset, 0);
-            assert!(
-                errors.iter().any(|e| e.contains("empty slug")),
-                "expected empty-slug error, got: {:?}",
-                errors
-            );
-        }
+        }) => (errors.clone(), *scroll_offset),
         _ => panic!("expected Modal::ValidationErrors, got a different modal or None"),
+    };
+    assert!(!errors.is_empty());
+    assert_eq!(scroll_offset, 0);
+    assert!(
+        errors.iter().any(|e| e.contains("empty slug")),
+        "expected empty-slug error, got: {errors:?}"
+    );
+    let id = app.site.pages[0].id.clone();
+    let expected = format!("Page '{id}' has an empty slug.");
+    assert!(
+        errors.iter().any(|line| line == &expected),
+        "modal must print the core message byte for byte, got {errors:?}"
+    );
+    let issues = dd_siteforge_core::validate::validate_site_with_root(&app.site, None);
+    let messages: Vec<String> = issues.iter().map(|issue| issue.message.clone()).collect();
+    assert_eq!(
+        errors, messages,
+        "TUI validation output must be Issue.message byte for byte"
+    );
+    let wrapped = app.wrap_validation_lines(&errors, 10_000);
+    for (index, message) in messages.iter().enumerate() {
+        assert_eq!(wrapped[index], format!("{}. {message}", index + 1));
     }
 }
 

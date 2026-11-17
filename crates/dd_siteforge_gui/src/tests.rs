@@ -208,7 +208,6 @@ fn dock_shortcuts_match_the_title_bar_toggles(cx: &mut TestAppContext) {
     let shell = mount(cx, opts(dir.path(), Some(path)));
     shell.update(cx, |shell, _| {
         assert_eq!(shell.docks_visible(), (true, true));
-        let before = shell.visible_text();
 
         shell.handle_key(keys::TOGGLE_SIDEBAR_KEY);
         assert_eq!(shell.docks_visible(), (false, true));
@@ -234,7 +233,10 @@ fn dock_shortcuts_match_the_title_bar_toggles(cx: &mut TestAppContext) {
         assert_eq!(shell.docks_visible(), (true, true));
         shell.handle_key("ctrl-b");
         assert_eq!(shell.docks_visible(), (true, true));
-        assert_eq!(shell.visible_text(), before);
+        let text = shell.visible_text();
+        assert!(text.contains("Running `npx grunt build`…"), "{text}");
+        shell.handle_key("ctrl-b");
+        assert!(shell.visible_text().contains("Build already running."));
     });
 }
 
@@ -400,4 +402,82 @@ fn save_bytes() -> String {
     let mut site = Site::starter();
     site.name = "From backup".to_string();
     serde_json::to_string_pretty(&site).unwrap()
+}
+
+#[gpui::test]
+fn issues_panel_lists_and_jumps_to_the_field(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("site.json");
+    let mut site = Site::starter();
+    let dd_siteforge_core::model::PageNode::Hero(hero) = &mut site.pages[0].nodes[0] else {
+        panic!("starter hero");
+    };
+    hero.parent_title.clear();
+    save_site(&path, &site).unwrap();
+    let shell = mount(cx, opts(dir.path(), Some(path)));
+    shell.update(cx, |shell, _| {
+        shell.handle_key("ctrl-e");
+        let blocked = shell.visible_text();
+        assert!(blocked.contains("hero is missing Title."), "{blocked}");
+        assert!(blocked.contains("Go to field"), "{blocked}");
+        assert!(shell.jump_to_issue(0));
+        assert_eq!(shell.focused_field_id().as_deref(), Some("parent_title"));
+        shell.handle_key("f4");
+        let health = shell.visible_text();
+        assert!(health.contains("Page health ·"), "{health}");
+        shell.handle_key(keys::REDO_KEY);
+        assert!(
+            !shell.visible_text().contains("Building… (autosave)"),
+            "Ctrl+R in the main window stays redo"
+        );
+        shell.handle_key("f5");
+        assert!(
+            shell.visible_text().contains("hero is missing Title."),
+            "preview with errors opens the issues list"
+        );
+    });
+}
+
+#[gpui::test]
+fn gui_export_from_the_shell_matches_core(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("site");
+    std::fs::create_dir_all(&root).unwrap();
+    let path = root.join("site.json");
+    let site = Site::starter();
+    save_site(&path, &site).unwrap();
+    for _ in 0..8 {
+        let issues = dd_siteforge_core::validate::validate_site_with_root(&site, Some(&root));
+        if issues.is_empty() {
+            break;
+        }
+        for issue in issues {
+            let Some(rel) = issue.message.split("expected at ").nth(1) else {
+                continue;
+            };
+            let rel = rel.trim_end_matches(')').trim();
+            let file = root.join(rel);
+            if let Some(parent) = file.parent() {
+                std::fs::create_dir_all(parent).unwrap();
+            }
+            std::fs::write(file, b"img").unwrap();
+        }
+    }
+    let shell = mount(cx, opts(dir.path(), Some(path)));
+    shell.update(cx, |shell, _| {
+        shell.handle_key("ctrl-e");
+        assert!(shell.visible_text().contains("Export — output directory"));
+        shell.handle_key("enter");
+        for _ in 0..100 {
+            shell.poll_jobs();
+            if shell.visible_text().contains("Exported ") {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        let text = shell.visible_text();
+        assert!(text.contains("Exported "), "{text}");
+        assert!(text.contains("Reveal"), "{text}");
+        assert!(root.join("web").join("index.html").is_file());
+    });
 }
