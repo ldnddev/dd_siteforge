@@ -38,6 +38,8 @@ pub struct Document {
     pub saving: bool,
     pub saved_at: SystemTime,
     pub retry_after: Option<Instant>,
+    /// Edits since the document was opened. Preview uses this for the stale count.
+    pub edits: u64,
 }
 
 impl Document {
@@ -56,6 +58,7 @@ impl Document {
             saving: false,
             saved_at,
             retry_after: None,
+            edits: 0,
         })
     }
 
@@ -82,6 +85,16 @@ impl Document {
     }
 
     pub fn mark_dirty(&mut self) {
+        if !self.dirty {
+            self.dirty_since = Some(Instant::now());
+        }
+        self.dirty = true;
+        self.saving = false;
+        self.edits = self.edits.saturating_add(1);
+    }
+
+    /// A bookkeeping write, such as remembering `export_dir`, is not an edit.
+    pub fn mark_dirty_quiet(&mut self) {
         if !self.dirty {
             self.dirty_since = Some(Instant::now());
         }

@@ -16,6 +16,7 @@ pub mod export;
 pub mod gui_edit;
 pub mod health;
 pub mod history;
+pub mod issue;
 pub mod labels;
 pub mod markdown;
 pub mod model;
@@ -29,3 +30,5 @@ pub mod session;
 pub mod storage;
 pub mod templates;
 pub mod validate;
+
+pub use issue::{Issue, IssueNode, IssueTarget, Severity};

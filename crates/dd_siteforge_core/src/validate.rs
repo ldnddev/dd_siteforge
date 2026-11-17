@@ -1,14 +1,61 @@
+use crate::issue::{Issue, IssueNode, IssueTarget};
 use crate::model::{
     DdLink, DdSection, Media, NavigationItem, NavigationKind, PageNode, SalAnimation,
     SectionComponent, Site, parse_oembed_url,
 };
 
-pub fn validate_site(site: &Site) -> Vec<String> {
-    let mut errors = Vec::new();
+struct ErrorList {
+    items: Vec<Issue>,
+    node: Option<IssueNode>,
+    field: Option<String>,
+}
+
+impl ErrorList {
+    fn new() -> Self {
+        Self {
+            items: Vec::new(),
+            node: None,
+            field: None,
+        }
+    }
+
+    fn carrying(items: Vec<Issue>) -> Self {
+        Self {
+            items,
+            node: None,
+            field: None,
+        }
+    }
+
+    fn locate(&mut self, node: IssueNode) {
+        self.node = Some(node);
+        self.field = None;
+    }
+
+    fn field(&mut self, field: &str) {
+        self.field = Some(field.to_string());
+    }
+
+    fn push(&mut self, message: impl Into<String>) {
+        let target = self.node.clone().map(|node| IssueTarget {
+            node,
+            field: self.field.take(),
+        });
+        self.items.push(Issue::error(message, target));
+    }
+
+    fn finish(self) -> Vec<Issue> {
+        self.items
+    }
+}
+
+pub fn validate_site(site: &Site) -> Vec<Issue> {
+    let mut errors = ErrorList::new();
     let mut slugs = std::collections::HashSet::new();
     let mut outputs = std::collections::HashSet::new();
 
     if site.pages.is_empty() {
+        errors.locate(IssueNode::Site);
         errors.push("Site must include at least one page.".to_string());
     }
 
@@ -16,24 +63,30 @@ pub fn validate_site(site: &Site) -> Vec<String> {
     validate_footer(&site.footer, &mut errors);
     validate_ga_measurement_id(site.ga_measurement_id.as_deref(), &mut errors);
 
-    for page in &site.pages {
+    for (page_index, page) in site.pages.iter().enumerate() {
+        errors.locate(IssueNode::Page(page_index));
         if page.head.title.trim().is_empty() {
+            errors.field("title");
             errors.push(format!("Page '{}' is missing a head title.", page.id));
         }
         if page.slug.trim().is_empty() {
+            errors.field("slug");
             errors.push(format!("Page '{}' has an empty slug.", page.id));
         } else if !crate::model::is_safe_page_slug(&page.slug) {
+            errors.field("slug");
             errors.push(format!(
                 "Page '{}' has an unsafe slug '{}'. Use lowercase letters, numbers, hyphens, and / between folders. Do not use 'index' as a folder name.",
                 page.id, page.slug
             ));
         }
         if !page.slug.trim().is_empty() && !slugs.insert(page.slug.clone()) {
+            errors.field("slug");
             errors.push(format!("Duplicate page slug '{}'.", page.slug));
         }
         if crate::model::is_safe_page_slug(&page.slug) {
             let out = crate::model::page_file_name(&page.slug, site.pretty_urls);
             if !outputs.insert(out.clone()) {
+                errors.field("slug");
                 errors.push(format!("Duplicate page output path '{}'.", out));
             }
         }
@@ -42,10 +95,15 @@ pub fn validate_site(site: &Site) -> Vec<String> {
         }
         let mut html_ids = chrome_html_ids(site);
 
-        for node in &page.nodes {
+        for (node_index, node) in page.nodes.iter().enumerate() {
             match node {
                 PageNode::Hero(hero) => {
+                    errors.locate(IssueNode::Hero {
+                        page: page_index,
+                        node: node_index,
+                    });
                     if hero.parent_title.trim().is_empty() {
+                        errors.field("parent_title");
                         errors.push(format!("Page '{}' hero is missing Title.", page.id));
                     }
                     if let Some(id) = hero.id.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
@@ -78,7 +136,12 @@ pub fn validate_site(site: &Site) -> Vec<String> {
                     );
                 }
                 PageNode::Section(section) => {
+                    errors.locate(IssueNode::Section {
+                        page: page_index,
+                        node: node_index,
+                    });
                     if section.id.trim().is_empty() {
+                        errors.field("id");
                         errors.push(format!("Page '{}' has section with empty id.", page.id));
                     } else if !html_ids.insert(section.id.clone()) {
                         errors.push(format!(
@@ -96,7 +159,12 @@ pub fn validate_site(site: &Site) -> Vec<String> {
                         &format!("Page '{}' section '{}'", page.id, section.id),
                         &mut errors,
                     );
-                    for column in &section.columns {
+                    for (column_index, column) in section.columns.iter().enumerate() {
+                        errors.locate(IssueNode::Column {
+                            page: page_index,
+                            node: node_index,
+                            column: column_index,
+                        });
                         if column.id.trim().is_empty() {
                             errors.push(format!(
                                 "Page '{}' section '{}' has a column with empty id.",
@@ -114,7 +182,13 @@ pub fn validate_site(site: &Site) -> Vec<String> {
                                 page.id, section.id, column.id
                             ));
                         }
-                        for component in &column.components {
+                        for (component_index, component) in column.components.iter().enumerate() {
+                            errors.locate(IssueNode::Component {
+                                page: page_index,
+                                node: node_index,
+                                column: column_index,
+                                component: component_index,
+                            });
                             validate_section_component(
                                 component,
                                 page.id.as_str(),
@@ -128,20 +202,55 @@ pub fn validate_site(site: &Site) -> Vec<String> {
         }
     }
 
-    errors
+    errors.finish()
 }
 
-fn push_if_blank(errors: &mut Vec<String>, ctx: &str, value: &str, label: &str) {
+fn push_if_blank(errors: &mut ErrorList, ctx: &str, value: &str, label: &str) {
     if value.trim().is_empty() {
+        if let Some(field) = field_for_blank(ctx, label) {
+            errors.field(field);
+        }
         errors.push(format!("{ctx} is missing {label}."));
     }
+}
+
+fn field_for_blank(ctx: &str, label: &str) -> Option<&'static str> {
+    let item = ctx.contains("item");
+    Some(match label {
+        "Label" if ctx.contains("dd-navigation") => "child_link_label",
+        "Label" if item => "child_title",
+        "Label" => "label",
+        "Title" if item => "child_title",
+        "Title" => "parent_title",
+        "Copy (Markdown)" | "Quote (Markdown)" | "Content (Markdown)" | "Panel (Markdown)"
+            if item =>
+        {
+            "child_copy"
+        }
+        "Copy (Markdown)" | "Quote (Markdown)" | "Content (Markdown)" | "Panel (Markdown)" => {
+            "parent_copy"
+        }
+        "Image URL" if item => "child_image_url",
+        "Image URL" => "parent_image_url",
+        "Image Alt" if item => "child_image_alt",
+        "Image Alt" => "parent_image_alt",
+        "Subtitle" if item => "child_subtitle",
+        "Subtitle" => "parent_subtitle",
+        "Name" => "parent_name",
+        "Role" => "parent_role",
+        "Text" => "text",
+        "Caption" => "caption",
+        "Percentage" => "child_percentage",
+        "Year" => "child_year",
+        _ => return None,
+    })
 }
 
 fn validate_section_component(
     component: &SectionComponent,
     page_id: &str,
     section_id: &str,
-    errors: &mut Vec<String>,
+    errors: &mut ErrorList,
 ) {
     if let Some((sal, duration, delay)) = component_sal(component) {
         validate_sal_fields(
@@ -599,7 +708,7 @@ fn validate_navigation_item(
     path: &str,
     page_id: &str,
     section_id: &str,
-    errors: &mut Vec<String>,
+    errors: &mut ErrorList,
 ) {
     let ctx = format!(
         "Page '{}' section '{}' dd-navigation item {}",
@@ -632,7 +741,7 @@ fn validate_navigation_item(
     }
 }
 
-fn validate_media(media: &Media, ctx: &str, errors: &mut Vec<String>) {
+fn validate_media(media: &Media, ctx: &str, errors: &mut ErrorList) {
     match media {
         Media::None => {}
         Media::Image { url, alt } => {
@@ -683,7 +792,7 @@ fn validate_media(media: &Media, ctx: &str, errors: &mut Vec<String>) {
     }
 }
 
-fn validate_dd_links(links: &[DdLink], max: usize, ctx: &str, errors: &mut Vec<String>) {
+fn validate_dd_links(links: &[DdLink], max: usize, ctx: &str, errors: &mut ErrorList) {
     if links.len() > max {
         errors.push(format!(
             "{ctx} has {} links; maximum is {max}.",
@@ -707,10 +816,11 @@ fn validate_sal_fields(
     duration: Option<u16>,
     delay: Option<u16>,
     ctx: &str,
-    errors: &mut Vec<String>,
+    errors: &mut ErrorList,
 ) {
     if let Some(ms) = duration {
         if !crate::model::is_valid_sal_duration(ms) {
+            errors.field("sal_duration");
             errors.push(format!(
                 "{ctx} sal_duration {ms} is invalid; use 200–2000 in steps of 50."
             ));
@@ -718,6 +828,7 @@ fn validate_sal_fields(
     }
     if let Some(ms) = delay {
         if !crate::model::is_valid_sal_delay(ms) {
+            errors.field("sal_delay");
             errors.push(format!(
                 "{ctx} sal_delay {ms} is invalid; use 0–1000 in steps of 50."
             ));
@@ -752,11 +863,13 @@ fn component_sal(component: &SectionComponent) -> Option<(SalAnimation, Option<u
     }
 }
 
-fn validate_ga_measurement_id(raw: Option<&str>, errors: &mut Vec<String>) {
+fn validate_ga_measurement_id(raw: Option<&str>, errors: &mut ErrorList) {
     let Some(raw) = raw.map(str::trim).filter(|s| !s.is_empty()) else {
         return;
     };
     if crate::model::normalize_ga_measurement_id(raw).is_none() {
+        errors.locate(IssueNode::Site);
+        errors.field("ga_measurement_id");
         errors.push(
             "site.ga_measurement_id must be a GA4 measurement id (G- followed by letters and digits)."
                 .to_string(),
@@ -784,8 +897,10 @@ fn chrome_html_ids(site: &Site) -> std::collections::HashSet<String> {
     ids
 }
 
-fn validate_header(header: &crate::model::DdHeader, errors: &mut Vec<String>) {
+fn validate_header(header: &crate::model::DdHeader, errors: &mut ErrorList) {
+    errors.locate(IssueNode::Header);
     if header.id.trim().is_empty() {
+        errors.field("id");
         errors.push("site.header has empty id.".to_string());
     }
     if header.sections.is_empty() {
@@ -798,6 +913,7 @@ fn validate_header(header: &crate::model::DdHeader, errors: &mut Vec<String>) {
         .filter(|s| !s.is_empty())
     {
         if !is_valid_url(url) {
+            errors.field("cta_url");
             errors.push(format!("site.header CTA URL '{url}' is not a valid URL."));
         }
     }
@@ -811,14 +927,19 @@ fn validate_header(header: &crate::model::DdHeader, errors: &mut Vec<String>) {
         );
     }
     let mut chrome_ids = std::collections::HashSet::new();
-    for section in &header.sections {
+    for (index, section) in header.sections.iter().enumerate() {
+        errors.locate(IssueNode::HeaderSection(index));
         if !section.id.trim().is_empty() && !chrome_ids.insert(section.id.clone()) {
             errors.push(format!(
                 "site.header has duplicate section id '{}'.",
                 section.id
             ));
         }
-        for column in &section.columns {
+        for (column_index, column) in section.columns.iter().enumerate() {
+            errors.locate(IssueNode::HeaderColumn {
+                section: index,
+                column: column_index,
+            });
             if column.id.trim().is_empty() {
                 errors.push(format!(
                     "site.header section '{}' has a column with empty id.",
@@ -831,26 +952,34 @@ fn validate_header(header: &crate::model::DdHeader, errors: &mut Vec<String>) {
                 ));
             }
         }
+        errors.locate(IssueNode::HeaderSection(index));
         validate_section_context(section, "header", errors);
     }
 }
 
-fn validate_footer(footer: &crate::model::DdFooter, errors: &mut Vec<String>) {
+fn validate_footer(footer: &crate::model::DdFooter, errors: &mut ErrorList) {
+    errors.locate(IssueNode::Footer);
     if footer.id.trim().is_empty() {
+        errors.field("id");
         errors.push("site.footer has empty id.".to_string());
     }
     if footer.sections.is_empty() {
         errors.push("site.footer must have at least one section.".to_string());
     }
     let mut chrome_ids = std::collections::HashSet::new();
-    for section in &footer.sections {
+    for (index, section) in footer.sections.iter().enumerate() {
+        errors.locate(IssueNode::FooterSection(index));
         if !section.id.trim().is_empty() && !chrome_ids.insert(section.id.clone()) {
             errors.push(format!(
                 "site.footer has duplicate section id '{}'.",
                 section.id
             ));
         }
-        for column in &section.columns {
+        for (column_index, column) in section.columns.iter().enumerate() {
+            errors.locate(IssueNode::FooterColumn {
+                section: index,
+                column: column_index,
+            });
             if column.id.trim().is_empty() {
                 errors.push(format!(
                     "site.footer section '{}' has a column with empty id.",
@@ -863,11 +992,12 @@ fn validate_footer(footer: &crate::model::DdFooter, errors: &mut Vec<String>) {
                 ));
             }
         }
+        errors.locate(IssueNode::FooterSection(index));
         validate_section_context(section, "footer", errors);
     }
 }
 
-fn validate_section_context(section: &DdSection, scope: &str, errors: &mut Vec<String>) {
+fn validate_section_context(section: &DdSection, scope: &str, errors: &mut ErrorList) {
     validate_sal_fields(
         section.sal,
         section.sal_duration,
@@ -910,17 +1040,19 @@ fn is_valid_url(url: &str) -> bool {
         || relative_html
 }
 
-pub fn validate_site_with_root(site: &Site, root: Option<&std::path::Path>) -> Vec<String> {
-    let mut errors = validate_site(site);
+pub fn validate_site_with_root(site: &Site, root: Option<&std::path::Path>) -> Vec<Issue> {
+    let mut errors = ErrorList::carrying(validate_site(site));
     let Some(root) = root else {
-        return errors;
+        return errors.finish();
     };
-    for page in &site.pages {
+    for (page_index, page) in site.pages.iter().enumerate() {
+        errors.locate(IssueNode::Page(page_index));
         let refs = collect_image_refs(page);
         for (label, value) in refs {
             check_local_image(root, &label, &value, &mut errors);
         }
         if let Some(og) = page.head.og_image.as_deref() {
+            errors.field("og_image");
             check_local_image(
                 root,
                 &format!("page '{}' og_image", page.id),
@@ -929,22 +1061,26 @@ pub fn validate_site_with_root(site: &Site, root: Option<&std::path::Path>) -> V
             );
         }
     }
+    errors.locate(IssueNode::Site);
+    errors.field("default_og_image");
     check_local_image(
         root,
         "site default_og_image",
         &site.effective_default_og_image(),
         &mut errors,
     );
+    errors.locate(IssueNode::Header);
     collect_region_image_refs(&site.header.sections, "header", root, &mut errors);
+    errors.locate(IssueNode::Footer);
     collect_region_image_refs(&site.footer.sections, "footer", root, &mut errors);
-    errors
+    errors.finish()
 }
 
 fn collect_region_image_refs(
     sections: &[DdSection],
     region: &str,
     root: &std::path::Path,
-    errors: &mut Vec<String>,
+    errors: &mut ErrorList,
 ) {
     let dummy = crate::model::Page {
         id: region.to_string(),
@@ -980,7 +1116,7 @@ fn collect_region_image_refs(
     }
 }
 
-fn check_local_image(root: &std::path::Path, label: &str, value: &str, errors: &mut Vec<String>) {
+fn check_local_image(root: &std::path::Path, label: &str, value: &str, errors: &mut ErrorList) {
     let prefix = "assets/images/";
     let v = value.trim_start_matches('/');
     let Some(rest) = v.strip_prefix(prefix) else {
@@ -1517,5 +1653,31 @@ mod tests {
             errors.iter().any(|e| e.contains("sal_duration 225")),
             "expected sal_duration error, got {errors:?}"
         );
+        let issue = errors
+            .iter()
+            .find(|issue| issue.contains("sal_duration 225"))
+            .unwrap();
+        assert_eq!(
+            issue.target.as_ref().unwrap().field.as_deref(),
+            Some("sal_duration")
+        );
+    }
+
+    #[test]
+    fn missing_hero_title_keeps_the_message_and_points_at_the_field() {
+        let mut site = Site::starter();
+        let PageNode::Hero(hero) = &mut site.pages[0].nodes[0] else {
+            panic!("expected starter hero");
+        };
+        hero.parent_title.clear();
+        let issues = validate_site(&site);
+        let issue = issues
+            .iter()
+            .find(|issue| issue.message.contains("hero is missing Title."))
+            .expect("hero title issue");
+        assert_eq!(format!("{issue}"), issue.message);
+        let target = issue.target.as_ref().expect("target");
+        assert_eq!(target.node, crate::IssueNode::Hero { page: 0, node: 0 });
+        assert_eq!(target.field.as_deref(), Some("parent_title"));
     }
 }

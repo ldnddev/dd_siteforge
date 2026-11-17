@@ -203,8 +203,11 @@ impl App {
 
     pub(in crate::tui) fn begin_preview_flow(&mut self) {
         let root = self.path.as_ref().map(|_| self.site_root());
-        let errors =
-            dd_siteforge_core::validate::validate_site_with_root(&self.site, root.as_deref());
+        let errors: Vec<String> =
+            dd_siteforge_core::validate::validate_site_with_root(&self.site, root.as_deref())
+                .into_iter()
+                .map(|issue| issue.message)
+                .collect();
         if !errors.is_empty() {
             self.modal = Some(Modal::ValidationErrors {
                 errors,
@@ -226,8 +229,11 @@ impl App {
 
     pub(in crate::tui) fn begin_export_flow(&mut self) {
         let root = self.path.as_ref().map(|_| self.site_root());
-        let errors =
-            dd_siteforge_core::validate::validate_site_with_root(&self.site, root.as_deref());
+        let errors: Vec<String> =
+            dd_siteforge_core::validate::validate_site_with_root(&self.site, root.as_deref())
+                .into_iter()
+                .map(|issue| issue.message)
+                .collect();
         if !errors.is_empty() {
             self.modal = Some(Modal::ValidationErrors {
                 errors,

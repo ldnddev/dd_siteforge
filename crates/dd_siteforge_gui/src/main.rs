@@ -7,6 +7,8 @@ mod new_site;
 mod paint;
 mod present;
 mod preview;
+mod preview_window;
+mod publish;
 mod settings;
 mod shell;
 mod theme_load;

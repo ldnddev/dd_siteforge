@@ -1,9 +1,9 @@
 //! Preview opens in the default browser.
 //!
-//! The Phase 1 spike did not show a clean `wry`/`tao` helper on this machine
-//! (no Hyprland session at scale 1.67, and no display to judge tiling, IME, or
-//! fractional scale). The helper is not linked. `open_in_browser` is the path
-//! the window uses.
+//! The Phase 1 spike did not get a clean `wry`/`tao` helper (libEGL DRI3, and
+//! no Hyprland session). Phase 4 keeps that engine. A GPUI companion window
+//! holds Follow editor and Ctrl+R. The browser tab stays in sync through the
+//! preview server's reload and follow endpoints.
 
 use std::io;
 use std::process::{Command, Stdio};

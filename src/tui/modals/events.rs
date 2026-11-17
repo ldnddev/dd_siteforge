@@ -715,8 +715,11 @@ impl App {
     /// if any errors; otherwise set a green status and leave no modal open.
     pub(in crate::tui) fn open_validation_modal(&mut self) {
         let root = self.path.as_ref().map(|_| self.site_root());
-        let errors =
-            dd_siteforge_core::validate::validate_site_with_root(&self.site, root.as_deref());
+        let errors: Vec<String> =
+            dd_siteforge_core::validate::validate_site_with_root(&self.site, root.as_deref())
+                .into_iter()
+                .map(|issue| issue.message)
+                .collect();
         if errors.is_empty() {
             self.push_toast(ToastLevel::Success, "No validation errors.");
         } else {
