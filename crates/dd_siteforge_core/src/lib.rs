@@ -7,6 +7,7 @@
 //! functions instead of copying them.
 
 pub mod asset_build;
+pub mod commands;
 pub mod component_kind;
 pub mod controls;
 pub mod cursor;

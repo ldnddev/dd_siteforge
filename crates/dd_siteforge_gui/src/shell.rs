@@ -1,5 +1,6 @@
 //! Phase 2 window: Welcome, new site, load states, and the read-only shell.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
@@ -24,7 +25,10 @@ use gpui_component::button::Button;
 use std::sync::mpsc::Receiver;
 use std::time::SystemTime;
 
+use crate::brand;
+use crate::commands::{self, CommandId, KeyHit, Motion, Scope, Verb};
 use crate::document::{Document, SavePhase};
+use crate::find_site::{self, FindTarget};
 use crate::keys::{self, show_inspector_tooltip, show_sidebar_tooltip};
 use crate::new_site::{self, CreatedSite};
 use crate::paint::{self, token};
@@ -51,6 +55,10 @@ pub struct ShellOptions {
     pub quit_runtime: bool,
     /// Test override for the starter-kit overlay directory.
     pub overlay: Option<PathBuf>,
+    /// GUI preferences. Production uses `settings::settings_path()`.
+    pub settings_file: PathBuf,
+    /// `dd_wcag` binary. Tests point this at a fake script.
+    pub wcag_bin: PathBuf,
 }
 
 impl ShellOptions {
@@ -63,8 +71,23 @@ impl ShellOptions {
             tick: true,
             quit_runtime: true,
             overlay: None,
+            settings_file: crate::settings::settings_path(),
+            wcag_bin: brand::default_bin(),
         }
     }
+}
+
+struct QueryUi {
+    query: String,
+    selected: usize,
+}
+
+struct Appearance {
+    picker: ldnddev_theme::ThemePicker,
+    editor: Option<ldnddev_theme::ThemeEditor>,
+    direct_editor: bool,
+    snapshot: LiveTheme,
+    hex_error: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -202,11 +225,27 @@ pub struct Shell {
     issues_keys: bool,
     validation: Vec<Issue>,
     init_rx: Option<Receiver<Result<Vec<String>, String>>>,
+    settings_file: PathBuf,
+    wcag_bin: PathBuf,
+    palette: Option<QueryUi>,
+    find: Option<QueryUi>,
+    shortcuts_open: bool,
+    appearance: Option<Appearance>,
+    brand: Option<brand::BrandView>,
+    brand_fix: Vec<String>,
+    collapsed_sections: HashSet<usize>,
+    theme_repaint: bool,
 }
 
 impl Shell {
     pub fn open(opts: ShellOptions, cx: &mut Context<Self>) -> Self {
-        let settings = crate::settings::load();
+        let settings = if opts.settings_file.is_file() {
+            crate::settings::load_from(&opts.settings_file)
+        } else {
+            let settings = crate::settings::GuiSettings::default();
+            let _ = crate::settings::save_to(&opts.settings_file, &settings);
+            settings
+        };
         let paths = ldnddev_theme::OmarchyPaths::system();
         let theme = LiveTheme::load(&paths, settings.reduced_motion);
         paint::apply_component_theme(&theme, cx);
@@ -293,6 +332,16 @@ impl Shell {
             issues_keys: false,
             validation: Vec::new(),
             init_rx: None,
+            settings_file: opts.settings_file,
+            wcag_bin: opts.wcag_bin,
+            palette: None,
+            find: None,
+            shortcuts_open: false,
+            appearance: None,
+            brand: None,
+            brand_fix: Vec::new(),
+            collapsed_sections: HashSet::new(),
+            theme_repaint: false,
         };
         if let Some(path) = opts.path {
             shell.open_site(&path);
@@ -427,7 +476,7 @@ impl Shell {
                         }
                         lines.push(label);
                     }
-                    let outline = outline_rows(&doc.site, &self.region, self.page_index);
+                    let outline = self.outline();
                     let (heading, caption) =
                         outline_caption(&doc.site, &self.region, self.page_index);
                     lines.push(heading);
@@ -512,6 +561,15 @@ impl Shell {
                     }
                     lines.push(status_meta(&doc.site, &self.region, self.page_index));
                     lines.push(format!("Issues {}", self.issue_count()));
+                    lines.push(format!(
+                        "title-actions:{}",
+                        commands::TITLE_BAR_ACTIONS.join(",")
+                    ));
+                    if self.target == Target::SiteSettings {
+                        if let Some(view) = &self.brand {
+                            lines.extend(brand::view_lines(view));
+                        }
+                    }
                 }
             }
         }
@@ -670,6 +728,7 @@ impl Shell {
         if !self.preview_note.is_empty() {
             lines.push(self.preview_note.clone());
         }
+        lines.extend(self.phase5_lines());
         lines
     }
 
@@ -709,6 +768,33 @@ impl Shell {
 
     pub fn handle_key(&mut self, key: &str) {
         let key = key.to_ascii_lowercase();
+        // Same actions as the title-bar buttons (J4). These stay available.
+        if key == keys::TOGGLE_SIDEBAR_KEY {
+            self.toggle_sidebar(self.last_width);
+            return;
+        }
+        if key == keys::TOGGLE_INSPECTOR_KEY && self.screen == Screen::Editor {
+            self.toggle_inspector(self.last_width);
+            return;
+        }
+        if self.palette.is_some() {
+            self.palette_key(&key);
+            return;
+        }
+        if self.find.is_some() {
+            self.find_key(&key);
+            return;
+        }
+        if self.shortcuts_open {
+            if key == "escape" {
+                self.shortcuts_open = false;
+            }
+            return;
+        }
+        if self.appearance.is_some() {
+            self.appearance_key(&key);
+            return;
+        }
         if key == "ctrl-b" {
             if self.screen == Screen::Editor
                 && self.path_sheet.is_none()
@@ -717,15 +803,6 @@ impl Shell {
             {
                 self.begin_build();
             }
-            return;
-        }
-        // Same actions as the title-bar buttons (J4).
-        if key == keys::TOGGLE_SIDEBAR_KEY {
-            self.toggle_sidebar(self.last_width);
-            return;
-        }
-        if key == keys::TOGGLE_INSPECTOR_KEY && self.screen == Screen::Editor {
-            self.toggle_inspector(self.last_width);
             return;
         }
         if self.quit_dialog {
@@ -762,36 +839,45 @@ impl Shell {
         if self.screen == Screen::Editor && self.edit_key(&key) {
             return;
         }
-        match key.as_str() {
-            keys::QUIT_KEY => self.request_quit(),
-            keys::NEW_SITE_KEY => self.open_new_site(None),
-            keys::ADD_PAGE_KEY => self.open_template(),
-            keys::THEME_KEY => self.open_theme(),
-            keys::REDO_KEY => self.redo(),
-            keys::OPEN_KEY => self.request_choose_file(),
-            "ctrl-p" => self.begin_preview(),
-            "ctrl-e" => self.begin_export(),
-            "ctrl-4" => self.toggle_issues(),
-            "f3" => self.open_validation(),
-            "f4" => self.open_health(),
-            "f5" => self.refresh_preview(),
-            "ctrl-s" => self.checkpoint(),
-            "ctrl-1" => self.zone_sidebar(),
-            "ctrl-2" => self.zone_outline(),
-            "escape" => self.escape(),
-            "enter" => self.activate(),
-            "up" | "k" => self.move_sel(-1),
-            "down" | "j" => self.move_sel(1),
-            "backspace" => self.backspace(),
-            other if self.screen == Screen::Welcome && is_text(other) => {
-                self.welcome_query.push_str(other);
-                self.welcome_index = 0;
-            }
-            other if self.screen == Screen::Editor && is_text(other) => {
-                self.filter.push_str(other);
-                self.sidebar_index = 0;
-            }
-            _ => {}
+        if key == keys::OPEN_KEY {
+            self.request_choose_file();
+            return;
+        }
+        if key == "ctrl-4" {
+            self.toggle_issues();
+            return;
+        }
+        if key == "ctrl-1" {
+            self.zone_sidebar();
+            return;
+        }
+        if key == "ctrl-2" {
+            self.zone_outline();
+            return;
+        }
+        if key == "escape" {
+            self.escape();
+            return;
+        }
+        if key == "enter" {
+            self.activate();
+            return;
+        }
+        if key == "backspace" {
+            self.backspace();
+            return;
+        }
+        match commands::resolve(&key, self.settings.vim_keys, self.key_scope()) {
+            KeyHit::Command(id) => self.run_command(id),
+            KeyHit::Motion(Motion::Up) => self.move_sel(-1),
+            KeyHit::Motion(Motion::Down) => self.move_sel(1),
+            KeyHit::Motion(Motion::First) => self.move_edge(true),
+            KeyHit::Motion(Motion::Last) => self.move_edge(false),
+            KeyHit::Motion(Motion::Collapse) => self.set_collapsed(true),
+            KeyHit::Motion(Motion::Expand) => self.set_collapsed(false),
+            KeyHit::Verb(verb) => self.run_verb(verb),
+            KeyHit::Type(ch) => self.type_list(ch),
+            KeyHit::Ignore => {}
         }
     }
 
@@ -815,8 +901,16 @@ impl Shell {
                 self.template_open = false;
                 self.toast("Add page cancelled.");
             }
-            "up" | "k" if self.template_index > 0 => self.template_index -= 1,
-            "down" | "j" if self.template_index + 1 < TEMPLATES.len() => self.template_index += 1,
+            "up" if self.template_index > 0 => self.template_index -= 1,
+            "down" if self.template_index + 1 < TEMPLATES.len() => self.template_index += 1,
+            "k" if self.settings.vim_keys && self.template_index > 0 => self.template_index -= 1,
+            "j" if self.settings.vim_keys && self.template_index + 1 < TEMPLATES.len() => {
+                self.template_index += 1
+            }
+            "g" if self.settings.vim_keys => self.template_index = 0,
+            "shift-g" if self.settings.vim_keys => {
+                self.template_index = TEMPLATES.len().saturating_sub(1)
+            }
             "enter" => self.commit_template(),
             _ => {}
         }
@@ -901,8 +995,7 @@ impl Shell {
     }
 
     fn activate_outline(&mut self) {
-        let Some(doc) = &self.document else { return };
-        let rows = outline_rows(&doc.site, &self.region, self.page_index);
+        let rows = self.outline();
         if let Some(row) = rows.get(self.outline_index) {
             self.target = row.target.clone();
             self.tab = None;
@@ -921,8 +1014,10 @@ impl Shell {
         if self.screen != Screen::Editor {
             return;
         }
-        let Some(doc) = &self.document else { return };
-        let len = outline_rows(&doc.site, &self.region, self.page_index).len() as i32;
+        if self.document.is_none() {
+            return;
+        }
+        let len = self.outline().len() as i32;
         if len == 0 {
             return;
         }
@@ -1182,19 +1277,14 @@ impl Shell {
         self.toast("New page — fill in title and HEAD, Ctrl+S to add.");
     }
 
-    fn open_theme(&mut self) {
-        // DESIGN-GAP: F2 opens Settings › Appearance (spec 06 §3), a phase 5
-        // board. The closest drawn phase-2 component is a Toast, so the key
-        // names the theme there and does not invent a settings layout.
-        let _ = keys::THEME_KEY;
-        self.toast(format!("Theme · {}", self.theme.label));
-    }
-
     fn redo(&mut self) {
         self.redo_edit();
     }
 
     fn checkpoint(&mut self) {
+        if !self.gate_site_draft() {
+            return;
+        }
         let Some(doc) = self.document.as_mut() else {
             return;
         };
@@ -1239,8 +1329,7 @@ impl Shell {
     }
 
     pub fn select_outline_label(&mut self, label: &str) {
-        let Some(doc) = &self.document else { return };
-        let rows = outline_rows(&doc.site, &self.region, self.page_index);
+        let rows = self.outline();
         if let Some(index) = rows.iter().position(|row| row.label == label) {
             self.select_outline(index);
         }
@@ -1248,8 +1337,7 @@ impl Shell {
 
     /// Select a header or footer column in the proportional row.
     pub fn select_column(&mut self, label: &str) {
-        let Some(doc) = &self.document else { return };
-        let rows = outline_rows(&doc.site, &self.region, self.page_index);
+        let rows = self.outline();
         let Some(column) = rows
             .iter()
             .flat_map(|row| row.columns.iter())
@@ -1264,11 +1352,11 @@ impl Shell {
 
     /// `row` or `stack` for the current region's column grids at a window width.
     pub fn column_row_mode(&self, window_width: f32) -> &'static str {
-        let Some(doc) = &self.document else {
+        if self.document.is_none() {
             return "row";
-        };
+        }
         let width = self.outline_content_width(window_width);
-        let rows = outline_rows(&doc.site, &self.region, self.page_index);
+        let rows = self.outline();
         rows.iter()
             .find(|row| !row.columns.is_empty())
             .map(|row| crate::present::column_layout(&row.columns, width))
@@ -2120,14 +2208,17 @@ impl Shell {
     }
 
     fn sync_selection_indices(&mut self) {
-        let Some(doc) = self.document.as_ref() else {
-            return;
+        let sidebar_index = {
+            let Some(doc) = self.document.as_ref() else {
+                return;
+            };
+            let (rows, _) = sidebar_rows(&doc.site, &self.filter);
+            rows.iter().position(|row| row.target == self.region)
         };
-        let (rows, _) = sidebar_rows(&doc.site, &self.filter);
-        if let Some(index) = rows.iter().position(|row| row.target == self.region) {
+        if let Some(index) = sidebar_index {
             self.sidebar_index = index;
         }
-        let outline = outline_rows(&doc.site, &self.region, self.page_index);
+        let outline = self.outline();
         if let Some(index) = outline.iter().position(|row| row.target == self.target) {
             self.outline_index = index;
         }
@@ -2229,8 +2320,10 @@ impl Shell {
     }
 
     fn outline_with_draft_issues(&self) -> Option<Vec<crate::present::OutlineRow>> {
-        let doc = self.document.as_ref()?;
-        let mut rows = outline_rows(&doc.site, &self.region, self.page_index);
+        if self.document.is_none() {
+            return None;
+        }
+        let mut rows = self.outline();
         for row in &mut rows {
             if self.draft_issue(&row.target) {
                 row.issues += 1;
@@ -2540,11 +2633,19 @@ impl Shell {
     fn inspector_key(&mut self, key: &str) -> bool {
         use dd_siteforge_core::editform::FieldKind;
         match key {
-            "tab" | "down" | "j" => {
+            "tab" | "down" => {
                 self.edit.focus_next();
                 true
             }
-            "shift-tab" | "up" | "k" => {
+            "shift-tab" | "up" => {
+                self.edit.focus_prev();
+                true
+            }
+            "j" if self.settings.vim_keys && !self.focused_text_field() => {
+                self.edit.focus_next();
+                true
+            }
+            "k" if self.settings.vim_keys && !self.focused_text_field() => {
                 self.edit.focus_prev();
                 true
             }
@@ -2647,6 +2748,9 @@ impl Shell {
         if self.edit.active_key().is_none() {
             return;
         }
+        if !self.gate_site_draft() {
+            return;
+        }
         let Some(doc) = self.document.as_mut() else {
             return;
         };
@@ -2666,6 +2770,10 @@ impl Shell {
 
     pub fn focus_inspector(&mut self) {
         self.enter_inspector();
+    }
+
+    pub fn set_active_field(&mut self, id: &str, value: &str) -> bool {
+        self.edit.set_field(id, value)
     }
 
     fn open_current_draft(&mut self) {
@@ -2760,8 +2868,16 @@ impl Shell {
                 self.insert_open = false;
                 self.toast("Component picker cancelled.");
             }
-            "up" | "k" if self.insert_index > 0 => self.insert_index -= 1,
-            "down" | "j" if self.insert_index + 1 < kinds.len() => self.insert_index += 1,
+            "up" if self.insert_index > 0 => self.insert_index -= 1,
+            "down" if self.insert_index + 1 < kinds.len() => self.insert_index += 1,
+            "k" if self.settings.vim_keys && self.insert_index > 0 => self.insert_index -= 1,
+            "j" if self.settings.vim_keys && self.insert_index + 1 < kinds.len() => {
+                self.insert_index += 1
+            }
+            "g" if self.settings.vim_keys => self.insert_index = 0,
+            "shift-g" if self.settings.vim_keys => {
+                self.insert_index = kinds.len().saturating_sub(1)
+            }
             "enter" => self.commit_insert(&kinds),
             "backspace" => {
                 self.insert_query.pop();
@@ -3179,6 +3295,792 @@ impl Shell {
         })
         .detach();
     }
+
+    fn outline(&self) -> Vec<OutlineRow> {
+        let Some(doc) = &self.document else {
+            return Vec::new();
+        };
+        outline_rows(&doc.site, &self.region, self.page_index)
+            .into_iter()
+            .filter(|row| match &row.target {
+                Target::Column { node, .. } | Target::Component { node, .. } => {
+                    !self.collapsed_sections.contains(node)
+                }
+                _ => true,
+            })
+            .collect()
+    }
+
+    fn phase5_lines(&self) -> Vec<String> {
+        let mut lines = Vec::new();
+        if let Some(palette) = &self.palette {
+            lines.push("Command palette".to_string());
+            lines.push("Type to filter | Up/Down: select | Enter: run | Esc: cancel".to_string());
+            let items = commands::filter_commands(&palette.query);
+            if items.is_empty() {
+                lines.push("No command selected.".to_string());
+            }
+            let build_running = self.build_rx.is_some();
+            let export_running = self.export_rx.is_some();
+            for (index, cmd) in items.iter().enumerate() {
+                let mark = if index == palette.selected { ">" } else { " " };
+                let detail = commands::palette_detail(
+                    cmd,
+                    build_running,
+                    &self.build_status,
+                    export_running,
+                    &self.export_progress,
+                );
+                lines.push(format!("{mark} {} · {} · {detail}", cmd.title, cmd.kbd));
+            }
+        }
+        if let Some(find) = &self.find {
+            lines.push("Find in site".to_string());
+            lines.push("Type to search | Up/Down: select | Enter: jump | Esc: cancel".to_string());
+            let hits = self
+                .document
+                .as_ref()
+                .map(|doc| find_site::find_hits(&doc.site, &find.query))
+                .unwrap_or_default();
+            if hits.is_empty() {
+                lines.push("No matches.".to_string());
+            }
+            for (index, hit) in hits.iter().enumerate() {
+                let mark = if index == find.selected { ">" } else { " " };
+                lines.push(format!("{mark} {}", hit.label));
+            }
+        }
+        if self.shortcuts_open {
+            lines.extend(crate::shortcuts::lines());
+        }
+        if let Some(appearance) = &self.appearance {
+            lines.push("Settings › Appearance".to_string());
+            lines.push(format!(
+                "Density {}",
+                match self.settings.density {
+                    crate::settings::Density::Comfortable => "Comfortable",
+                    crate::settings::Density::Compact => "Compact",
+                }
+            ));
+            lines.push(format!(
+                "Vim keys {}",
+                if self.settings.vim_keys { "on" } else { "off" }
+            ));
+            lines.push(format!("Source: {}", self.theme.label));
+            let status = self
+                .theme
+                .warning
+                .clone()
+                .unwrap_or_else(|| "OK (loaded cleanly)".to_string());
+            lines.push(format!("Status: {status}"));
+            lines.push(format!("Save to {}", appearance.picker.save_target.label()));
+            if let Some(editor) = &appearance.editor {
+                lines.push("Theme color editor".to_string());
+                lines.push(
+                    if appearance.direct_editor {
+                        "Revert"
+                    } else {
+                        "Back"
+                    }
+                    .to_string(),
+                );
+                for (index, field) in editor.fields.iter().enumerate() {
+                    let hex = editor
+                        .palette
+                        .get(field.key)
+                        .map(|color| color.to_hex())
+                        .unwrap_or_else(|| "#000000".to_string());
+                    let mark = if index == editor.selected { ">" } else { " " };
+                    lines.push(format!("{mark} {} {hex}", field.key));
+                }
+                lines.push(editor.hex_draft.clone());
+                if let Some(err) = &appearance.hex_error {
+                    lines.push(err.clone());
+                }
+            } else {
+                for (index, row) in appearance.picker.rows.iter().enumerate() {
+                    let mark = if index == appearance.picker.selected {
+                        ">"
+                    } else {
+                        " "
+                    };
+                    lines.push(format!("{mark} {}", theme_row_label(row)));
+                }
+                lines.push("Edit colors…".to_string());
+            }
+            lines.push("Save".to_string());
+            lines.push("Comfortable".to_string());
+            lines.push("Compact".to_string());
+        }
+        lines
+    }
+
+    fn key_scope(&self) -> Scope {
+        if self.focused_text_field() {
+            Scope::Text
+        } else {
+            Scope::List
+        }
+    }
+
+    fn focused_text_field(&self) -> bool {
+        use dd_siteforge_core::editform::FieldKind;
+        self.edit.active().is_some_and(|draft| {
+            draft.state.focused().is_some_and(|field| {
+                matches!(
+                    field.kind,
+                    FieldKind::Text { .. } | FieldKind::Textarea { .. } | FieldKind::Url { .. }
+                )
+            })
+        })
+    }
+
+    fn type_list(&mut self, ch: char) {
+        match self.screen {
+            Screen::Welcome => {
+                self.welcome_query.push(ch);
+                self.welcome_index = 0;
+            }
+            Screen::Editor => {
+                self.filter.push(ch);
+                self.sidebar_index = 0;
+            }
+            _ => {}
+        }
+    }
+
+    fn move_edge(&mut self, first: bool) {
+        if self.screen == Screen::Welcome {
+            let len = self.welcome_items().len();
+            self.welcome_index = if first { 0 } else { len.saturating_sub(1) };
+            return;
+        }
+        if self.screen != Screen::Editor {
+            return;
+        }
+        let len = self.outline().len();
+        if len == 0 {
+            return;
+        }
+        self.outline_index = if first { 0 } else { len - 1 };
+        self.activate_outline();
+    }
+
+    fn set_collapsed(&mut self, collapse: bool) {
+        let node = self
+            .outline()
+            .get(self.outline_index)
+            .and_then(|row| match &row.target {
+                Target::Section(node)
+                | Target::Column { node, .. }
+                | Target::Component { node, .. } => Some(*node),
+                _ => None,
+            });
+        let Some(node) = node else {
+            return;
+        };
+        if collapse {
+            self.collapsed_sections.insert(node);
+        } else {
+            self.collapsed_sections.remove(&node);
+        }
+    }
+
+    fn run_verb(&mut self, verb: Verb) {
+        if self.screen != Screen::Editor {
+            return;
+        }
+        match verb {
+            Verb::Insert => self.open_insert(),
+            Verb::Delete => self.delete_selection(),
+            Verb::Undo => self.undo_edit(),
+            Verb::Rename => self.begin_rename(),
+            Verb::Copy | Verb::Paste | Verb::Repeat => {}
+        }
+    }
+
+    fn run_command(&mut self, id: CommandId) {
+        match id {
+            CommandId::Export => self.begin_export(),
+            CommandId::Preview => self.begin_preview(),
+            CommandId::RefreshPreview => self.refresh_preview(),
+            CommandId::Validate => self.open_validation(),
+            CommandId::Save => self.checkpoint(),
+            CommandId::Help => {
+                self.palette = None;
+                self.find = None;
+                self.appearance = None;
+                self.shortcuts_open = true;
+            }
+            CommandId::Theme => self.open_appearance(),
+            CommandId::Find => self.open_find(),
+            CommandId::Insert => self.open_insert(),
+            CommandId::AddPage => self.open_template(),
+            CommandId::BuildAssets => self.begin_build(),
+            CommandId::PageHealth => self.open_health(),
+            CommandId::Redo => self.redo(),
+            CommandId::Quit => self.request_quit(),
+            CommandId::InitKit => self.begin_init_kit(),
+            CommandId::InitTemplates => self.begin_init_templates(),
+            CommandId::NewSite => self.open_new_site(None),
+            CommandId::ToggleSidebar => self.toggle_sidebar(self.last_width),
+            CommandId::ToggleInspector => self.toggle_inspector(self.last_width),
+            CommandId::Palette => self.open_palette(),
+            CommandId::Open => self.request_choose_file(),
+            CommandId::ToggleIssues => self.toggle_issues(),
+            CommandId::FocusSidebar => self.zone_sidebar(),
+            CommandId::FocusOutline => self.zone_outline(),
+        }
+    }
+
+    fn open_palette(&mut self) {
+        self.find = None;
+        self.shortcuts_open = false;
+        self.appearance = None;
+        self.palette = Some(QueryUi {
+            query: String::new(),
+            selected: 0,
+        });
+    }
+
+    fn open_find(&mut self) {
+        self.palette = None;
+        self.shortcuts_open = false;
+        self.appearance = None;
+        self.find = Some(QueryUi {
+            query: String::new(),
+            selected: 0,
+        });
+    }
+
+    fn palette_key(&mut self, key: &str) {
+        let vim = self.settings.vim_keys;
+        let len = self
+            .palette
+            .as_ref()
+            .map(|palette| commands::filter_commands(&palette.query).len())
+            .unwrap_or(0);
+        match key {
+            "escape" => {
+                self.palette = None;
+                self.toast("Command palette cancelled.");
+            }
+            "enter" => self.run_palette_selection(),
+            "backspace" => {
+                if let Some(palette) = &mut self.palette {
+                    palette.query.pop();
+                    palette.selected = 0;
+                }
+            }
+            "up" => nudge_query(self.palette.as_mut(), len, -1),
+            "down" => nudge_query(self.palette.as_mut(), len, 1),
+            "k" if vim => nudge_query(self.palette.as_mut(), len, -1),
+            "j" if vim => nudge_query(self.palette.as_mut(), len, 1),
+            "g" if vim => {
+                if let Some(palette) = &mut self.palette {
+                    palette.selected = 0;
+                }
+            }
+            "shift-g" if vim => {
+                if let Some(palette) = &mut self.palette {
+                    palette.selected = len.saturating_sub(1);
+                }
+            }
+            other if is_text(other) => {
+                if let Some(palette) = &mut self.palette {
+                    palette.query.push_str(other);
+                    palette.selected = 0;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn run_palette_selection(&mut self) {
+        let Some(palette) = &self.palette else {
+            return;
+        };
+        let items = commands::filter_commands(&palette.query);
+        let Some(cmd) = items.get(palette.selected) else {
+            self.toast("No command selected.");
+            return;
+        };
+        let id = cmd.id;
+        self.palette = None;
+        if id != CommandId::Palette {
+            self.run_command(id);
+        }
+    }
+
+    fn find_key(&mut self, key: &str) {
+        let vim = self.settings.vim_keys;
+        let len = self
+            .find
+            .as_ref()
+            .and_then(|find| {
+                self.document
+                    .as_ref()
+                    .map(|doc| find_site::find_hits(&doc.site, &find.query).len())
+            })
+            .unwrap_or(0);
+        match key {
+            "escape" => {
+                self.find = None;
+                self.toast("Find cancelled.");
+            }
+            "enter" => self.jump_selected_find(),
+            "backspace" => {
+                if let Some(find) = &mut self.find {
+                    find.query.pop();
+                    find.selected = 0;
+                }
+            }
+            "up" => nudge_query(self.find.as_mut(), len, -1),
+            "down" => nudge_query(self.find.as_mut(), len, 1),
+            "k" if vim => nudge_query(self.find.as_mut(), len, -1),
+            "j" if vim => nudge_query(self.find.as_mut(), len, 1),
+            "g" if vim => {
+                if let Some(find) = &mut self.find {
+                    find.selected = 0;
+                }
+            }
+            "shift-g" if vim => {
+                if let Some(find) = &mut self.find {
+                    find.selected = len.saturating_sub(1);
+                }
+            }
+            other if is_text(other) => {
+                if let Some(find) = &mut self.find {
+                    find.query.push_str(other);
+                    find.selected = 0;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn jump_selected_find(&mut self) {
+        let Some(find) = &self.find else {
+            return;
+        };
+        let hits = self
+            .document
+            .as_ref()
+            .map(|doc| find_site::find_hits(&doc.site, &find.query))
+            .unwrap_or_default();
+        let Some(hit) = hits.get(find.selected) else {
+            self.toast("No matches.");
+            return;
+        };
+        let label = hit.label.clone();
+        let target = hit.target.clone();
+        self.find = None;
+        self.jump_find(target, label);
+    }
+
+    fn jump_find(&mut self, target: FindTarget, label: String) {
+        match target {
+            FindTarget::SiteRoot => {
+                self.region = SideTarget::Site;
+                self.target = Target::SiteSettings;
+            }
+            FindTarget::HeaderRoot => {
+                self.region = SideTarget::Header;
+                self.target = Target::RegionRoot;
+            }
+            FindTarget::HeaderAlert => {
+                self.region = SideTarget::Header;
+                self.target = Target::HeaderAlert;
+            }
+            FindTarget::HeaderComponent {
+                section,
+                column,
+                component,
+            } => {
+                self.region = SideTarget::Header;
+                self.target = Target::RegionComponent {
+                    section,
+                    column,
+                    component,
+                };
+            }
+            FindTarget::FooterRoot => {
+                self.region = SideTarget::Footer;
+                self.target = Target::RegionRoot;
+            }
+            FindTarget::FooterComponent {
+                section,
+                column,
+                component,
+            } => {
+                self.region = SideTarget::Footer;
+                self.target = Target::RegionComponent {
+                    section,
+                    column,
+                    component,
+                };
+            }
+            FindTarget::PageHead { page } => {
+                self.page_index = page;
+                self.region = SideTarget::Page(page);
+                self.target = Target::PageHead;
+            }
+            FindTarget::Hero { page, node } => {
+                self.page_index = page;
+                self.region = SideTarget::Page(page);
+                self.target = Target::Hero(node);
+            }
+            FindTarget::Section { page, node } => {
+                self.page_index = page;
+                self.region = SideTarget::Page(page);
+                self.target = Target::Section(node);
+                self.collapsed_sections.remove(&node);
+            }
+            FindTarget::Component {
+                page,
+                node,
+                column,
+                component,
+            } => {
+                self.page_index = page;
+                self.region = SideTarget::Page(page);
+                self.target = Target::Component {
+                    node,
+                    column,
+                    component,
+                };
+                self.collapsed_sections.remove(&node);
+            }
+        }
+        self.sync_selection_indices();
+        self.zone = Zone::Inspector;
+        self.open_current_draft();
+        self.toast(format!("Jumped to {label}"));
+    }
+
+    fn open_appearance(&mut self) {
+        let extras = theme_extras();
+        let mut palette = ldnddev_theme::Palette::builtin();
+        palette.omarchy = self.theme.choice.clone();
+        let picker = ldnddev_theme::ThemePicker::new(palette, &extras, self.paths.clone());
+        let direct = !picker.lists_omarchy();
+        let mut appearance = Appearance {
+            picker,
+            editor: None,
+            direct_editor: direct,
+            snapshot: self.theme.clone(),
+            hex_error: None,
+        };
+        if direct {
+            appearance.editor = Some(theme_editor_from(&appearance, &extras));
+        }
+        self.palette = None;
+        self.find = None;
+        self.shortcuts_open = false;
+        self.appearance = Some(appearance);
+    }
+
+    fn appearance_key(&mut self, key: &str) {
+        if self
+            .appearance
+            .as_ref()
+            .is_some_and(|appearance| appearance.editor.is_some())
+        {
+            self.editor_key(key);
+            return;
+        }
+        let vim = self.settings.vim_keys;
+        match key {
+            "escape" => self.revert_appearance(),
+            "enter" => self.apply_selected_theme(),
+            "e" => self.open_color_editor(),
+            "s" | "y" => self.save_appearance(),
+            "tab" => {
+                if let Some(appearance) = &mut self.appearance {
+                    appearance.picker.save_target = appearance.picker.save_target.toggled();
+                }
+            }
+            "up" => self.move_theme(-1),
+            "down" => self.move_theme(1),
+            "k" if vim => self.move_theme(-1),
+            "j" if vim => self.move_theme(1),
+            "g" if vim => self.move_theme_edge(true),
+            "shift-g" if vim => self.move_theme_edge(false),
+            _ => {}
+        }
+    }
+
+    fn move_theme(&mut self, delta: i32) {
+        let Some(appearance) = &mut self.appearance else {
+            return;
+        };
+        let len = appearance.picker.rows.len() as i32;
+        if len == 0 {
+            return;
+        }
+        let next = (appearance.picker.selected as i32 + delta).clamp(0, len - 1) as usize;
+        appearance.picker.select(next);
+    }
+
+    fn move_theme_edge(&mut self, first: bool) {
+        let Some(appearance) = &mut self.appearance else {
+            return;
+        };
+        let last = appearance.picker.rows.len().saturating_sub(1);
+        appearance.picker.select(if first { 0 } else { last });
+    }
+
+    fn apply_selected_theme(&mut self) {
+        let outcome = {
+            let Some(appearance) = &mut self.appearance else {
+                return;
+            };
+            appearance.picker.handle(ldnddev_theme::EditorKey::Enter)
+        };
+        match outcome {
+            ldnddev_theme::PickerOutcome::Applied => self.install_picker_palette(),
+            ldnddev_theme::PickerOutcome::Error(message) => self.toast(message),
+            _ => {}
+        }
+    }
+
+    fn install_picker_palette(&mut self) {
+        let Some(choice) = self
+            .appearance
+            .as_ref()
+            .and_then(|appearance| appearance.picker.palette.omarchy.clone())
+        else {
+            self.theme.choice = None;
+            self.theme.label = "built-in".to_string();
+            self.theme_repaint = true;
+            return;
+        };
+        match ldnddev_theme::load_colors(&self.paths, &choice) {
+            Ok(colors) => {
+                self.theme.gui = ldnddev_theme::resolve_gui_theme(&colors);
+                self.theme.label = match &choice {
+                    ldnddev_theme::OmarchyChoice::Follow => "Follow desktop".to_string(),
+                    ldnddev_theme::OmarchyChoice::Theme(slug) => slug.clone(),
+                };
+                self.theme.choice = Some(choice);
+                self.theme.warning = None;
+                self.theme_repaint = true;
+            }
+            Err(err) => self.toast(format!("Theme color `load` failed: {err}")),
+        }
+    }
+
+    fn open_color_editor(&mut self) {
+        let extras = theme_extras();
+        let Some(appearance) = &mut self.appearance else {
+            return;
+        };
+        appearance.editor = Some(theme_editor_from(appearance, &extras));
+        appearance.hex_error = None;
+    }
+
+    fn editor_key(&mut self, key: &str) {
+        let shift = key.starts_with("shift-");
+        let bare = key.strip_prefix("shift-").unwrap_or(key);
+        let vim = self.settings.vim_keys;
+        let editor_key = match bare {
+            "escape" => Some(ldnddev_theme::EditorKey::Esc),
+            "enter" => Some(ldnddev_theme::EditorKey::Enter),
+            "backspace" => Some(ldnddev_theme::EditorKey::Backspace),
+            "tab" => Some(ldnddev_theme::EditorKey::Tab),
+            "up" => Some(ldnddev_theme::EditorKey::Up),
+            "down" => Some(ldnddev_theme::EditorKey::Down),
+            "left" => Some(ldnddev_theme::EditorKey::Left),
+            "right" => Some(ldnddev_theme::EditorKey::Right),
+            "h" => Some(ldnddev_theme::EditorKey::Char('h')),
+            "l" => Some(ldnddev_theme::EditorKey::Char('l')),
+            "j" if vim => Some(ldnddev_theme::EditorKey::Char('j')),
+            "k" if vim => Some(ldnddev_theme::EditorKey::Char('k')),
+            "s" | "y" => Some(ldnddev_theme::EditorKey::Char('s')),
+            "r" if shift => Some(ldnddev_theme::EditorKey::Char('R')),
+            "g" if shift => Some(ldnddev_theme::EditorKey::Char('G')),
+            "-" | "_" => Some(ldnddev_theme::EditorKey::Char('-')),
+            "=" | "+" => Some(ldnddev_theme::EditorKey::Char('+')),
+            "[" => Some(ldnddev_theme::EditorKey::Char('[')),
+            "]" => Some(ldnddev_theme::EditorKey::Char(']')),
+            other if is_text(other) => other.chars().next().map(ldnddev_theme::EditorKey::Char),
+            _ => None,
+        };
+        let Some(editor_key) = editor_key else {
+            return;
+        };
+        let outcome = {
+            let Some(editor) = self
+                .appearance
+                .as_mut()
+                .and_then(|appearance| appearance.editor.as_mut())
+            else {
+                return;
+            };
+            editor.handle(editor_key, shift)
+        };
+        match outcome {
+            ldnddev_theme::EditorOutcome::RequestSave => self.save_appearance(),
+            ldnddev_theme::EditorOutcome::Closed { .. } => {
+                let direct = self
+                    .appearance
+                    .as_ref()
+                    .is_some_and(|appearance| appearance.direct_editor);
+                if let Some(appearance) = &mut self.appearance {
+                    appearance.editor = None;
+                    appearance.hex_error = None;
+                }
+                if direct {
+                    self.revert_appearance();
+                }
+            }
+            ldnddev_theme::EditorOutcome::HexError(message) => {
+                if let Some(appearance) = &mut self.appearance {
+                    appearance.hex_error = Some(message);
+                }
+            }
+            ldnddev_theme::EditorOutcome::PaletteChanged => {
+                if let Some(appearance) = &mut self.appearance {
+                    if let Some(editor) = &appearance.editor {
+                        appearance.picker.palette = editor.palette.clone();
+                    }
+                    appearance.hex_error = None;
+                }
+            }
+            ldnddev_theme::EditorOutcome::None => {
+                if let Some(appearance) = &mut self.appearance {
+                    if appearance
+                        .editor
+                        .as_ref()
+                        .is_some_and(|editor| editor.editing_hex)
+                    {
+                        appearance.hex_error = None;
+                    }
+                }
+            }
+        }
+    }
+
+    fn save_appearance(&mut self) {
+        let Some(appearance) = &self.appearance else {
+            return;
+        };
+        let palette = appearance
+            .editor
+            .as_ref()
+            .map(|editor| editor.palette.clone())
+            .unwrap_or_else(|| appearance.picker.palette.clone());
+        let target = appearance
+            .editor
+            .as_ref()
+            .map(|editor| editor.save_target)
+            .unwrap_or(appearance.picker.save_target);
+        let fields = appearance
+            .editor
+            .as_ref()
+            .map(|editor| editor.fields.clone())
+            .unwrap_or_else(theme_extras);
+        let root = self
+            .document
+            .as_ref()
+            .map(|doc| site_root_path(&doc.path))
+            .unwrap_or_else(|| self.cwd.clone());
+        match ldnddev_theme::save_theme(
+            &palette,
+            &root,
+            "dd_siteforge_theme.yml",
+            target,
+            ldnddev_theme::default_config_home().as_deref(),
+            &fields,
+        ) {
+            Ok(path) => self.toast(format!("Theme saved ({})", path.display())),
+            Err(err) => self.toast(format!("Theme save failed: {err}")),
+        }
+    }
+
+    fn revert_appearance(&mut self) {
+        if let Some(appearance) = self.appearance.take() {
+            self.theme = appearance.snapshot;
+            self.theme_repaint = true;
+        }
+    }
+
+    pub fn set_vim_keys(&mut self, on: bool) {
+        self.settings.vim_keys = on;
+        let _ = crate::settings::save_to(&self.settings_file, &self.settings);
+    }
+
+    pub fn set_density(&mut self, density: crate::settings::Density) {
+        self.settings.density = density;
+        let _ = crate::settings::save_to(&self.settings_file, &self.settings);
+    }
+
+    pub fn launched_fix(&self) -> &[String] {
+        &self.brand_fix
+    }
+
+    pub fn fix_brand(&mut self) {
+        let colors = self.brand_colors_now();
+        let Ok(colors) = brand::screen(&colors) else {
+            return;
+        };
+        self.brand_fix = brand::generate_args(&colors);
+        if self.quit_runtime {
+            let _ = brand::spawn_generate(&self.wcag_bin, &colors);
+        }
+    }
+
+    fn brand_colors_now(&self) -> brand::BrandColors {
+        if let Some(draft) = self.edit.active() {
+            if draft.cursor == dd_siteforge_core::cursor::Cursor::Site {
+                return brand::BrandColors {
+                    primary: draft.state.get("primary_color").to_string(),
+                    secondary: draft.state.get("secondary_color").to_string(),
+                    tertiary: draft.state.get("tertiary_color").to_string(),
+                    support: draft.state.get("support_color").to_string(),
+                };
+            }
+        }
+        self.document
+            .as_ref()
+            .map(|doc| brand::BrandColors::from_site(&doc.site))
+            .unwrap_or(brand::BrandColors {
+                primary: String::new(),
+                secondary: String::new(),
+                tertiary: String::new(),
+                support: String::new(),
+            })
+    }
+
+    fn gate_site_draft(&mut self) -> bool {
+        let colors = {
+            let Some(draft) = self.edit.active() else {
+                return true;
+            };
+            if draft.cursor != dd_siteforge_core::cursor::Cursor::Site {
+                return true;
+            }
+            brand::BrandColors {
+                primary: draft.state.get("primary_color").to_string(),
+                secondary: draft.state.get("secondary_color").to_string(),
+                tertiary: draft.state.get("tertiary_color").to_string(),
+                support: draft.state.get("support_color").to_string(),
+            }
+        };
+        let gate = brand::gate(&colors, &self.wcag_bin);
+        let allow = gate.allow_write;
+        let message = match &gate.view {
+            brand::BrandView::Invalid { message } | brand::BrandView::BadInput { message } => {
+                Some(message.clone())
+            }
+            _ => None,
+        };
+        self.brand = Some(gate.view);
+        if let Some(message) = message {
+            self.toast(message);
+        }
+        allow
+    }
 }
 
 impl Focusable for Shell {
@@ -3189,6 +4091,10 @@ impl Focusable for Shell {
 
 impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if self.theme_repaint {
+            self.theme_repaint = false;
+            paint::apply_component_theme(&self.theme, cx);
+        }
         if self.quit && self.quit_runtime {
             cx.quit();
         }
@@ -3314,6 +4220,13 @@ impl Render for Shell {
         };
         let toasts = self.toasts.clone();
         let preview_note = self.preview_note.clone();
+        let phase5 = self.phase5_lines();
+        let appearance_open = self.appearance.is_some();
+        let show_fix = self.brand.as_ref().is_some_and(|view| {
+            brand::view_lines(view)
+                .iter()
+                .any(|line| line == "Fix in dd_wcag")
+        });
         let mode_label = self.theme.mode_label();
         let theme_warning = self.theme.warning.clone();
         let filter = self.filter.clone();
@@ -3594,6 +4507,18 @@ impl Render for Shell {
             .when(!preview_note.is_empty(), |row| {
                 row.child(div().px(px(12.0)).child(preview_note.clone()))
             })
+            .when(!phase5.is_empty(), |row| {
+                row.child(phase5_panel(
+                    cx,
+                    &phase5,
+                    appearance_open,
+                    show_fix,
+                    panel,
+                    border,
+                    secondary,
+                    text,
+                ))
+            })
             .child(div().px(px(12.0)).text_color(placeholder).child(mode_label))
             .when(theme_warning.is_some(), |row| {
                 row.child(
@@ -3662,22 +4587,6 @@ fn title_bar(
         .child(div().flex_1())
         .when(editor, |row| {
             row.child(
-                Button::new("init-kit")
-                    .label("Init site kit")
-                    .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
-                        shell.begin_init_kit();
-                        cx.notify();
-                    })),
-            )
-            .child(
-                Button::new("init-templates")
-                    .label("Init templates")
-                    .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
-                        shell.begin_init_templates();
-                        cx.notify();
-                    })),
-            )
-            .child(
                 Button::new("export-site")
                     .label("Export")
                     .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
@@ -3711,6 +4620,135 @@ fn title_bar(
                     })),
             )
         })
+}
+
+fn nudge_query(query: Option<&mut QueryUi>, len: usize, delta: i32) {
+    let Some(query) = query else {
+        return;
+    };
+    if len == 0 {
+        query.selected = 0;
+        return;
+    }
+    let next = query.selected as i32 + delta;
+    query.selected = next.clamp(0, len as i32 - 1) as usize;
+}
+
+fn theme_extras() -> Vec<ldnddev_theme::ColorField> {
+    vec![
+        ldnddev_theme::EXTRA_MODAL_HEADER,
+        ldnddev_theme::EXTRA_TEXT_DISABLED,
+        ldnddev_theme::EXTRA_TEXT_INVERSE,
+        ldnddev_theme::EXTRA_SELECTION,
+    ]
+}
+
+fn theme_editor_from(
+    appearance: &Appearance,
+    extras: &[ldnddev_theme::ColorField],
+) -> ldnddev_theme::ThemeEditor {
+    let mut editor = ldnddev_theme::ThemeEditor::new(appearance.picker.palette.clone(), extras);
+    editor.save_target = appearance.picker.save_target;
+    editor
+}
+
+fn theme_row_label(row: &ldnddev_theme::PickerRow) -> String {
+    match row {
+        ldnddev_theme::PickerRow::Follow { name } => format!("Follow desktop {name}"),
+        ldnddev_theme::PickerRow::Theme(theme) => {
+            format!("{} {}", theme.name, theme.mode.label())
+        }
+        ldnddev_theme::PickerRow::Custom => "Custom built-in".to_string(),
+    }
+}
+
+fn phase5_panel(
+    cx: &mut Context<Shell>,
+    lines: &[String],
+    appearance: bool,
+    show_fix: bool,
+    panel: gpui::Hsla,
+    border: gpui::Hsla,
+    secondary: gpui::Hsla,
+    text: gpui::Hsla,
+) -> gpui::Div {
+    div()
+        .w(px(680.0))
+        .p(px(12.0))
+        .bg(panel)
+        .border_1()
+        .border_color(border)
+        .flex()
+        .flex_col()
+        .gap(px(4.0))
+        .children(
+            lines
+                .iter()
+                .cloned()
+                .map(|line| div().text_color(text).child(line)),
+        )
+        .when(appearance, |col| {
+            col.child(
+                Button::new("appearance-save")
+                    .label("Save")
+                    .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
+                        shell.save_appearance();
+                        cx.notify();
+                    })),
+            )
+            .child(
+                Button::new("appearance-revert")
+                    .label("Revert")
+                    .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
+                        shell.revert_appearance();
+                        cx.notify();
+                    })),
+            )
+            .child(
+                Button::new("appearance-edit")
+                    .label("Edit colors…")
+                    .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
+                        shell.open_color_editor();
+                        cx.notify();
+                    })),
+            )
+            .child(
+                Button::new("density-comfortable")
+                    .label("Comfortable")
+                    .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
+                        shell.set_density(crate::settings::Density::Comfortable);
+                        cx.notify();
+                    })),
+            )
+            .child(
+                Button::new("density-compact")
+                    .label("Compact")
+                    .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
+                        shell.set_density(crate::settings::Density::Compact);
+                        cx.notify();
+                    })),
+            )
+            .child(
+                Button::new("vim-toggle")
+                    .label("Vim keys")
+                    .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
+                        let on = !shell.settings.vim_keys;
+                        shell.set_vim_keys(on);
+                        cx.notify();
+                    })),
+            )
+        })
+        .when(show_fix, |col| {
+            col.child(
+                Button::new("fix-wcag")
+                    .label("Fix in dd_wcag")
+                    .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
+                        shell.fix_brand();
+                        cx.notify();
+                    })),
+            )
+        })
+        .text_color(secondary)
 }
 
 fn banner(
