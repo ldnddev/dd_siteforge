@@ -2,10 +2,13 @@
 
 mod brand;
 mod commands;
+mod density;
 mod document;
 mod find_site;
+mod focus;
 mod images;
 mod keys;
+mod motion;
 mod new_site;
 mod paint;
 mod present;
@@ -15,6 +18,7 @@ mod publish;
 mod settings;
 mod shell;
 mod shortcuts;
+mod states;
 mod theme_load;
 
 #[cfg(test)]

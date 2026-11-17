@@ -16,6 +16,37 @@ pub const AUTOSAVE_AFTER: Duration = Duration::from_secs(2);
 /// One persistent failure, then a pause, instead of a toast on every tick.
 pub const AUTOSAVE_BACKOFF: Duration = Duration::from_secs(8);
 
+/// Which core write a background save is performing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SaveKind {
+    Autosave,
+    Checkpoint,
+    Overwrite,
+}
+
+/// The bytes a worker thread writes. The UI thread does not call storage.
+#[derive(Clone, Debug)]
+pub struct SaveJob {
+    pub path: PathBuf,
+    pub site: Site,
+    pub hash: Option<ContentHash>,
+    pub kind: SaveKind,
+}
+
+pub fn run_job(job: &SaveJob) -> Result<SiteSave, String> {
+    match job.kind {
+        SaveKind::Autosave => {
+            save_site_checked(&job.path, &job.site, job.hash).map_err(|err| err.to_string())
+        }
+        SaveKind::Checkpoint => {
+            checkpoint_site(&job.path, &job.site, job.hash).map_err(|err| err.to_string())
+        }
+        SaveKind::Overwrite => checkpoint_overwriting(&job.path, &job.site)
+            .map(|hash| SiteSave::Written { hash })
+            .map_err(|err| err.to_string()),
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SavePhase {
     Saved,
@@ -138,26 +169,64 @@ impl Document {
         self.dirty = true;
     }
 
-    pub fn autosave(&mut self, now: Instant) -> bool {
+    /// True when an autosave should start. Does not write.
+    pub fn take_autosave_job(&mut self, now: Instant) -> Option<SaveJob> {
         if self.conflict || !self.dirty {
-            return false;
+            return None;
         }
         let Some(since) = self.dirty_since else {
             self.dirty_since = Some(now);
-            return false;
+            return None;
         };
         if now.duration_since(since) < AUTOSAVE_AFTER {
-            return false;
+            return None;
         }
         if let Some(after) = self.retry_after {
             if self.save_error.is_some() && now < after {
-                return false;
+                return None;
             }
         }
+        Some(self.prepare_job(SaveKind::Autosave))
+    }
+
+    pub fn prepare_job(&mut self, kind: SaveKind) -> SaveJob {
         self.saving = true;
-        match save_site_checked(&self.path, &self.site, self.hash) {
+        SaveJob {
+            path: self.path.clone(),
+            site: self.site.clone(),
+            hash: self.hash,
+            kind,
+        }
+    }
+
+    pub fn autosave(&mut self, now: Instant) -> bool {
+        let Some(job) = self.take_autosave_job(now) else {
+            return false;
+        };
+        let result = run_job(&job);
+        self.apply_job(job.kind, result, now);
+        true
+    }
+
+    /// Apply a write that finished off the UI thread. `now` is the moment the
+    /// result arrived.
+    pub fn apply_job(
+        &mut self,
+        kind: SaveKind,
+        result: Result<SiteSave, String>,
+        now: Instant,
+    ) -> bool {
+        self.saving = false;
+        match kind {
+            SaveKind::Autosave => self.apply_autosave(result, now),
+            SaveKind::Checkpoint => self.apply_checkpoint(result),
+            SaveKind::Overwrite => self.apply_overwrite(result),
+        }
+    }
+
+    fn apply_autosave(&mut self, result: Result<SiteSave, String>, now: Instant) -> bool {
+        match result {
             Ok(SiteSave::Written { hash }) => {
-                self.saving = false;
                 self.hash = Some(hash);
                 self.dirty = false;
                 self.dirty_since = None;
@@ -168,17 +237,48 @@ impl Document {
                 true
             }
             Ok(SiteSave::Conflict { .. }) => {
-                self.saving = false;
                 self.conflict = true;
                 self.notice =
                     Some("Changed on disk. Not overwritten. Reload, or keep yours.".to_string());
                 true
             }
             Err(err) => {
-                self.saving = false;
-                self.save_error = Some(err.to_string());
+                self.save_error = Some(err.clone());
                 self.retry_after = Some(now + AUTOSAVE_BACKOFF);
                 self.notice = Some(format!("Autosave failed: {err}"));
+                true
+            }
+        }
+    }
+
+    fn apply_checkpoint(&mut self, result: Result<SiteSave, String>) -> bool {
+        match result {
+            Ok(SiteSave::Written { hash }) => {
+                self.note_saved(hash, format!("Saved {}", self.path.display()));
+                true
+            }
+            Ok(SiteSave::Conflict { .. }) => {
+                self.conflict = true;
+                self.notice =
+                    Some("Changed on disk. Not overwritten. Reload, or keep yours.".to_string());
+                true
+            }
+            Err(err) => {
+                self.notice = Some(format!("Failed to save: {err}"));
+                true
+            }
+        }
+    }
+
+    fn apply_overwrite(&mut self, result: Result<SiteSave, String>) -> bool {
+        match result {
+            Ok(SiteSave::Written { hash }) => {
+                self.note_saved(hash, format!("Saved {}", self.path.display()));
+                true
+            }
+            Ok(SiteSave::Conflict { .. }) => false,
+            Err(err) => {
+                self.notice = Some(format!("Failed to save: {err}"));
                 true
             }
         }
@@ -199,22 +299,9 @@ impl Document {
         if self.conflict {
             return self.keep_mine();
         }
-        match checkpoint_site(&self.path, &self.site, self.hash) {
-            Ok(SiteSave::Written { hash }) => {
-                self.note_saved(hash, format!("Saved {}", self.path.display()));
-                true
-            }
-            Ok(SiteSave::Conflict { .. }) => {
-                self.conflict = true;
-                self.notice =
-                    Some("Changed on disk. Not overwritten. Reload, or keep yours.".to_string());
-                true
-            }
-            Err(err) => {
-                self.notice = Some(format!("Failed to save: {err}"));
-                true
-            }
-        }
+        let job = self.prepare_job(SaveKind::Checkpoint);
+        let result = run_job(&job);
+        self.apply_checkpoint(result)
     }
 
     pub fn reload(&mut self) -> anyhow::Result<()> {
@@ -229,16 +316,9 @@ impl Document {
     }
 
     pub fn keep_mine(&mut self) -> bool {
-        match checkpoint_overwriting(&self.path, &self.site) {
-            Ok(hash) => {
-                self.note_saved(hash, format!("Saved {}", self.path.display()));
-                true
-            }
-            Err(err) => {
-                self.notice = Some(format!("Failed to save: {err}"));
-                true
-            }
-        }
+        let job = self.prepare_job(SaveKind::Overwrite);
+        let result = run_job(&job);
+        self.apply_overwrite(result)
     }
 
     fn note_saved(&mut self, hash: ContentHash, notice: String) {
@@ -307,6 +387,21 @@ mod tests {
         let path = dir.path().join("site.json");
         save_site(&path, &Site::starter()).unwrap();
         (dir, path)
+    }
+
+    #[test]
+    fn checkpoint_and_retry_write_through_core() {
+        let (_dir, path) = temp_site();
+        let mut doc = Document::load(path.clone()).unwrap();
+        doc.site.name = "Checkpoint".to_string();
+        doc.mark_dirty();
+        assert!(doc.checkpoint());
+        assert!(checkpoint_path(&path).is_file());
+        doc.mark_dirty();
+        doc.save_error = Some("disk full".to_string());
+        doc.retry_after = Some(Instant::now() + AUTOSAVE_BACKOFF);
+        assert!(doc.retry_save());
+        assert!(doc.save_error.is_none());
     }
 
     #[test]

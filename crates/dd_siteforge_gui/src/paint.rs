@@ -38,6 +38,17 @@ pub fn apply_component_theme(theme: &LiveTheme, cx: &mut App) {
     colors.border = hsla(theme_load::rgb(&theme.gui, "border.input"));
     colors.caret = hsla(theme_load::rgb(&theme.gui, "caret"));
     colors.link = hsla(theme_load::rgb(&theme.gui, "text.accent"));
+    colors.ring = hsla(theme_load::rgb(&theme.gui, "focus.ring"));
+    if theme.gui.primary_button == ldnddev_theme::PrimaryButton::Outlined {
+        // Rule (a): border is accent.fill, label is text.accent, fill is surface.raised.
+        // gpui's outlined primary uses `primary` for both the border and the label,
+        // so the shell draws those buttons itself. The component theme still stops
+        // using a filled accent for the primary slot.
+        colors.primary = hsla(theme_load::rgb(&theme.gui, "surface.raised"));
+        colors.primary_foreground = hsla(theme_load::rgb(&theme.gui, "text.accent"));
+        colors.button_primary = hsla(theme_load::rgb(&theme.gui, "surface.raised"));
+        colors.button_primary_foreground = hsla(theme_load::rgb(&theme.gui, "text.accent"));
+    }
     let family = SharedString::from(theme.fonts.ui.clone());
     Theme::update(cx, |ui| {
         ui.mode = mode;

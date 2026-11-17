@@ -18,16 +18,17 @@ use dd_siteforge_core::session;
 use dd_siteforge_core::storage::{self, checkpoint_path};
 use dd_siteforge_core::validate::validate_site_with_root;
 use gpui::{
-    App, ClickEvent, Context, FocusHandle, Focusable, IntoElement, KeyDownEvent, ParentElement,
-    Render, StatefulInteractiveElement, Styled, Window, div, prelude::*, px,
+    Animation, AnimationExt, App, ClickEvent, Context, FocusHandle, Focusable, IntoElement,
+    KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Render,
+    StatefulInteractiveElement, Styled, Window, div, prelude::*, px,
 };
-use gpui_component::button::Button;
+use gpui_component::button::{Button, ButtonVariants};
 use std::sync::mpsc::Receiver;
 use std::time::SystemTime;
 
 use crate::brand;
 use crate::commands::{self, CommandId, KeyHit, Motion, Scope, Verb};
-use crate::document::{Document, SavePhase};
+use crate::document::{self, Document, SaveKind, SavePhase};
 use crate::find_site::{self, FindTarget};
 use crate::keys::{self, show_inspector_tooltip, show_sidebar_tooltip};
 use crate::new_site::{self, CreatedSite};
@@ -235,6 +236,18 @@ pub struct Shell {
     brand_fix: Vec<String>,
     collapsed_sections: HashSet<usize>,
     theme_repaint: bool,
+    keyboard_focus: bool,
+    issues_height: f32,
+    last_height: f32,
+    issues_drag: Option<(f32, f32)>,
+    motion_id: Option<&'static str>,
+    motion_gen: u64,
+    save_rx: Option<
+        Receiver<(
+            SaveKind,
+            Result<dd_siteforge_core::storage::SiteSave, String>,
+        )>,
+    >,
 }
 
 impl Shell {
@@ -342,6 +355,13 @@ impl Shell {
             brand_fix: Vec::new(),
             collapsed_sections: HashSet::new(),
             theme_repaint: false,
+            keyboard_focus: false,
+            issues_height: crate::density::ISSUES_DEFAULT,
+            last_height: 800.0,
+            issues_drag: None,
+            motion_id: None,
+            motion_gen: 0,
+            save_rx: None,
         };
         if let Some(path) = opts.path {
             shell.open_site(&path);
@@ -382,15 +402,96 @@ impl Shell {
         if now.duration_since(self.last_theme_check) >= std::time::Duration::from_secs(2) {
             self.last_theme_check = now;
             if self.theme.refresh(&self.paths) {
-                // Theme swap is applied on the next render via `apply` in the caller.
+                // Spec 06 §7: theme apply is instant. No color tween.
+                self.theme_repaint = true;
+                self.play("theme-apply");
             }
         }
-        let saved = self.document.as_mut().is_some_and(|doc| doc.autosave(now));
-        if saved && self.preview_server.is_some() {
-            self.refresh_preview();
-        }
+        self.enqueue_autosave(now);
         self.poll_jobs();
         self.take_notice();
+    }
+
+    fn play(&mut self, id: &'static str) {
+        self.motion_id = Some(id);
+        self.motion_gen = self.motion_gen.wrapping_add(1);
+    }
+
+    fn enqueue_autosave(&mut self, now: Instant) {
+        if self.save_rx.is_some() {
+            return;
+        }
+        let Some(doc) = self.document.as_mut() else {
+            return;
+        };
+        let Some(job) = doc.take_autosave_job(now) else {
+            return;
+        };
+        self.spawn_save(job);
+    }
+
+    fn enqueue_save(&mut self, kind: SaveKind) {
+        if self.save_rx.is_some() {
+            return;
+        }
+        let Some(doc) = self.document.as_mut() else {
+            return;
+        };
+        let job = doc.prepare_job(kind);
+        self.spawn_save(job);
+    }
+
+    fn spawn_save(&mut self, job: document::SaveJob) {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let kind = job.kind;
+            let result = document::run_job(&job);
+            let _ = tx.send((kind, result));
+        });
+        self.save_rx = Some(rx);
+    }
+
+    /// Wait until a background save or export has been applied. Tests use this
+    /// so a temp directory is not removed while a worker still has it open.
+    pub fn drain_background(&mut self) {
+        let deadline = Instant::now() + std::time::Duration::from_secs(2);
+        while self.save_rx.is_some()
+            || self.export_rx.is_some()
+            || self.build_rx.is_some()
+            || self.init_rx.is_some()
+        {
+            self.poll_jobs();
+            if Instant::now() > deadline {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    }
+
+    pub fn set_issues_height(&mut self, height: f32) {
+        self.play("panel-resize");
+        self.issues_height = crate::density::clamp_issues_height(height, self.last_height);
+    }
+
+    pub fn note_pointer(&mut self) {
+        self.keyboard_focus = false;
+    }
+
+    pub fn set_page_filter(&mut self, query: &str) {
+        self.filter = query.to_string();
+    }
+
+    pub fn testing_load_theme(&mut self, toml: &str) {
+        let colors = ldnddev_theme::colors_from_str(toml).expect("theme toml");
+        self.theme.gui = ldnddev_theme::resolve_gui_theme(&colors);
+        self.theme_repaint = true;
+        self.play("theme-apply");
+    }
+
+    pub fn testing_fail_preview(&mut self) {
+        self.preview_failed = true;
+        self.preview_window_open = true;
+        self.play("status-crossfade");
     }
 
     pub fn visible_text(&self) -> String {
@@ -423,6 +524,9 @@ impl Shell {
                 }
                 lines.push("Open…".to_string());
                 lines.push("New site…".to_string());
+                if self.recents().is_empty() && self.welcome_query.is_empty() {
+                    lines.push("No recent sites".to_string());
+                }
                 lines.push("↑↓ select · Enter open · Esc quit".to_string());
             }
             Screen::Loading => {
@@ -580,6 +684,7 @@ impl Shell {
             lines.push(self.build_status.clone());
             if !self.export_progress.is_empty() {
                 lines.push(self.export_progress.clone());
+                lines.push(crate::motion::export_bar(self.settings.reduced_motion).to_string());
             }
             if self.issues_open {
                 self.push_issue_lines(&mut lines);
@@ -673,6 +778,9 @@ impl Shell {
             }
             lines.push("Open…".to_string());
             lines.push("New site…".to_string());
+            if self.recents().is_empty() {
+                lines.push("No recent sites".to_string());
+            }
         }
         if self.quit_dialog {
             lines.push("Unsaved changes. Quit anyway?".to_string());
@@ -729,6 +837,37 @@ impl Shell {
             lines.push(self.preview_note.clone());
         }
         lines.extend(self.phase5_lines());
+        lines.push(format!(
+            "primary:{}",
+            self.theme.gui.primary_button.as_str()
+        ));
+        lines.push(format!(
+            "density:{}",
+            match self.settings.density {
+                crate::settings::Density::Compact => "compact",
+                crate::settings::Density::Comfortable => "comfortable",
+            }
+        ));
+        if let Some(id) = self.motion_id {
+            let ms = crate::motion::plan(id, self.settings.reduced_motion).duration_ms;
+            lines.push(format!("motion:{id}:{ms}ms"));
+        }
+        if self.keyboard_focus {
+            let place = if self.palette.is_some() || self.find.is_some() {
+                "inset"
+            } else if self.zone == Zone::Inspector {
+                "outer"
+            } else {
+                "inset"
+            };
+            lines.push(format!("focus-ring:{place}"));
+        }
+        if self.issues_open {
+            lines.push(format!(
+                "issues-height:{}",
+                self.issues_height.round() as i32
+            ));
+        }
         lines
     }
 
@@ -767,6 +906,7 @@ impl Shell {
     }
 
     pub fn handle_key(&mut self, key: &str) {
+        self.keyboard_focus = true;
         let key = key.to_ascii_lowercase();
         // Same actions as the title-bar buttons (J4). These stay available.
         if key == keys::TOGGLE_SIDEBAR_KEY {
@@ -1131,6 +1271,7 @@ impl Shell {
     }
 
     pub fn open_new_site(&mut self, folder: Option<String>) {
+        self.play("sheet-open");
         self.new_site.open = true;
         self.new_site.error = None;
         self.new_site.field = 0;
@@ -1301,8 +1442,12 @@ impl Shell {
                 Commit::Applied => doc.mark_dirty(),
             }
         }
-        doc.checkpoint();
-        self.take_notice();
+        let kind = if doc.conflict {
+            SaveKind::Overwrite
+        } else {
+            SaveKind::Checkpoint
+        };
+        self.enqueue_save(kind);
     }
 
     pub fn revealed(&self) -> Option<PathBuf> {
@@ -1385,17 +1530,18 @@ impl Shell {
     }
 
     pub fn keep_mine(&mut self) {
-        if let Some(doc) = self.document.as_mut() {
-            doc.keep_mine();
-        }
-        self.take_notice();
+        self.enqueue_save(SaveKind::Overwrite);
     }
 
     pub fn retry_save(&mut self) {
         if let Some(doc) = self.document.as_mut() {
-            doc.retry_save();
+            doc.retry_after = None;
+            doc.dirty_since = Some(Instant::now() - document::AUTOSAVE_AFTER);
+            if !doc.dirty {
+                doc.dirty = true;
+            }
         }
-        self.take_notice();
+        self.enqueue_save(SaveKind::Autosave);
     }
 
     pub fn save_copy_to(&mut self, path: PathBuf) -> Result<(), String> {
@@ -1410,9 +1556,8 @@ impl Shell {
         self.open_site(&path);
         if let Some(doc) = self.document.as_mut() {
             doc.save_error = None;
-            doc.checkpoint();
         }
-        self.take_notice();
+        self.enqueue_save(SaveKind::Checkpoint);
         Ok(())
     }
 
@@ -1430,6 +1575,7 @@ impl Shell {
             return;
         };
         if self.edit.has_invalid() || doc.phase() == SavePhase::Failed {
+            self.play("sheet-open");
             self.quit_dialog = true;
             return;
         }
@@ -1438,6 +1584,7 @@ impl Shell {
             doc.autosave(Instant::now());
         }
         if doc.phase() == SavePhase::Failed || doc.dirty {
+            self.play("sheet-open");
             self.quit_dialog = true;
         } else {
             self.quit_now();
@@ -1576,6 +1723,7 @@ impl Shell {
         match doc.site.export_dir.clone() {
             Some(dir) if !dir.trim().is_empty() => self.start_export(dir, preview, false),
             _ => {
+                self.play("sheet-open");
                 self.path_sheet = Some(PathSheet {
                     preview,
                     path: "./web/".to_string(),
@@ -1686,12 +1834,14 @@ impl Shell {
                         .to_string();
                     self.toast(format!("Preview failed: {detail}"));
                     self.preview_failed = true;
+                    self.play("sheet-open");
                     self.export_failure = Some(detail);
                 } else {
                     let detail = message
                         .strip_prefix("Export failed: ")
                         .unwrap_or(&message)
                         .to_string();
+                    self.play("sheet-open");
                     self.export_failure = Some(detail);
                 }
             }
@@ -1872,6 +2022,30 @@ impl Shell {
     }
 
     pub fn poll_jobs(&mut self) {
+        if let Some(rx) = self.save_rx.as_ref() {
+            match rx.try_recv() {
+                Ok((kind, result)) => {
+                    self.save_rx = None;
+                    let refresh = self.preview_server.is_some() && kind == SaveKind::Autosave;
+                    if let Some(doc) = self.document.as_mut() {
+                        doc.apply_job(kind, result, Instant::now());
+                    }
+                    self.take_notice();
+                    if refresh {
+                        self.refresh_preview();
+                    }
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {}
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    self.save_rx = None;
+                    if let Some(doc) = self.document.as_mut() {
+                        doc.saving = false;
+                        doc.notice = Some("Failed to save: save thread stopped.".to_string());
+                    }
+                    self.take_notice();
+                }
+            }
+        }
         if let Some(rx) = self.build_rx.as_ref() {
             match rx.try_recv() {
                 Ok(Ok(message)) => {
@@ -2258,6 +2432,7 @@ impl Shell {
     }
 
     pub fn toggle_sidebar(&mut self, width: f32) {
+        self.play("panel-collapse");
         if width <= 720.0 {
             self.pin_sidebar = !self.pin_sidebar;
         } else {
@@ -2267,6 +2442,7 @@ impl Shell {
     }
 
     pub fn toggle_inspector(&mut self, width: f32) {
+        self.play("panel-collapse");
         if width < 1000.0 {
             self.pin_inspector = !self.pin_inspector;
         } else {
@@ -2929,6 +3105,9 @@ impl Shell {
         {
             Ok(message) => {
                 doc.mark_dirty();
+                if !crate::motion::plan("insert-highlight", self.settings.reduced_motion).skip {
+                    self.play("insert-highlight");
+                }
                 self.toast(message);
                 self.insert_open = false;
             }
@@ -3332,6 +3511,13 @@ impl Shell {
                     &self.export_progress,
                 );
                 lines.push(format!("{mark} {} · {} · {detail}", cmd.title, cmd.kbd));
+                let spinning = (cmd.id == CommandId::BuildAssets && build_running)
+                    || (cmd.id == CommandId::Export && export_running);
+                if spinning {
+                    lines.push(
+                        crate::motion::running_glyph(self.settings.reduced_motion).to_string(),
+                    );
+                }
             }
         }
         if let Some(find) = &self.find {
@@ -3608,6 +3794,7 @@ impl Shell {
                 self.palette = None;
                 self.find = None;
                 self.appearance = None;
+                self.play("sheet-open");
                 self.shortcuts_open = true;
             }
             CommandId::Theme => self.open_appearance(),
@@ -3642,6 +3829,7 @@ impl Shell {
         self.find = None;
         self.shortcuts_open = false;
         self.appearance = None;
+        self.play("popover-open");
         self.palette = Some(QueryUi {
             query: String::new(),
             selected: 0,
@@ -3652,6 +3840,7 @@ impl Shell {
         self.palette = None;
         self.shortcuts_open = false;
         self.appearance = None;
+        self.play("popover-open");
         self.find = Some(QueryUi {
             query: String::new(),
             selected: 0,
@@ -3668,6 +3857,7 @@ impl Shell {
         match key {
             "escape" => {
                 self.palette = None;
+                self.play("popover-close");
                 self.toast("Command palette cancelled.");
             }
             "enter" => self.run_palette_selection(),
@@ -3731,6 +3921,7 @@ impl Shell {
         match key {
             "escape" => {
                 self.find = None;
+                self.play("popover-close");
                 self.toast("Find cancelled.");
             }
             "enter" => self.jump_selected_find(),
@@ -3882,6 +4073,7 @@ impl Shell {
         self.palette = None;
         self.find = None;
         self.shortcuts_open = false;
+        self.play("sheet-open");
         self.appearance = Some(appearance);
     }
 
@@ -3958,6 +4150,7 @@ impl Shell {
             self.theme.choice = None;
             self.theme.label = "built-in".to_string();
             self.theme_repaint = true;
+            self.play("theme-apply");
             return;
         };
         match ldnddev_theme::load_colors(&self.paths, &choice) {
@@ -3970,6 +4163,7 @@ impl Shell {
                 self.theme.choice = Some(choice);
                 self.theme.warning = None;
                 self.theme_repaint = true;
+                self.play("theme-apply");
             }
             Err(err) => self.toast(format!("Theme color `load` failed: {err}")),
         }
@@ -4107,16 +4301,19 @@ impl Shell {
         if let Some(appearance) = self.appearance.take() {
             self.theme = appearance.snapshot;
             self.theme_repaint = true;
+            self.play("theme-apply");
         }
     }
 
     pub fn set_vim_keys(&mut self, on: bool) {
         self.settings.vim_keys = on;
+        self.play("vim-toggle");
         let _ = crate::settings::save_to(&self.settings_file, &self.settings);
     }
 
     pub fn set_density(&mut self, density: crate::settings::Density) {
         self.settings.density = density;
+        self.play("density-switch");
         let _ = crate::settings::save_to(&self.settings_file, &self.settings);
     }
 
@@ -4200,11 +4397,16 @@ impl Render for Shell {
             self.theme_repaint = false;
             paint::apply_component_theme(&self.theme, cx);
         }
+        cx.set_reduce_motion(self.settings.reduced_motion);
         if self.quit && self.quit_runtime {
             cx.quit();
         }
         let width = f32::from(window.viewport_size().width);
+        let height = f32::from(window.viewport_size().height);
         self.last_width = width;
+        if height > 0.0 {
+            self.last_height = height;
+        }
         let theme = &self.theme.gui;
         let base = token(theme, "surface.base");
         let panel = token(theme, "surface.panel");
@@ -4344,16 +4546,25 @@ impl Render for Shell {
                 .or(view.tabs.first().copied())
         });
         let show_backup_button = self.screen == Screen::Error && self.backup_available();
-        let bar = if self.settings.density == crate::settings::Density::Compact {
-            34.0
-        } else {
-            40.0
-        };
-        let status_h = if self.settings.density == crate::settings::Density::Compact {
-            22.0
-        } else {
-            24.0
-        };
+        let metrics = crate::density::metrics(self.settings.density);
+        let bar = metrics.title_bar;
+        let status_h = metrics.status_bar;
+        let keyboard = self.keyboard_focus;
+        let issues_h = self.issues_height;
+        let focus = token(theme, "focus.ring");
+        let outlined = self.theme.gui.primary_button == ldnddev_theme::PrimaryButton::Outlined;
+        let on_accent = token(theme, "text.on-accent");
+        let text_accent = token(theme, "text.accent");
+        let motion_gen = self.motion_gen;
+        let motion = self.motion_id.map(|id| {
+            let plan = crate::motion::plan(id, self.settings.reduced_motion);
+            (
+                id,
+                plan.duration_ms,
+                crate::motion::spec(id).slide_px,
+                motion_gen,
+            )
+        });
 
         div()
             .id("shell")
@@ -4469,6 +4680,10 @@ impl Render for Shell {
                             border_active,
                             text,
                             issues_pane,
+                            metrics,
+                            keyboard,
+                            focus,
+                            issues_h,
                         ))
                     }),
             )
@@ -4489,15 +4704,25 @@ impl Render for Shell {
             .when(path_sheet.is_some(), |row| {
                 let (preview, path, sheet_error) =
                     path_sheet.clone().unwrap_or((false, String::new(), None));
-                row.child(path_sheet_view(
-                    cx,
-                    preview,
-                    &path,
-                    sheet_error.as_deref(),
-                    panel,
-                    border,
-                    secondary,
-                    error,
+                row.child(animate_enter(
+                    path_sheet_view(
+                        cx,
+                        preview,
+                        &path,
+                        sheet_error.as_deref(),
+                        panel,
+                        border,
+                        secondary,
+                        error,
+                        outlined,
+                        accent,
+                        raised,
+                        on_accent,
+                        text_accent,
+                        metrics.button,
+                    ),
+                    motion.is_some_and(|(id, _, _, _)| id == "sheet-open"),
+                    motion,
                 ))
             })
             .when(export_failure.is_some(), |row| {
@@ -4551,16 +4776,26 @@ impl Render for Shell {
                 )
             })
             .when(new_site_open, |row| {
-                row.child(new_site_sheet(
-                    cx,
-                    &folder_value,
-                    &slug,
-                    new_site_error.as_deref(),
-                    create_enabled,
-                    panel,
-                    border,
-                    secondary,
-                    text,
+                row.child(animate_enter(
+                    new_site_sheet(
+                        cx,
+                        &folder_value,
+                        &slug,
+                        new_site_error.as_deref(),
+                        create_enabled,
+                        panel,
+                        border,
+                        secondary,
+                        text,
+                        outlined,
+                        accent,
+                        raised,
+                        on_accent,
+                        text_accent,
+                        metrics.button,
+                    ),
+                    motion.is_some_and(|(id, _, _, _)| id == "sheet-open"),
+                    motion,
                 ))
             })
             .when(template_open, |row| {
@@ -4613,7 +4848,7 @@ impl Render for Shell {
                 row.child(div().px(px(12.0)).child(preview_note.clone()))
             })
             .when(!phase5.is_empty(), |row| {
-                row.child(phase5_panel(
+                let panel = phase5_panel(
                     cx,
                     &phase5,
                     appearance_open,
@@ -4622,7 +4857,11 @@ impl Render for Shell {
                     border,
                     secondary,
                     text,
-                ))
+                    metrics.palette_inset,
+                );
+                let open =
+                    motion.is_some_and(|(id, _, _, _)| id == "popover-open" || id == "sheet-open");
+                row.child(animate_enter(panel, open, motion))
             })
             .child(div().px(px(12.0)).text_color(placeholder).child(mode_label))
             .when(theme_warning.is_some(), |row| {
@@ -4767,6 +5006,50 @@ fn theme_row_label(row: &ldnddev_theme::PickerRow) -> String {
     }
 }
 
+fn primary_action(
+    id: &'static str,
+    label: &str,
+    outlined: bool,
+    accent: gpui::Hsla,
+    raised: gpui::Hsla,
+    on_accent: gpui::Hsla,
+    text_accent: gpui::Hsla,
+    height: f32,
+) -> gpui::Stateful<gpui::Div> {
+    div()
+        .id(id)
+        .h(px(height))
+        .px(px(12.0))
+        .flex()
+        .items_center()
+        .rounded(px(4.0))
+        .bg(if outlined { raised } else { accent })
+        .text_color(if outlined { text_accent } else { on_accent })
+        .when(outlined, |row| row.border_1().border_color(accent))
+        .child(label.to_string())
+}
+
+fn animate_enter(
+    el: gpui::Div,
+    open: bool,
+    motion: Option<(&'static str, u64, f32, u64)>,
+) -> gpui::AnyElement {
+    let Some((name, ms, slide, generation)) = motion.filter(|_| open) else {
+        return el.into_any_element();
+    };
+    if ms == 0 {
+        return el.into_any_element();
+    }
+    let easing = crate::motion::plan(name, false).easing;
+    el.with_animation(
+        gpui::ElementId::Name(format!("motion-{generation}").into()),
+        Animation::new(std::time::Duration::from_millis(ms))
+            .with_easing(move |t| easing.map(|kind| crate::motion::ease(kind, t)).unwrap_or(t)),
+        move |this, delta| this.opacity(delta).mt(px(slide * (1.0 - delta))),
+    )
+    .into_any_element()
+}
+
 fn phase5_panel(
     cx: &mut Context<Shell>,
     lines: &[String],
@@ -4776,10 +5059,11 @@ fn phase5_panel(
     border: gpui::Hsla,
     secondary: gpui::Hsla,
     text: gpui::Hsla,
+    inset: f32,
 ) -> gpui::Div {
     div()
         .w(px(680.0))
-        .p(px(12.0))
+        .p(px(inset))
         .bg(panel)
         .border_1()
         .border_color(border)
@@ -4796,6 +5080,7 @@ fn phase5_panel(
             col.child(
                 Button::new("appearance-save")
                     .label("Save")
+                    .primary()
                     .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
                         shell.save_appearance();
                         cx.notify();
@@ -5128,6 +5413,10 @@ fn editor_body(
     border_active: gpui::Hsla,
     text: gpui::Hsla,
     issues: IssuesPane,
+    metrics: crate::density::Metrics,
+    keyboard: bool,
+    focus: gpui::Hsla,
+    issues_h: f32,
 ) -> gpui::Div {
     let rows = sidebar.clone().map(|(rows, _)| rows).unwrap_or_default();
     let count = sidebar.clone().map(|(_, count)| count).unwrap_or_default();
@@ -5156,6 +5445,9 @@ fn editor_body(
             border_active,
             accent,
             error,
+            metrics,
+            keyboard,
+            focus,
         ))
         .when(inspector_on, |body| {
             body.child(inspector_view(
@@ -5169,6 +5461,9 @@ fn editor_body(
                 error,
                 border,
                 text,
+                metrics,
+                keyboard,
+                focus,
             ))
         });
     div()
@@ -5187,6 +5482,9 @@ fn editor_body(
                 secondary,
                 border,
                 accent,
+                metrics,
+                keyboard,
+                focus,
             ))
         })
         .child(
@@ -5199,7 +5497,7 @@ fn editor_body(
                 .child(workspace)
                 .when(issues.open, |col| {
                     col.child(issues_drawer(
-                        cx, &issues, panel, secondary, error, accent, border, selected,
+                        cx, &issues, panel, secondary, error, accent, border, selected, issues_h,
                     ))
                 }),
         )
@@ -5214,14 +5512,43 @@ fn issues_drawer(
     accent: gpui::Hsla,
     border: gpui::Hsla,
     selected: gpui::Hsla,
+    height: f32,
 ) -> gpui::Div {
     let health_count = issues.health_items.iter().filter(|item| !item.ok).count();
     div()
-        .h(px(280.0))
+        .h(px(height))
         .w_full()
         .bg(panel)
         .border_t_1()
         .border_color(border)
+        .child(
+            div()
+                .id("issues-resize")
+                .h(px(6.0))
+                .w_full()
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(|shell, event: &MouseDownEvent, _, cx| {
+                        shell.issues_drag =
+                            Some((f32::from(event.position.y), shell.issues_height));
+                        cx.notify();
+                    }),
+                )
+                .on_mouse_move(cx.listener(|shell, event: &MouseMoveEvent, _, cx| {
+                    if let Some((origin_y, origin_h)) = shell.issues_drag {
+                        let y = f32::from(event.position.y);
+                        shell.set_issues_height(origin_h + (origin_y - y));
+                        cx.notify();
+                    }
+                }))
+                .on_mouse_up(
+                    MouseButton::Left,
+                    cx.listener(|shell, _: &MouseUpEvent, _, cx| {
+                        shell.issues_drag = None;
+                        cx.notify();
+                    }),
+                ),
+        )
         .flex()
         .flex_col()
         .p(px(8.0))
@@ -5315,6 +5642,12 @@ fn path_sheet_view(
     border: gpui::Hsla,
     secondary: gpui::Hsla,
     error_color: gpui::Hsla,
+    outlined: bool,
+    accent: gpui::Hsla,
+    raised: gpui::Hsla,
+    on_accent: gpui::Hsla,
+    text_accent: gpui::Hsla,
+    button_h: f32,
 ) -> gpui::Div {
     let title = if preview {
         "Preview — output directory"
@@ -5375,16 +5708,28 @@ fn path_sheet_view(
                                     cx.notify();
                                 })),
                         )
-                        .child(Button::new("path-go").label(primary).on_click(cx.listener(
-                            move |shell, _: &ClickEvent, _, cx| {
-                                shell.key_path_sheet("enter");
-                                if shell.open_companion {
-                                    shell.open_companion = false;
-                                    shell.open_preview_window(cx);
-                                }
-                                cx.notify();
-                            },
-                        ))),
+                        .child(
+                            primary_action(
+                                "path-go",
+                                primary,
+                                outlined,
+                                accent,
+                                raised,
+                                on_accent,
+                                text_accent,
+                                button_h,
+                            )
+                            .on_click(cx.listener(
+                                move |shell, _: &ClickEvent, _, cx| {
+                                    shell.key_path_sheet("enter");
+                                    if shell.open_companion {
+                                        shell.open_companion = false;
+                                        shell.open_preview_window(cx);
+                                    }
+                                    cx.notify();
+                                },
+                            )),
+                        ),
                 ),
         )
 }
@@ -5451,20 +5796,27 @@ fn sidebar_view(
     secondary: gpui::Hsla,
     border: gpui::Hsla,
     accent: gpui::Hsla,
+    metrics: crate::density::Metrics,
+    keyboard: bool,
+    focus: gpui::Hsla,
 ) -> gpui::Div {
     div()
-        .w(px(280.0))
+        .w(px(metrics.sidebar_width))
         .h_full()
         .bg(panel)
         .border_r_1()
         .border_color(border)
         .flex()
         .flex_col()
-        .child(div().p(px(12.0)).child(if filter.is_empty() {
-            "Filter pages…".to_string()
-        } else {
-            filter.to_string()
-        }))
+        .child(
+            div()
+                .p(px(metrics.sidebar_search))
+                .child(if filter.is_empty() {
+                    "Filter pages…".to_string()
+                } else {
+                    filter.to_string()
+                }),
+        )
         .child(
             div()
                 .px(px(12.0))
@@ -5481,13 +5833,17 @@ fn sidebar_view(
                     let badges = row.badges.join(" ");
                     div()
                         .id(("side", index))
-                        .h(px(28.0))
-                        .pl(px(16.0 * row.depth as f32 + 8.0))
+                        .h(px(metrics.row))
+                        .pl(px(metrics.tree_indent * row.depth as f32 + 8.0))
                         .when(index == selected, |row| {
                             row.bg(selected_bg).border_l_2().border_color(accent)
                         })
+                        .when(index == selected && keyboard, |row| {
+                            row.border_2().border_color(focus)
+                        })
                         .child(format!("{mark}{} {badges}", row.label))
                         .on_click(cx.listener(move |shell, event: &ClickEvent, _, cx| {
+                            shell.note_pointer();
                             shell.select_sidebar(index);
                             if event.click_count() >= 2 {
                                 shell.begin_rename();
@@ -5517,6 +5873,9 @@ fn outline_view(
     border_active: gpui::Hsla,
     accent: gpui::Hsla,
     error: gpui::Hsla,
+    metrics: crate::density::Metrics,
+    keyboard: bool,
+    focus: gpui::Hsla,
 ) -> gpui::Div {
     div()
         .flex_1()
@@ -5527,8 +5886,8 @@ fn outline_view(
         .overflow_hidden()
         .child(
             div()
-                .px(px(16.0))
-                .py(px(12.0))
+                .px(px(metrics.pad_x))
+                .py(px(metrics.pad_y))
                 .border_b_1()
                 .border_color(border)
                 .child(heading.to_string())
@@ -5539,10 +5898,11 @@ fn outline_view(
                 .flex_1()
                 .id("outline-rows")
                 .overflow_y_scroll()
-                .p(px(12.0))
+                .px(px(metrics.pad_x))
+                .py(px(metrics.pad_y))
                 .flex()
                 .flex_col()
-                .gap(px(8.0))
+                .gap(px(metrics.outline_gap))
                 .children(rows.iter().enumerate().map(|(index, row)| {
                     let grid = column_grid(
                         cx,
@@ -5569,8 +5929,14 @@ fn outline_view(
                                     raised
                                 })
                                 .border_1()
-                                .border_color(if index == selected { accent } else { border })
-                                .ml(px(16.0 * row.depth as f32))
+                                .border_color(if index == selected && !keyboard {
+                                    accent
+                                } else if index == selected {
+                                    focus
+                                } else {
+                                    border
+                                })
+                                .ml(px(metrics.tree_indent * row.depth as f32))
                         })
                         .child(row.label.clone())
                         .when(!row.detail.is_empty(), |card| {
@@ -5587,6 +5953,7 @@ fn outline_view(
                         .on_mouse_down(
                             gpui::MouseButton::Left,
                             cx.listener(move |shell, _, _, _| {
+                                shell.note_pointer();
                                 shell.drag_arm = Some(drag_target.clone());
                             }),
                         )
@@ -5690,6 +6057,9 @@ fn inspector_view(
     error: gpui::Hsla,
     border: gpui::Hsla,
     _text: gpui::Hsla,
+    metrics: crate::density::Metrics,
+    keyboard: bool,
+    focus: gpui::Hsla,
 ) -> gpui::Stateful<gpui::Div> {
     let Some(view) = view else {
         return div().id("inspector-empty").w(px(360.0)).bg(panel);
@@ -5702,7 +6072,8 @@ fn inspector_view(
             .bg(panel)
             .border_l_1()
             .border_color(border)
-            .p(px(16.0))
+            .px(px(metrics.pad_x))
+            .py(px(metrics.pad_y))
             .child("Nothing selected")
             .child(div().text_color(secondary).child(
                 "Select a block in the Outline, or press Enter on a row, to edit its fields here.",
@@ -5716,10 +6087,11 @@ fn inspector_view(
         .border_l_1()
         .border_color(border)
         .overflow_y_scroll()
-        .p(px(16.0))
+        .px(px(metrics.pad_x))
+        .py(px(metrics.pad_y))
         .flex()
         .flex_col()
-        .gap(px(12.0))
+        .gap(px(metrics.pad_y))
         .child(div().text_color(secondary).child(view.breadcrumb.clone()))
         .child(view.title.clone())
         .when(view.tabs.len() > 1, |col| {
@@ -5733,9 +6105,13 @@ fn inspector_view(
                         let on = active == Some(chosen);
                         div()
                             .id(("tab", index))
+                            .h(px(metrics.tab))
                             .px(px(8.0))
                             .child(label)
-                            .when(on, |row| row.border_b_1().border_color(border))
+                            .when(on, |row| {
+                                row.border_b_2()
+                                    .border_color(if keyboard { focus } else { border })
+                            })
                             .on_click(cx.listener(move |shell, _: &ClickEvent, _, cx| {
                                 shell.select_tab(chosen);
                                 cx.notify();
@@ -5744,9 +6120,9 @@ fn inspector_view(
             )
         })
         .children(
-            view.fields
-                .iter()
-                .map(|field| field_view(field, input, secondary, placeholder, error, border)),
+            view.fields.iter().map(|field| {
+                field_view(field, input, secondary, placeholder, error, border, metrics)
+            }),
         )
 }
 
@@ -5757,6 +6133,7 @@ fn field_view(
     placeholder: gpui::Hsla,
     error: gpui::Hsla,
     border: gpui::Hsla,
+    metrics: crate::density::Metrics,
 ) -> gpui::Div {
     let value_color = if field.value == "Empty" {
         placeholder
@@ -5771,15 +6148,17 @@ fn field_view(
             .child(label_line(&field.label, field.required, secondary, error))
             .child(div().child(field.value.clone()));
     }
+    let image = field.chrome == FieldChrome::Image;
     div()
         .flex()
         .flex_col()
-        .gap(px(4.0))
+        .gap(px(metrics.label_gap))
         .child(label_line(&field.label, field.required, secondary, error))
         .child(
             div()
                 .w_full()
                 .p(px(8.0))
+                .when(!image, |row| row.h(px(metrics.input)))
                 .bg(input)
                 .border_1()
                 .border_color(border)
@@ -5913,6 +6292,12 @@ fn new_site_sheet(
     border: gpui::Hsla,
     secondary: gpui::Hsla,
     _text: gpui::Hsla,
+    outlined: bool,
+    accent: gpui::Hsla,
+    raised: gpui::Hsla,
+    on_accent: gpui::Hsla,
+    text_accent: gpui::Hsla,
+    button_h: f32,
 ) -> gpui::Div {
     div()
         .absolute()
@@ -5976,12 +6361,20 @@ fn new_site_sheet(
                         )
                         .when(create_enabled, |row| {
                             row.child(
-                                Button::new("create-site")
-                                    .label("Create")
-                                    .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
-                                        let _ = shell.submit_new_site();
-                                        cx.notify();
-                                    })),
+                                primary_action(
+                                    "create-site",
+                                    "Create",
+                                    outlined,
+                                    accent,
+                                    raised,
+                                    on_accent,
+                                    text_accent,
+                                    button_h,
+                                )
+                                .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
+                                    let _ = shell.submit_new_site();
+                                    cx.notify();
+                                })),
                             )
                         }),
                 ),

@@ -307,5 +307,9 @@ mod tests {
             "an empty query lists every page"
         );
         assert!(all.len() <= 40);
+        assert!(
+            all.iter().all(|hit| hit.label.contains(':')),
+            "spec 06 §2 keeps one flat list, with no group header: {all:?}"
+        );
     }
 }
