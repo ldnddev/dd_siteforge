@@ -517,8 +517,8 @@ fn palette_holds_init_and_f2_opens_appearance(cx: &mut TestAppContext) {
         shell.handle_key("f1");
         let text = shell.visible_text();
         assert!(text.contains("Shortcut sheet"), "{text}");
-        assert!(text.contains("Add page · Ctrl N · Shift+A"), "{text}");
-        assert!(text.contains("Refresh preview · F5 · —"), "{text}");
+        assert!(text.contains("Add page · Ctrl N · Ctrl N"), "{text}");
+        assert!(text.contains("Refresh preview · F5 · F5"), "{text}");
     });
 }
 

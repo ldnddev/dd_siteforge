@@ -103,6 +103,15 @@ pub enum Verb {
     Delete,
     Undo,
     Rename,
+    ToggleExpand,
+    AddItem,
+    RemoveItem,
+    MoveDown,
+    MoveUp,
+    PrevColumn,
+    NextColumn,
+    AddColumn,
+    RemoveColumn,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -114,32 +123,55 @@ pub enum KeyHit {
     Ignore,
 }
 
-/// Resolve one key. Command chords come from core. Vim motions stay here.
+/// Resolve one key from the core table. Vim letters are off when the setting
+/// is off, and they never apply inside a text field.
 pub fn resolve(key: &str, vim: bool, scope: Scope) -> KeyHit {
     let key = key.to_ascii_lowercase();
-    if let Some(id) = command_for_key(&key) {
-        return KeyHit::Command(id);
+    if let Some(chord) = Chord::parse(&key) {
+        if let Some(hit) = core::lookup(core::Query {
+            surface: core::Surface::Gui,
+            mode: core::InputMode::Kitty,
+            vim,
+            in_text: scope == Scope::Text,
+            chord,
+        }) {
+            return match hit {
+                core::Hit::Command { command, .. } => KeyHit::Command(command),
+                core::Hit::Vim(action) => vim_hit(action),
+            };
+        }
     }
-    match (scope, vim, key.as_str()) {
-        (Scope::List, true, "j" | "down") => KeyHit::Motion(Motion::Down),
-        (Scope::List, true, "k" | "up") => KeyHit::Motion(Motion::Up),
-        (Scope::List, false, "down") => KeyHit::Motion(Motion::Down),
-        (Scope::List, false, "up") => KeyHit::Motion(Motion::Up),
-        (Scope::List, true, "g") => KeyHit::Motion(Motion::First),
-        (Scope::List, true, "shift-g") => KeyHit::Motion(Motion::Last),
-        (Scope::List, true, "h") => KeyHit::Motion(Motion::Collapse),
-        (Scope::List, true, "l") => KeyHit::Motion(Motion::Expand),
-        (_, _, "down") => KeyHit::Motion(Motion::Down),
-        (_, _, "up") => KeyHit::Motion(Motion::Up),
-        (Scope::List, _, "/") => KeyHit::Verb(Verb::Insert),
-        (Scope::List, _, ".") => KeyHit::Verb(Verb::Repeat),
-        (Scope::List, _, "y") => KeyHit::Verb(Verb::Copy),
-        (Scope::List, _, "p") => KeyHit::Verb(Verb::Paste),
-        (Scope::List, _, "d") => KeyHit::Verb(Verb::Delete),
-        (Scope::List, _, "u") => KeyHit::Verb(Verb::Undo),
-        (Scope::List, _, "r") => KeyHit::Verb(Verb::Rename),
-        (_, _, other) if is_typeable(other) => KeyHit::Type(other.chars().next().unwrap_or('?')),
+    match key.as_str() {
+        "down" => KeyHit::Motion(Motion::Down),
+        "up" => KeyHit::Motion(Motion::Up),
+        other if is_typeable(other) => KeyHit::Type(other.chars().next().unwrap_or('?')),
         _ => KeyHit::Ignore,
+    }
+}
+
+fn vim_hit(action: core::VimAction) -> KeyHit {
+    match action {
+        core::VimAction::Up => KeyHit::Motion(Motion::Up),
+        core::VimAction::Down => KeyHit::Motion(Motion::Down),
+        core::VimAction::First => KeyHit::Motion(Motion::First),
+        core::VimAction::Last => KeyHit::Motion(Motion::Last),
+        core::VimAction::Collapse => KeyHit::Motion(Motion::Collapse),
+        core::VimAction::Expand => KeyHit::Motion(Motion::Expand),
+        core::VimAction::ToggleExpand => KeyHit::Verb(Verb::ToggleExpand),
+        core::VimAction::Repeat => KeyHit::Verb(Verb::Repeat),
+        core::VimAction::Copy => KeyHit::Verb(Verb::Copy),
+        core::VimAction::Paste => KeyHit::Verb(Verb::Paste),
+        core::VimAction::Delete => KeyHit::Verb(Verb::Delete),
+        core::VimAction::Undo => KeyHit::Verb(Verb::Undo),
+        core::VimAction::Rename => KeyHit::Verb(Verb::Rename),
+        core::VimAction::AddItem => KeyHit::Verb(Verb::AddItem),
+        core::VimAction::RemoveItem => KeyHit::Verb(Verb::RemoveItem),
+        core::VimAction::MoveDown => KeyHit::Verb(Verb::MoveDown),
+        core::VimAction::MoveUp => KeyHit::Verb(Verb::MoveUp),
+        core::VimAction::PrevColumn => KeyHit::Verb(Verb::PrevColumn),
+        core::VimAction::NextColumn => KeyHit::Verb(Verb::NextColumn),
+        core::VimAction::AddColumn => KeyHit::Verb(Verb::AddColumn),
+        core::VimAction::RemoveColumn => KeyHit::Verb(Verb::RemoveColumn),
     }
 }
 
@@ -293,17 +325,22 @@ mod tests {
     }
 
     #[test]
-    fn vim_motions_never_fire_inside_text_and_verbs_stay() {
+    fn vim_letters_stay_out_of_text_and_follow_the_setting() {
         assert_eq!(resolve("j", true, Scope::Text), KeyHit::Type('j'));
         assert_eq!(resolve("k", true, Scope::Text), KeyHit::Type('k'));
         assert_eq!(resolve("g", true, Scope::Text), KeyHit::Type('g'));
         assert_eq!(resolve("h", true, Scope::Text), KeyHit::Type('h'));
+        assert_eq!(resolve("d", true, Scope::Text), KeyHit::Type('d'));
         assert_eq!(
             resolve("down", true, Scope::Text),
             KeyHit::Motion(Motion::Down)
         );
+        assert_eq!(resolve("/", true, Scope::Text), KeyHit::Type('/'));
+        assert_eq!(
+            resolve("/", false, Scope::List),
+            KeyHit::Command(CommandId::Insert)
+        );
         for (key, verb) in [
-            ("/", Verb::Insert),
             (".", Verb::Repeat),
             ("y", Verb::Copy),
             ("p", Verb::Paste),
@@ -313,7 +350,7 @@ mod tests {
         ] {
             assert_eq!(
                 resolve(key, false, Scope::List),
-                KeyHit::Verb(verb),
+                KeyHit::Type(key.chars().next().unwrap()),
                 "{key} with vim off"
             );
             assert_eq!(
@@ -322,6 +359,16 @@ mod tests {
                 "{key} with vim on"
             );
         }
+        assert_eq!(
+            resolve("shift-j", true, Scope::List),
+            KeyHit::Verb(Verb::MoveDown)
+        );
+        assert_eq!(resolve("shift-j", false, Scope::List), KeyHit::Ignore);
+        assert_eq!(
+            resolve("space", true, Scope::List),
+            KeyHit::Verb(Verb::ToggleExpand)
+        );
+        assert_eq!(resolve("space", false, Scope::List), KeyHit::Ignore);
     }
 
     #[test]

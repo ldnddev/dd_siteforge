@@ -14,28 +14,25 @@ impl App {
             return Some(ModalResult::Continue);
         }
 
-        // Ctrl+E: expand the focused textarea to a full-size editor.
+        // Ctrl+E expands a textarea. Anywhere else it is Export, from the
+        // core table, so a non-text field lets the key bubble.
         if matches!(key.code, KeyCode::Char('e')) && key.modifiers.contains(KeyModifiers::CONTROL) {
-            let is_textarea = matches!(
-                self.modal.as_ref(),
-                Some(Modal::FormEdit { state, .. })
-                    if matches!(
-                        state.form.fields.get(state.focused_field).map(|f| &f.kind),
-                        Some(editform::FieldKind::Textarea { .. })
-                    )
-            );
+            let is_textarea = self.focused_form_is_textarea();
             if is_textarea {
                 self.form_textarea_expanded = !self.form_textarea_expanded;
+                return Some(ModalResult::Continue);
             }
-            return Some(ModalResult::Continue);
         }
 
-        // Ctrl+P: open image picker on image_url fields, page picker on
-        // link_url fields. Heuristic on field id since both kinds are
-        // FieldKind::Url today.
-        if matches!(key.code, KeyCode::Char('p')) && key.modifiers.contains(KeyModifiers::CONTROL) {
-            self.try_open_form_url_picker();
-            return Some(ModalResult::Continue);
+        // The form picker moved from Ctrl+P (now Preview) to Ctrl+O.
+        if matches!(key.code, KeyCode::Char('o')) && key.modifiers.contains(KeyModifiers::CONTROL) {
+            if self.try_open_form_url_picker() {
+                return Some(ModalResult::Continue);
+            }
+        }
+
+        if self.form_command_bubbles(&key) {
+            return None;
         }
 
         // Ctrl+S: drilled-down form returns to its parent; top-level form
@@ -649,6 +646,51 @@ impl App {
         }
 
         Some(ModalResult::Continue)
+    }
+
+    fn focused_form_is_textarea(&self) -> bool {
+        matches!(
+            self.modal.as_ref(),
+            Some(Modal::FormEdit { state, .. })
+                if matches!(
+                    state.form.fields.get(state.focused_field).map(|f| &f.kind),
+                    Some(editform::FieldKind::Textarea { .. })
+                )
+        )
+    }
+
+    fn focused_form_is_text(&self) -> bool {
+        matches!(
+            self.modal.as_ref(),
+            Some(Modal::FormEdit { state, .. })
+                if matches!(
+                    state.form.fields.get(state.focused_field).map(|f| &f.kind),
+                    Some(
+                        editform::FieldKind::Text { .. }
+                            | editform::FieldKind::Textarea { .. }
+                            | editform::FieldKind::Url { .. }
+                    )
+                )
+        )
+    }
+
+    /// Global chords (Preview, Build, pane toggles) leave the form and run
+    /// from the core table. Save and Undo stay inside the form.
+    fn form_command_bubbles(&self, key: &event::KeyEvent) -> bool {
+        use dd_siteforge_core::commands::{Command, Hit, Query, Surface, lookup};
+        let Some(owned) = super::super::keys::event_chord(key) else {
+            return false;
+        };
+        let Some(Hit::Command { command, .. }) = lookup(Query {
+            surface: Surface::Tui,
+            mode: self.input_mode,
+            vim: self.vim_keys,
+            in_text: self.focused_form_is_text(),
+            chord: owned.as_chord(),
+        }) else {
+            return false;
+        };
+        !matches!(command, Command::Save | Command::Undo | Command::Open)
     }
 
     /// Forget required-field outlines when a different form becomes active.

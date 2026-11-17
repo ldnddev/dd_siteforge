@@ -2589,7 +2589,7 @@ impl Shell {
                 self.open_insert();
                 true
             }
-            "r" if self.zone != Zone::Inspector => {
+            "r" if self.settings.vim_keys && self.zone != Zone::Inspector => {
                 self.begin_rename();
                 true
             }
@@ -2601,11 +2601,11 @@ impl Shell {
                 self.delete_selection();
                 true
             }
-            "shift-j" if self.zone == Zone::Outline => {
+            "shift-j" if self.settings.vim_keys && self.zone == Zone::Outline => {
                 self.move_selection(1);
                 true
             }
-            "shift-k" if self.zone == Zone::Outline => {
+            "shift-k" if self.settings.vim_keys && self.zone == Zone::Outline => {
                 self.move_selection(-1);
                 true
             }
@@ -2657,22 +2657,22 @@ impl Shell {
                 self.edit.cycle_enum(true);
                 true
             }
-            "shift-a" => {
+            "shift-a" if self.settings.vim_keys => {
                 let change = self.edit.add_item();
                 self.toast_sub(change);
                 true
             }
-            "shift-x" => {
+            "shift-x" if self.settings.vim_keys => {
                 let change = self.edit.remove_item();
                 self.toast_sub(change);
                 true
             }
-            "shift-j" => {
+            "shift-j" if self.settings.vim_keys => {
                 let change = self.edit.move_item(true);
                 self.toast_sub(change);
                 true
             }
-            "shift-k" => {
+            "shift-k" if self.settings.vim_keys => {
                 let change = self.edit.move_item(false);
                 self.toast_sub(change);
                 true
@@ -3496,6 +3496,104 @@ impl Shell {
             Verb::Undo => self.undo_edit(),
             Verb::Rename => self.begin_rename(),
             Verb::Copy | Verb::Paste | Verb::Repeat => {}
+            Verb::ToggleExpand => self.toggle_collapsed(),
+            Verb::AddItem => {
+                let change = self.edit.add_item();
+                self.toast_sub(change);
+            }
+            Verb::RemoveItem => {
+                let change = self.edit.remove_item();
+                self.toast_sub(change);
+            }
+            Verb::MoveDown => self.move_selection(1),
+            Verb::MoveUp => self.move_selection(-1),
+            Verb::PrevColumn => self.cycle_column(-1),
+            Verb::NextColumn => self.cycle_column(1),
+            Verb::AddColumn => self.add_outline_column(),
+            Verb::RemoveColumn => self.remove_outline_column(),
+        }
+    }
+
+    fn toggle_collapsed(&mut self) {
+        let node = self
+            .outline()
+            .get(self.outline_index)
+            .and_then(|row| match &row.target {
+                Target::Section(node)
+                | Target::Column { node, .. }
+                | Target::Component { node, .. } => Some(*node),
+                _ => None,
+            });
+        let Some(node) = node else {
+            return;
+        };
+        if self.collapsed_sections.contains(&node) {
+            self.collapsed_sections.remove(&node);
+        } else {
+            self.collapsed_sections.insert(node);
+        }
+    }
+
+    fn cycle_column(&mut self, delta: isize) {
+        let rows = self.outline();
+        let targets: Vec<_> = rows.iter().map(|row| row.target.clone()).collect();
+        if targets.is_empty() {
+            return;
+        }
+        let mut idx = self.outline_index.min(targets.len() - 1);
+        for _ in 0..targets.len() {
+            idx = if delta < 0 {
+                (idx + targets.len() - 1) % targets.len()
+            } else {
+                (idx + 1) % targets.len()
+            };
+            if matches!(targets[idx], Target::Column { .. }) {
+                self.outline_index = idx;
+                self.target = targets[idx].clone();
+                self.zone = Zone::Outline;
+                return;
+            }
+        }
+    }
+
+    fn add_outline_column(&mut self) {
+        let node = match self.target {
+            Target::Section(node)
+            | Target::Column { node, .. }
+            | Target::Component { node, .. }
+            | Target::Hero(node) => node,
+            _ => return,
+        };
+        let Some(doc) = self.document.as_mut() else {
+            return;
+        };
+        match self.edit.add_column(&mut doc.site, self.page_index, node) {
+            Ok(message) => {
+                doc.mark_dirty();
+                self.toast(message);
+            }
+            Err(message) => self.toast(message),
+        }
+    }
+
+    fn remove_outline_column(&mut self) {
+        let (node, column) = match self.target {
+            Target::Column { node, column } => (node, column),
+            Target::Component { node, column, .. } => (node, column),
+            _ => return,
+        };
+        let Some(doc) = self.document.as_mut() else {
+            return;
+        };
+        match self
+            .edit
+            .remove_column(&mut doc.site, self.page_index, node, column)
+        {
+            Ok(message) => {
+                doc.mark_dirty();
+                self.toast(message);
+            }
+            Err(message) => self.toast(message),
         }
     }
 
@@ -3530,6 +3628,13 @@ impl Shell {
             CommandId::ToggleIssues => self.toggle_issues(),
             CommandId::FocusSidebar => self.zone_sidebar(),
             CommandId::FocusOutline => self.zone_outline(),
+            CommandId::Undo => self.undo_edit(),
+            CommandId::DeleteRow => self.delete_selection(),
+            CommandId::FocusPages
+            | CommandId::FocusLayouts
+            | CommandId::FocusDetails
+            | CommandId::ToggleRegions
+            | CommandId::ToggleDetails => {}
         }
     }
 

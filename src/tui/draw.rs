@@ -70,7 +70,11 @@ impl App {
             .split(frame.area());
         let main = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(25), Constraint::Percentage(75)])
+            .constraints(if self.details_open {
+                [Constraint::Percentage(25), Constraint::Percentage(75)]
+            } else {
+                [Constraint::Percentage(100), Constraint::Length(0)]
+            })
             .split(root[1]);
 
         // === NEW 3-line header (bordered, title=project, content=header_copy) ===
@@ -122,7 +126,11 @@ impl App {
         // Length = 2 border rows + visible items. Pages cap shrinks so Layout keeps Min(1).
         let page_rows = self.build_pages_panel_rows();
         let visible_page_count = page_rows.len();
-        let regions_height = 2 + regions_items.len();
+        let regions_height = if self.regions_open {
+            2 + regions_items.len()
+        } else {
+            0
+        };
         let remaining = (main[0].height as usize).saturating_sub(regions_height);
         let pages_cap = remaining.saturating_sub(1 + 2).clamp(1, 10);
         let pages_height = 2 + visible_page_count.clamp(1, pages_cap);
@@ -206,8 +214,12 @@ impl App {
             SelectedRegion::Page => None,
         };
         regions_state.select(regions_selected);
-        frame.render_stateful_widget(regions_list, sidebar[0], &mut regions_state);
-        self.regions_area = sidebar[0];
+        if self.regions_open {
+            frame.render_stateful_widget(regions_list, sidebar[0], &mut regions_state);
+            self.regions_area = sidebar[0];
+        } else {
+            self.regions_area = Rect::default();
+        }
 
         // Pages section (nested by slug; parents expand/collapse)
         let page_items: Vec<ListItem> = page_rows
@@ -369,74 +381,85 @@ impl App {
             );
         }
 
-        self.details_area = main[1];
-        let details_width = main[1].width.saturating_sub(2) as usize;
-        let details_view = self.details_text(details_width);
-        self.details_hits = details_view.hits.clone();
-        let details_total_rows = details_view.lines.len().max(1);
-        let details_visible_rows = main[1].height.saturating_sub(2) as usize;
-        let details_max_scroll = details_total_rows.saturating_sub(details_visible_rows);
-        self.details_scroll_row = self.details_scroll_row.min(details_max_scroll);
+        self.details_area = if self.details_open {
+            main[1]
+        } else {
+            Rect::default()
+        };
+        if !self.details_open {
+            self.details_scrollbar_track = ScrollbarTrack::default();
+        } else {
+            let details_width = main[1].width.saturating_sub(2) as usize;
+            let details_view = self.details_text(details_width);
+            self.details_hits = details_view.hits.clone();
+            let details_total_rows = details_view.lines.len().max(1);
+            let details_visible_rows = main[1].height.saturating_sub(2) as usize;
+            let details_max_scroll = details_total_rows.saturating_sub(details_visible_rows);
+            self.details_scroll_row = self.details_scroll_row.min(details_max_scroll);
 
-        let details = Paragraph::new(details_view.to_text(&self.theme))
-            .style(
-                Style::default()
-                    .fg(self.theme.text_primary)
-                    .bg(self.theme.body_background),
-            )
-            .block(
-                Block::default()
-                    .title(details_title)
-                    .borders(Borders::ALL)
-                    .style(
-                        Style::default()
-                            .fg(self.theme.text_primary)
-                            .bg(self.theme.body_background),
-                    )
-                    .border_style(Style::default().fg(details_border))
-                    .title_style(
-                        Style::default()
-                            .fg(
-                                if self.selected_sidebar_section == SidebarSection::Details {
-                                    self.theme.text_active_focus
-                                } else {
-                                    self.theme.text_labels
-                                },
-                            )
-                            .add_modifier(Modifier::BOLD),
-                    ),
-            )
-            .scroll((self.details_scroll_row.min(u16::MAX as usize) as u16, 0))
-            .wrap(Wrap { trim: true });
-        frame.render_widget(details, main[1]);
+            let details = Paragraph::new(details_view.to_text(&self.theme))
+                .style(
+                    Style::default()
+                        .fg(self.theme.text_primary)
+                        .bg(self.theme.body_background),
+                )
+                .block(
+                    Block::default()
+                        .title(details_title)
+                        .borders(Borders::ALL)
+                        .style(
+                            Style::default()
+                                .fg(self.theme.text_primary)
+                                .bg(self.theme.body_background),
+                        )
+                        .border_style(Style::default().fg(details_border))
+                        .title_style(
+                            Style::default()
+                                .fg(
+                                    if self.selected_sidebar_section == SidebarSection::Details {
+                                        self.theme.text_active_focus
+                                    } else {
+                                        self.theme.text_labels
+                                    },
+                                )
+                                .add_modifier(Modifier::BOLD),
+                        ),
+                )
+                .scroll((self.details_scroll_row.min(u16::MAX as usize) as u16, 0))
+                .wrap(Wrap { trim: true });
+            frame.render_widget(details, main[1]);
 
-        // Scrollbar on the right edge of the Details panel — only painted
-        // when the content exceeds the visible window. Track lives on the
-        // last column inside the border; thumb height is proportional to
-        // visible/total rows.
-        self.details_scrollbar_track = ScrollbarTrack::default();
-        if details_total_rows > details_visible_rows && main[1].width >= 3 && main[1].height >= 4 {
-            let track = Rect {
-                x: main[1].x + main[1].width.saturating_sub(2),
-                y: main[1].y + 1,
-                width: 1,
-                height: main[1].height.saturating_sub(2),
-            };
-            self.details_scrollbar_track = ScrollbarTrack {
-                rect: track,
-                total: details_total_rows,
-                visible: details_visible_rows,
-            };
-            paint_scrollbar(
-                frame,
-                track,
-                self.details_scroll_row,
-                details_total_rows,
-                details_visible_rows,
-                self.theme.scrollbar,
-                self.theme.scrollbar_hover,
-                self.theme.body_background,
-            );
+            // Scrollbar on the right edge of the Details panel — only painted
+            // when the content exceeds the visible window. Track lives on the
+            // last column inside the border; thumb height is proportional to
+            // visible/total rows.
+            self.details_scrollbar_track = ScrollbarTrack::default();
+            if details_total_rows > details_visible_rows
+                && main[1].width >= 3
+                && main[1].height >= 4
+            {
+                let track = Rect {
+                    x: main[1].x + main[1].width.saturating_sub(2),
+                    y: main[1].y + 1,
+                    width: 1,
+                    height: main[1].height.saturating_sub(2),
+                };
+                self.details_scrollbar_track = ScrollbarTrack {
+                    rect: track,
+                    total: details_total_rows,
+                    visible: details_visible_rows,
+                };
+                paint_scrollbar(
+                    frame,
+                    track,
+                    self.details_scroll_row,
+                    details_total_rows,
+                    details_visible_rows,
+                    self.theme.scrollbar,
+                    self.theme.scrollbar_hover,
+                    self.theme.body_background,
+                );
+            }
         }
 
         let footer_text = self.footer_hint(root[2].width);

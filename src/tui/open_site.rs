@@ -301,7 +301,7 @@ impl App {
     pub(in crate::tui) fn palette_item_labels(&self, query: &str) -> Vec<String> {
         self.palette_items(query)
             .into_iter()
-            .map(|c| c.title().to_string())
+            .map(|cmd| dd_siteforge_core::commands::spec(cmd).title.to_string())
             .collect()
     }
 }

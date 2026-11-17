@@ -1,15 +1,10 @@
 use std::collections::HashSet;
-use std::io;
+use std::io::{self, Write};
 use std::path::PathBuf;
 use std::time::Duration;
 
 pub(super) use crossterm::event::{
-    self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
-    Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind,
-};
-use crossterm::execute;
-use crossterm::terminal::{
-    EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
+    self, Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind,
 };
 pub(super) use dd_siteforge_core::model::{PageNode, SectionColumn, Site};
 use ratatui::Terminal;
@@ -41,11 +36,13 @@ mod find;
 mod form_textarea;
 mod grunt;
 mod help;
+mod keys;
 mod modals;
 mod open_site;
 mod pages;
 mod palette;
 mod scrollbar;
+mod terminal;
 #[cfg(test)]
 mod tests;
 mod theme;
@@ -98,15 +95,10 @@ pub fn run_tui_open_picker() -> anyhow::Result<()> {
 }
 
 fn launch_app(mut app: App, load_warning: Option<String>) -> anyhow::Result<()> {
-    enable_raw_mode()?;
+    let guard = terminal::TerminalGuard::enter()?;
+    app.input_mode = guard.input_mode();
     let mut stdout = io::stdout();
-    execute!(
-        stdout,
-        EnterAlternateScreen,
-        EnableMouseCapture,
-        EnableBracketedPaste
-    )?;
-    let backend = CrosstermBackend::new(stdout);
+    let backend = CrosstermBackend::new(stdout.by_ref());
     let mut terminal = Terminal::new(backend)?;
 
     if let Some(msg) = load_warning {
@@ -114,17 +106,24 @@ fn launch_app(mut app: App, load_warning: Option<String>) -> anyhow::Result<()> 
     }
     let run_res = app.run(&mut terminal);
     app.persist_session();
-
-    disable_raw_mode()?;
-    execute!(
-        terminal.backend_mut(),
-        DisableBracketedPaste,
-        LeaveAlternateScreen,
-        DisableMouseCapture
-    )?;
-    terminal.show_cursor()?;
+    let _ = terminal.show_cursor();
+    drop(guard);
 
     run_res
+}
+
+fn load_vim_keys() -> bool {
+    if cfg!(test) {
+        return true;
+    }
+    let path = dd_siteforge_core::scaffold::config_scaffold_dir().join("gui.json");
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return true;
+    };
+    serde_json::from_str::<serde_json::Value>(&text)
+        .ok()
+        .and_then(|value| value.get("vim_keys").and_then(|flag| flag.as_bool()))
+        .unwrap_or(true)
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -283,6 +282,15 @@ pub(super) struct App {
     header_column_expanded: bool,
     /// Page ids whose children are hidden in `[2] Pages`. Default expanded.
     collapsed_page_ids: HashSet<String>,
+    /// Kitty, legacy, or tmux. Tests stay on legacy unless they set this.
+    input_mode: dd_siteforge_core::commands::InputMode,
+    /// Shared with the GUI `gui.json` `vim_keys` flag. On by default.
+    vim_keys: bool,
+    regions_open: bool,
+    details_open: bool,
+    /// One-time alias hint currently sitting in the status line.
+    alias_hint: Option<&'static str>,
+    seen_alias_hints: HashSet<&'static str>,
 }
 
 impl App {
@@ -395,6 +403,12 @@ impl App {
             expanded_data_table_rows: HashSet::new(),
             header_column_expanded: true,
             collapsed_page_ids: HashSet::new(),
+            input_mode: dd_siteforge_core::commands::InputMode::Legacy,
+            vim_keys: load_vim_keys(),
+            regions_open: true,
+            details_open: true,
+            alias_hint: None,
+            seen_alias_hints: HashSet::new(),
             dirty: false,
             dirty_since: None,
             last_saved_json,

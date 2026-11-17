@@ -5472,7 +5472,7 @@ fn form_edit_image_picker_f1_esc_esc_restores_same_field() {
     send_key(&mut app, KeyCode::Tab, KeyModifiers::NONE);
     assert_eq!(form_focused_field_id(&app), Some("parent_image_url"));
 
-    send_key(&mut app, KeyCode::Char('p'), KeyModifiers::CONTROL);
+    send_key(&mut app, KeyCode::Char('o'), KeyModifiers::CONTROL);
     assert!(matches!(app.modal, Some(Modal::ImagePicker { .. })));
     match &app.paused_form_edit_modal {
         Some(Modal::FormEdit { state, .. }) => {
@@ -5569,7 +5569,7 @@ const FOOTER_TOKEN_ALLOWLIST: &[&str] = &[
     "Esc:Close",
     "Ctrl+Q:Quit",
     "r:Rename",
-    "Shift+A:Add",
+    "Ctrl+N:Add",
     "Shift+X:Del",
     "u:Undo-page",
     "Shift+J/K:Move",
@@ -5583,7 +5583,7 @@ const FOOTER_TOKEN_ALLOWLIST: &[&str] = &[
     "u:Undo-tree",
     "r:Col-id",
     "J/K:Move",
-    "P:Preview",
+    "Ctrl+P:Preview",
     "Ctrl+S:Save",
     "Tab:Field",
     "Shift:Select",
@@ -5624,7 +5624,7 @@ fn footer_hint_pages_includes_f1_f2_and_keeps_whole_tokens() {
     for width in [60_u16, 80, 110] {
         assert_footer_hint_shape(&app.footer_hint(width), width);
     }
-    let pages_medium = "F1:Help  F2:Theme  Shift+A:Add  Shift+X:Del  u:Undo-page  r:Rename  Shift+J/K:Move  Ctrl+Q:Quit";
+    let pages_medium = "F1:Help  F2:Theme  Ctrl+N:Add  Shift+X:Del  u:Undo-page  r:Rename  Shift+J/K:Move  Ctrl+Q:Quit";
     let at_80 = app.footer_hint(80);
     if pages_medium.chars().count() <= 80 {
         assert!(at_80.contains("Shift+J/K:Move"), "{at_80}");
@@ -5649,12 +5649,12 @@ fn footer_hint_layouts_includes_f2() {
     for width in [60_u16, 80, 110] {
         assert_footer_hint_shape(&app.footer_hint(width), width);
     }
-    let layouts_scoped = "F1:Help  F2:Theme  /:Insert  Enter:Edit  d:Del  y:Copy  p:Paste  u:Undo-tree  r:Col-id  J/K:Move  P:Preview  Ctrl+Q:Quit";
+    let layouts_scoped = "F1:Help  F2:Theme  /:Insert  Enter:Edit  d:Del  y:Copy  p:Paste  u:Undo-tree  r:Col-id  J/K:Move  Ctrl+P:Preview  Ctrl+Q:Quit";
     let at_110 = app.footer_hint(110);
     assert!(at_110.contains("y:Copy"), "{at_110}");
     assert!(at_110.contains("p:Paste"), "{at_110}");
     if layouts_scoped.chars().count() <= 110 {
-        assert!(at_110.contains("P:Preview"), "{at_110}");
+        assert!(at_110.contains("Ctrl+P:Preview"), "{at_110}");
     }
     let layouts_wide = format!("{layouts_scoped}  (mouse: click/scroll)");
     if layouts_wide.chars().count() <= 110 {
@@ -7923,4 +7923,91 @@ fn gui_parity_site(mut site: Site) -> Site {
     edit.delete_component(&mut site, 0, 1, 0, 0).unwrap();
     edit.undo(&mut site).unwrap();
     site
+}
+
+#[test]
+fn shift_b_shows_the_build_hint_once_in_the_status_line() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    app.input_mode = dd_siteforge_core::commands::InputMode::Tmux;
+    send_key(&mut app, KeyCode::Char('B'), KeyModifiers::SHIFT);
+    assert_eq!(app.footer_hint(80), "Build is now Ctrl+B");
+    send_key(&mut app, KeyCode::Char('B'), KeyModifiers::SHIFT);
+    assert_ne!(app.footer_hint(80), "Build is now Ctrl+B");
+    assert!(app.footer_hint(120).contains("F1:Help"));
+}
+
+#[test]
+fn ctrl_backslash_hides_regions_and_moves_focus_off_the_hidden_pane() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    app.input_mode = dd_siteforge_core::commands::InputMode::Kitty;
+    app.selected_sidebar_section = SidebarSection::Regions;
+    send_key(&mut app, KeyCode::Char('\\'), KeyModifiers::CONTROL);
+    assert!(!app.regions_open);
+    assert_eq!(app.selected_sidebar_section, SidebarSection::Pages);
+    app.selected_sidebar_section = SidebarSection::Details;
+    send_key(
+        &mut app,
+        KeyCode::Char('\\'),
+        KeyModifiers::CONTROL | KeyModifiers::ALT,
+    );
+    assert!(!app.details_open);
+    assert_eq!(app.selected_sidebar_section, SidebarSection::Layouts);
+}
+
+#[test]
+fn legacy_ctrl_4_toggles_regions_and_f3_stays_issues() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    app.input_mode = dd_siteforge_core::commands::InputMode::Legacy;
+    app.selected_sidebar_section = SidebarSection::Regions;
+    send_key(&mut app, KeyCode::Char('4'), KeyModifiers::CONTROL);
+    assert!(!app.regions_open);
+    assert_eq!(app.selected_sidebar_section, SidebarSection::Pages);
+    send_key(&mut app, KeyCode::F(3), KeyModifiers::NONE);
+    let last = app.toasts.last().expect("validation toast");
+    assert!(last.message.to_lowercase().contains("no validation errors"));
+    app.selected_sidebar_section = SidebarSection::Details;
+    send_key(
+        &mut app,
+        KeyCode::Char('4'),
+        KeyModifiers::CONTROL | KeyModifiers::ALT,
+    );
+    assert!(!app.details_open);
+    assert_eq!(app.selected_sidebar_section, SidebarSection::Layouts);
+}
+
+#[test]
+fn vim_off_ignores_d_and_delete_still_removes_the_row() {
+    let mut app = app_with_card();
+    let before = app.site.pages[0].nodes.len();
+    app.vim_keys = false;
+    send_key(&mut app, KeyCode::Char('d'), KeyModifiers::NONE);
+    assert_eq!(app.site.pages[0].nodes.len(), before);
+    app.selected_sidebar_section = SidebarSection::Layouts;
+    app.sync_tree_row_with_selection();
+    send_key(&mut app, KeyCode::Delete, KeyModifiers::NONE);
+    assert!(
+        app.site.pages[0].nodes.len() < before
+            || app
+                .toasts
+                .iter()
+                .any(|t| t.message.to_lowercase().contains("delet"))
+    );
 }

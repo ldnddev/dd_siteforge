@@ -16,6 +16,9 @@ impl App {
         if width == 0 {
             return String::new();
         }
+        if let Some(hint) = self.alias_hint {
+            return hint.to_string();
+        }
         let overlay = self.overlay.is_some() || self.modal.is_some();
         let form_edit =
             self.overlay.is_none() && matches!(self.modal, Some(Modal::FormEdit { .. }));
@@ -46,7 +49,7 @@ impl App {
                         parts.push("r:Rename");
                     } else {
                         parts.extend_from_slice(&[
-                            "Shift+A:Add",
+                            "Ctrl+N:Add",
                             "Shift+X:Del",
                             "u:Undo-page",
                             "r:Rename",
@@ -92,7 +95,7 @@ impl App {
                             "u:Undo-tree",
                             "r:Col-id",
                             "J/K:Move",
-                            "P:Preview",
+                            "Ctrl+P:Preview",
                             "Ctrl+Q:Quit",
                         ]);
                     }

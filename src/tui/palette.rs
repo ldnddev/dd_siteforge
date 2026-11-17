@@ -1,78 +1,6 @@
-//! Command palette (`:` / `Ctrl+K`).
+//! Command palette (`:` / `Ctrl+K`). Rows come from the core chord table.
 use super::*;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(in crate::tui) enum PaletteCommand {
-    Export,
-    Preview,
-    Validate,
-    Save,
-    Help,
-    Theme,
-    Find,
-    Insert,
-    AddPage,
-    BuildAssets,
-    PageHealth,
-    Redo,
-    Quit,
-}
-
-impl PaletteCommand {
-    fn all() -> &'static [Self] {
-        &[
-            Self::Export,
-            Self::Preview,
-            Self::Validate,
-            Self::Save,
-            Self::Help,
-            Self::Theme,
-            Self::Find,
-            Self::Insert,
-            Self::AddPage,
-            Self::BuildAssets,
-            Self::PageHealth,
-            Self::Redo,
-            Self::Quit,
-        ]
-    }
-
-    pub(in crate::tui) fn title(self) -> &'static str {
-        match self {
-            Self::Export => "Export HTML",
-            Self::Preview => "Preview in browser",
-            Self::Validate => "Validate site",
-            Self::Save => "Save",
-            Self::Help => "Help",
-            Self::Theme => "Theme",
-            Self::Find => "Find in site",
-            Self::Insert => "Insert component",
-            Self::AddPage => "Add page",
-            Self::BuildAssets => "Build CSS/JS",
-            Self::PageHealth => "Page health",
-            Self::Redo => "Redo",
-            Self::Quit => "Quit",
-        }
-    }
-
-    fn haystack(self) -> &'static str {
-        match self {
-            Self::Export => "Export HTML Shift+E",
-            Self::Preview => "Preview in browser Shift+P",
-            Self::Validate => "Validate site F3",
-            Self::Save => "Save s",
-            Self::Help => "Help F1",
-            Self::Theme => "Theme F2",
-            Self::Find => "Find in site ? Ctrl+F",
-            Self::Insert => "Insert component /",
-            Self::AddPage => "Add page Shift+A",
-            Self::BuildAssets => "Build CSS/JS grunt lando Shift+B npm",
-            Self::PageHealth => "Page health F4 HEAD seo alt",
-            Self::Redo => "Redo Ctrl+R",
-            Self::Quit => "Quit Ctrl+Q",
-        }
-    }
-}
+use dd_siteforge_core::commands::Command;
 
 impl App {
     pub(in crate::tui) fn open_palette(&mut self) {
@@ -82,37 +10,22 @@ impl App {
         });
     }
 
-    pub(in crate::tui) fn palette_items(&self, query: &str) -> Vec<PaletteCommand> {
+    pub(in crate::tui) fn palette_items(&self, query: &str) -> Vec<Command> {
         let q = query.trim();
-        let mut scored: Vec<(PaletteCommand, i32)> = PaletteCommand::all()
+        let mut scored: Vec<(Command, i32, &str)> = dd_siteforge_core::commands::registry()
             .iter()
-            .copied()
-            .filter_map(|cmd| fuzzy_score(q, cmd.haystack()).map(|s| (cmd, s)))
+            .filter(|spec| spec.tui_palette)
+            .filter_map(|spec| {
+                let hay = format!("{} {} {}", spec.title, spec.detail, spec.kbd);
+                fuzzy_score(q, &hay).map(|score| (spec.command, score, spec.title))
+            })
             .collect();
-        scored.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.title().cmp(b.0.title())));
-        scored.into_iter().map(|(c, _)| c).collect()
+        scored.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.2.cmp(b.2)));
+        scored.into_iter().map(|(cmd, _, _)| cmd).collect()
     }
 
-    pub(in crate::tui) fn run_palette_command(&mut self, cmd: PaletteCommand) {
-        match cmd {
-            PaletteCommand::Export => self.begin_export_flow(),
-            PaletteCommand::Preview => self.begin_preview_flow(),
-            PaletteCommand::Validate => self.open_validation_modal(),
-            PaletteCommand::Save => self.begin_save_prompt(),
-            PaletteCommand::Help => {
-                self.overlay = Some(Overlay::Help { scroll: 0 });
-            }
-            PaletteCommand::Theme => self.open_theme_ui(),
-            PaletteCommand::Find => self.open_find(),
-            PaletteCommand::Insert => self.open_component_picker(),
-            PaletteCommand::AddPage => {
-                self.begin_add_page();
-            }
-            PaletteCommand::BuildAssets => self.start_asset_build(),
-            PaletteCommand::PageHealth => self.open_page_health(),
-            PaletteCommand::Redo => self.redo_last(),
-            PaletteCommand::Quit => self.request_quit(),
-        }
+    pub(in crate::tui) fn run_palette_command(&mut self, cmd: Command) {
+        let _ = self.run_command_key(cmd);
     }
 
     pub(in crate::tui) fn handle_palette_event(
