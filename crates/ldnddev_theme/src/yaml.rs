@@ -338,7 +338,7 @@ fn write_no_follow(path: &Path, contents: &str) -> Result<()> {
     result
 }
 
-/// Reject anchors, aliases, and deep documents before `serde_yaml` expands them.
+/// Reject anchors, aliases, and deep documents before the YAML parser expands them.
 fn validate_theme_yaml(content: &str) -> Result<()> {
     let mut in_single = false;
     let mut in_double = false;
