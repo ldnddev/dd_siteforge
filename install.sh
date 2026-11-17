@@ -371,6 +371,9 @@ write_desktop() {
         printf '%s\n' "Categories=Development;"
         printf '%s\n' "Keywords=site;cms;html;static;tui;"
         printf '%s\n' "StartupNotify=false"
+        if [ "$GUI" = 1 ]; then
+            printf '%s\n' "StartupWMClass=dev.ldnddev.dd_siteforge"
+        fi
         if [ -n "$icon" ]; then
             printf '%s\n' "Icon=${icon}"
         fi

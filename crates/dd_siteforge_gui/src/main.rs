@@ -20,13 +20,14 @@ mod shell;
 mod shortcuts;
 mod states;
 mod theme_load;
+mod windows;
 
 #[cfg(test)]
 mod tests;
 
 use std::path::PathBuf;
 
-use gpui::{App, AppContext, Bounds, Focusable, WindowBounds, WindowOptions, px, size};
+use gpui::{App, AppContext, Bounds, Focusable, px, size};
 use gpui_component::Root;
 use shell::{Shell, ShellOptions};
 
@@ -38,20 +39,14 @@ fn main() {
         cx.spawn(async move |cx| {
             cx.update(|cx| {
                 let bounds = Bounds::centered(None, size(px(1280.0), px(800.0)), cx);
-                cx.open_window(
-                    WindowOptions {
-                        window_bounds: Some(WindowBounds::Windowed(bounds)),
-                        ..Default::default()
-                    },
-                    |window, cx| {
-                        let view = cx.new(|cx| {
-                            let shell = Shell::open(ShellOptions::production(path), cx);
-                            window.focus(&shell.focus_handle(cx), cx);
-                            shell
-                        });
-                        cx.new(|cx| Root::new(view, window, cx))
-                    },
-                )
+                cx.open_window(windows::main_window_options(bounds), |window, cx| {
+                    let view = cx.new(|cx| {
+                        let shell = Shell::open(ShellOptions::production(path), cx);
+                        window.focus(&shell.focus_handle(cx), cx);
+                        shell
+                    });
+                    cx.new(|cx| Root::new(view, window, cx))
+                })
                 .expect("open window");
             });
         })

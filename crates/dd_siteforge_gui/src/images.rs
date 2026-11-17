@@ -29,6 +29,26 @@ pub fn long_edge(bytes: &[u8]) -> Option<u32> {
     Some(width.max(height))
 }
 
+/// Long edge when a dropped still PNG, JPEG, or WebP is over [`LONG_EDGE`].
+///
+/// GIF, SVG, and every other extension never get the shrink offer, even when
+/// the bytes decode. The check is the file extension, then the pixel edge.
+pub fn shrink_offer_edge(name: &str, bytes: &[u8]) -> Option<u32> {
+    let ext = Path::new(name)
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if !matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "webp") {
+        return None;
+    }
+    long_edge(bytes).filter(|edge| *edge > LONG_EDGE)
+}
+
+pub fn copy_failed(err: impl std::fmt::Display) -> String {
+    format!("Copy failed: {err}")
+}
+
 pub fn kebab_filename(original: &str) -> String {
     let path = Path::new(original);
     let ext = path
@@ -249,5 +269,56 @@ mod tests {
         let imported = import_bytes("Logo.svg", &svg, dir.path(), true).unwrap();
         assert_eq!(std::fs::read(dir.path().join("logo.svg")).unwrap(), svg);
         assert!(imported.copied_as_is);
+    }
+
+    fn raster(width: u32, height: u32, format: ImageFormat) -> Vec<u8> {
+        let image = ImageBuffer::from_pixel(width, height, Rgb([20, 40, 60]));
+        let dynamic = image::DynamicImage::ImageRgb8(image);
+        let mut bytes = Vec::new();
+        dynamic
+            .write_to(&mut Cursor::new(&mut bytes), format)
+            .unwrap();
+        bytes
+    }
+
+    #[test]
+    fn followup_shrink_offer_only_for_large_png_jpeg_webp() {
+        let large = LONG_EDGE + 1;
+        let png = raster(large, 8, ImageFormat::Png);
+        assert_eq!(shrink_offer_edge("wide.PNG", &png), Some(large));
+        assert_eq!(
+            shrink_offer_edge("small.png", &raster(100, 80, ImageFormat::Png)),
+            None
+        );
+        assert_eq!(shrink_offer_edge("anim.gif", &png), None);
+        assert_eq!(
+            shrink_offer_edge("anim.GIF", &raster(large, 4, ImageFormat::Gif)),
+            None
+        );
+        let jpeg = raster(large, 8, ImageFormat::Jpeg);
+        assert_eq!(shrink_offer_edge("photo.jpg", &jpeg), Some(large));
+        assert_eq!(shrink_offer_edge("photo.jpeg", &jpeg), Some(large));
+        let webp = raster(large, 8, ImageFormat::WebP);
+        assert_eq!(shrink_offer_edge("hero.webp", &webp), Some(large));
+        assert_eq!(
+            shrink_offer_edge(
+                "logo.svg",
+                br#"<svg xmlns="http://www.w3.org/2000/svg" width="4000" height="10"/>"#
+            ),
+            None
+        );
+        assert_eq!(shrink_offer_edge("clip.mp4", &png), None);
+        assert_eq!(shrink_offer_edge("notes.txt", &png), None);
+        assert_eq!(shrink_offer_edge("noext", &png), None);
+        assert_eq!(shrink_offer_edge("broken.png", b"not an image"), None);
+        assert_eq!(
+            shrink_offer_edge("exact.png", &raster(LONG_EDGE, 8, ImageFormat::Png)),
+            None
+        );
+    }
+
+    #[test]
+    fn followup_copy_failed_uses_one_sentence() {
+        assert_eq!(copy_failed("disk full"), "Copy failed: disk full");
     }
 }

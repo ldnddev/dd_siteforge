@@ -8,6 +8,7 @@ use gpui::{
 use gpui_component::button::Button;
 
 use crate::shell::{Shell, chord};
+use crate::windows;
 
 pub struct PreviewPane {
     shell: Entity<Shell>,
@@ -27,8 +28,10 @@ impl Focusable for PreviewPane {
 }
 
 impl Render for PreviewPane {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let chrome = self.shell.read(cx).preview_chrome();
+        let title = windows::preview_title(&chrome.site_name);
+        window.set_window_title(&title);
         let follow = if chrome.follow {
             "Follow editor on"
         } else {
@@ -51,7 +54,7 @@ impl Render for PreviewPane {
             .flex_col()
             .p(px(16.0))
             .gap(px(8.0))
-            .child(div().child("Preview"))
+            .child(div().child(title))
             .child(div().id("preview-url").child(chrome.url))
             .child(div().id("preview-state").child(chrome.status))
             .child(
@@ -74,17 +77,14 @@ impl Render for PreviewPane {
                         });
                     })),
             )
-            .child(div().child("The page is open in the browser. Ctrl+R refreshes this preview."))
+            .child(div().child(windows::preview_hint()))
     }
 }
 
 pub fn open(shell: Entity<Shell>, cx: &mut App) -> bool {
-    let bounds = gpui::Bounds::centered(None, gpui::size(px(960.0), px(640.0)), cx);
+    let title = shell.read(cx).preview_window_title();
     let opened = cx.open_window(
-        gpui::WindowOptions {
-            window_bounds: Some(gpui::WindowBounds::Windowed(bounds)),
-            ..Default::default()
-        },
+        windows::preview_window_options(cx, &title),
         move |window, cx| {
             let view = cx.new(|cx| {
                 let focus = cx.focus_handle();

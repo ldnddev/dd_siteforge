@@ -105,6 +105,32 @@ struct ShrinkOffer {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ShrinkChoice {
+    AsIs,
+    Shrink,
+    Cancel,
+}
+
+pub(crate) fn shrink_choice(key: &str) -> Option<ShrinkChoice> {
+    match key {
+        "enter" => Some(ShrinkChoice::AsIs),
+        "2" => Some(ShrinkChoice::Shrink),
+        "escape" => Some(ShrinkChoice::Cancel),
+        _ => None,
+    }
+}
+
+pub(crate) fn go_to_field_visible(has_target: bool, selected: bool, hovered: bool) -> bool {
+    has_target && (selected || hovered)
+}
+
+#[derive(Clone, Debug)]
+enum Notice {
+    Text(String),
+    ExportRun(publish::ExportRunCard),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Screen {
     Welcome,
     Loading,
@@ -128,6 +154,7 @@ struct IssuesPane {
     open: bool,
     health: bool,
     index: usize,
+    hover: Option<usize>,
     validation: Vec<Issue>,
     health_items: Vec<dd_siteforge_core::health::HealthItem>,
     page: String,
@@ -181,7 +208,7 @@ pub struct Shell {
     quit_dialog: bool,
     restore_open: bool,
     backup_note: Option<String>,
-    toasts: Vec<String>,
+    toasts: Vec<Notice>,
     preview_note: String,
     revealed: Option<PathBuf>,
     pub quit: bool,
@@ -240,6 +267,7 @@ pub struct Shell {
     issues_height: f32,
     last_height: f32,
     issues_drag: Option<(f32, f32)>,
+    issues_hover: Option<usize>,
     motion_id: Option<&'static str>,
     motion_gen: u64,
     save_rx: Option<
@@ -359,6 +387,7 @@ impl Shell {
             issues_height: crate::density::ISSUES_DEFAULT,
             last_height: 800.0,
             issues_drag: None,
+            issues_hover: None,
             motion_id: None,
             motion_gen: 0,
             save_rx: None,
@@ -471,6 +500,25 @@ impl Shell {
     pub fn set_issues_height(&mut self, height: f32) {
         self.play("panel-resize");
         self.issues_height = crate::density::clamp_issues_height(height, self.last_height);
+    }
+
+    pub fn issues_handle_click(&mut self, click_count: usize) {
+        if click_count >= 2 {
+            self.issues_drag = None;
+            self.issues_height = crate::density::issues_height_after_double_click(
+                click_count,
+                self.issues_height,
+                self.last_height,
+            );
+        }
+    }
+
+    pub fn hover_issue_row(&mut self, index: Option<usize>) {
+        self.issues_hover = index;
+    }
+
+    pub fn preview_window_title(&self) -> String {
+        crate::windows::preview_title(&self.title_name())
     }
 
     pub fn note_pointer(&mut self) {
@@ -682,10 +730,6 @@ impl Shell {
         }
         if self.screen == Screen::Editor {
             lines.push(self.build_status.clone());
-            if !self.export_progress.is_empty() {
-                lines.push(self.export_progress.clone());
-                lines.push(crate::motion::export_bar(self.settings.reduced_motion).to_string());
-            }
             if self.issues_open {
                 self.push_issue_lines(&mut lines);
             }
@@ -811,15 +855,14 @@ impl Shell {
                 .last_insert
                 .map(|kind| kind.label())
                 .unwrap_or("the selection");
-            lines.push(format!("Enter inserts after {after} · 24 kinds"));
+            let kinds = self.insert_kind_count();
+            lines.push(format!("Enter inserts after {after} · {kinds} kinds"));
         }
         if let Some(title) = &self.rename {
             lines.push("Rename page. Edit and press Enter.".to_string());
             lines.push(title.clone());
         }
-        // DESIGN-GAP: no board draws the shrink choice. Image well copy states
-        // show copying and missing-file only. These two actions are the
-        // closest drawn button copy.
+        // Spec 07 P3d: Enter copies as-is, 2 shrinks, Esc cancels.
         if let Some(offer) = &self.shrink {
             lines.push(format!(
                 "This image is {} px on the long edge.",
@@ -832,7 +875,7 @@ impl Shell {
             lines.push("Undo".to_string());
             lines.push("Ctrl Z".to_string());
         }
-        lines.extend(self.toasts.iter().cloned());
+        self.push_notice_lines(&mut lines);
         if !self.preview_note.is_empty() {
             lines.push(self.preview_note.clone());
         }
@@ -1754,7 +1797,7 @@ impl Shell {
         } else {
             format!("./{normalized}/")
         };
-        self.export_progress = publish::exporting_line(pages, &display);
+        self.upsert_export_run(pages, &display);
         if preview || refresh {
             self.preview_building = true;
             self.preview_failed = false;
@@ -1808,7 +1851,7 @@ impl Shell {
                     doc.site.export_dir = Some(ran.normalized.clone());
                     doc.mark_dirty_quiet();
                 }
-                self.toast(publish::export_toast(&ran.report, &ran.display));
+                self.replace_export_run(publish::export_toast(&ran.report, &ran.display));
                 if !pending.preview {
                     self.export_reveal = Some(ran.output.clone());
                 }
@@ -1825,14 +1868,14 @@ impl Shell {
                         .strip_prefix("Export failed: ")
                         .unwrap_or(&message)
                         .to_string();
-                    self.toast(format!("Preview refresh failed: {detail}"));
+                    self.replace_export_run(format!("Preview refresh failed: {detail}"));
                     self.preview_failed = true;
                 } else if pending.preview {
                     let detail = message
                         .strip_prefix("Export failed: ")
                         .unwrap_or(&message)
                         .to_string();
-                    self.toast(format!("Preview failed: {detail}"));
+                    self.replace_export_run(format!("Preview failed: {detail}"));
                     self.preview_failed = true;
                     self.play("sheet-open");
                     self.export_failure = Some(detail);
@@ -1841,6 +1884,7 @@ impl Shell {
                         .strip_prefix("Export failed: ")
                         .unwrap_or(&message)
                         .to_string();
+                    self.clear_export_run();
                     self.play("sheet-open");
                     self.export_failure = Some(detail);
                 }
@@ -1938,6 +1982,7 @@ impl Shell {
                 .unwrap_or_else(|| "Preview".to_string()),
             status: self.preview_status_text(),
             follow: self.preview_follow,
+            site_name: self.title_name(),
         }
     }
 
@@ -2572,7 +2617,11 @@ impl Shell {
         } else {
             for (index, issue) in self.validation.iter().enumerate() {
                 lines.push(format!("{}. {}", index + 1, issue.message));
-                if issue.target.is_some() && index == self.issues_index {
+                if go_to_field_visible(
+                    issue.target.is_some(),
+                    index == self.issues_index,
+                    self.issues_hover == Some(index),
+                ) {
                     lines.push("Go to field".to_string());
                 }
             }
@@ -2610,10 +2659,62 @@ impl Shell {
     }
 
     fn toast(&mut self, text: impl Into<String>) {
-        self.toasts.push(text.into());
+        self.toasts.push(Notice::Text(text.into()));
+        self.trim_notices();
+    }
+
+    fn trim_notices(&mut self) {
         if self.toasts.len() > 5 {
             self.toasts.remove(0);
         }
+    }
+
+    fn push_notice_lines(&self, lines: &mut Vec<String>) {
+        for notice in &self.toasts {
+            match notice {
+                Notice::Text(text) => lines.push(text.clone()),
+                Notice::ExportRun(card) => {
+                    lines.push(card.title.to_string());
+                    lines.push(card.sentence.clone());
+                    lines.push(card.bar.to_string());
+                    lines.push(format!("export-card:{}", card.width_px as i32));
+                }
+            }
+        }
+    }
+
+    fn upsert_export_run(&mut self, pages: usize, display: &str) {
+        let card = publish::export_run_card(pages, display, self.settings.reduced_motion);
+        self.export_progress = card.sentence.clone();
+        let notice = Notice::ExportRun(card);
+        if let Some(slot) = self
+            .toasts
+            .iter_mut()
+            .find(|notice| matches!(notice, Notice::ExportRun(_)))
+        {
+            *slot = notice;
+            return;
+        }
+        self.toasts.push(notice);
+        self.trim_notices();
+    }
+
+    fn replace_export_run(&mut self, text: impl Into<String>) {
+        let text = text.into();
+        if let Some(slot) = self
+            .toasts
+            .iter_mut()
+            .find(|notice| matches!(notice, Notice::ExportRun(_)))
+        {
+            *slot = Notice::Text(text);
+        } else {
+            self.toast(text);
+        }
+    }
+
+    fn clear_export_run(&mut self) {
+        self.toasts
+            .retain(|notice| !matches!(notice, Notice::ExportRun(_)));
     }
 
     fn take_notice(&mut self) {
@@ -2710,11 +2811,11 @@ impl Shell {
 
     fn edit_key(&mut self, key: &str) -> bool {
         if self.shrink.is_some() {
-            match key {
-                "escape" => self.shrink = None,
-                "enter" | "s" => self.finish_shrink(false),
-                "2" => self.finish_shrink(true),
-                _ => {}
+            match shrink_choice(key) {
+                Some(ShrinkChoice::Cancel) => self.shrink = None,
+                Some(ShrinkChoice::AsIs) => self.finish_shrink(false),
+                Some(ShrinkChoice::Shrink) => self.finish_shrink(true),
+                None => {}
             }
             return true;
         }
@@ -3067,13 +3168,24 @@ impl Shell {
         }
     }
 
-    fn filtered_kinds(&self) -> Vec<ComponentKind> {
-        let region = match self.region {
+    fn insert_region(&self) -> InsertRegion {
+        match self.region {
             SideTarget::Header => InsertRegion::Header,
             SideTarget::Footer => InsertRegion::Footer,
             SideTarget::Site => InsertRegion::Site,
             _ => InsertRegion::Page,
-        };
+        }
+    }
+
+    fn insert_kind_count(&self) -> usize {
+        ComponentKind::all()
+            .iter()
+            .filter(|kind| kind.allowed_in(self.insert_region()))
+            .count()
+    }
+
+    fn filtered_kinds(&self) -> Vec<ComponentKind> {
+        let region = self.insert_region();
         let query = self.insert_query.to_ascii_lowercase();
         ComponentKind::all()
             .iter()
@@ -3090,12 +3202,7 @@ impl Shell {
             return;
         };
         let (page, node, column, component) = self.insert_place();
-        let region = match self.region {
-            SideTarget::Header => InsertRegion::Header,
-            SideTarget::Footer => InsertRegion::Footer,
-            SideTarget::Site => InsertRegion::Site,
-            _ => InsertRegion::Page,
-        };
+        let region = self.insert_region();
         let Some(doc) = self.document.as_mut() else {
             return;
         };
@@ -3343,20 +3450,22 @@ impl Shell {
         let bytes = match std::fs::read(&path) {
             Ok(bytes) => bytes,
             Err(err) => {
-                self.toast(format!("Source folder not found: {err}"));
+                self.toast(crate::images::copy_failed(err));
                 return;
             }
         };
         if downscale.is_none() {
-            if let Some(edge) = crate::images::long_edge(&bytes) {
-                if edge > crate::images::LONG_EDGE {
-                    self.shrink = Some(ShrinkOffer {
-                        source: path,
-                        field_id,
-                        long_edge: edge,
-                    });
-                    return;
-                }
+            let name = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("");
+            if let Some(edge) = crate::images::shrink_offer_edge(name, &bytes) {
+                self.shrink = Some(ShrinkOffer {
+                    source: path,
+                    field_id,
+                    long_edge: edge,
+                });
+                return;
             }
         }
         self.write_import(&path, field_id, downscale.unwrap_or(false));
@@ -3380,7 +3489,7 @@ impl Shell {
                     self.toast(format!("Picked: {}", imported.stored));
                 }
             }
-            Err(err) => self.toast(format!("Save failed: {err}")),
+            Err(err) => self.toast(crate::images::copy_failed(err)),
         }
     }
 
@@ -4484,6 +4593,7 @@ impl Render for Shell {
             open: self.issues_open,
             health: self.issues_health,
             index: self.issues_index,
+            hover: self.issues_hover,
             validation: self.validation.clone(),
             health_items: if self.issues_open {
                 self.health_items()
@@ -4497,7 +4607,6 @@ impl Render for Shell {
             .as_ref()
             .map(|sheet| (sheet.preview, sheet.path.clone(), sheet.error.clone()));
         let export_failure = self.export_failure.clone();
-        let export_progress = self.export_progress.clone();
         let show_reveal = self.export_reveal.is_some();
         let browser_fallback = self.browser_fallback;
         let folder_value = self.new_site.folder.clone();
@@ -4734,14 +4843,6 @@ impl Render for Shell {
                     secondary,
                 ))
             })
-            .when(!export_progress.is_empty(), |row| {
-                row.child(
-                    div()
-                        .px(px(12.0))
-                        .py(px(8.0))
-                        .child(export_progress.clone()),
-                )
-            })
             .when(show_reveal, |row| {
                 row.child(
                     Button::new("reveal-export")
@@ -4835,15 +4936,11 @@ impl Render for Shell {
                     secondary,
                 ))
             })
-            .children(toasts.into_iter().map(|toast| {
-                div()
-                    .px(px(12.0))
-                    .py(px(8.0))
-                    .bg(panel)
-                    .border_1()
-                    .border_color(border)
-                    .child(toast)
-            }))
+            .children(
+                toasts
+                    .into_iter()
+                    .map(|toast| notice_view(toast, panel, border)),
+            )
             .when(!preview_note.is_empty(), |row| {
                 row.child(div().px(px(12.0)).child(preview_note.clone()))
             })
@@ -5529,8 +5626,12 @@ fn issues_drawer(
                 .on_mouse_down(
                     MouseButton::Left,
                     cx.listener(|shell, event: &MouseDownEvent, _, cx| {
-                        shell.issues_drag =
-                            Some((f32::from(event.position.y), shell.issues_height));
+                        if event.click_count >= 2 {
+                            shell.issues_handle_click(event.click_count);
+                        } else {
+                            shell.issues_drag =
+                                Some((f32::from(event.position.y), shell.issues_height));
+                        }
                         cx.notify();
                     }),
                 )
@@ -5615,15 +5716,25 @@ fn issues_drawer(
                 .flex_col()
                 .children(rows.iter().enumerate().map(|(index, issue)| {
                     let go = issue.target.is_some();
+                    let show_go =
+                        go_to_field_visible(go, index == issues.index, issues.hover == Some(index));
                     div()
                         .id(gpui::ElementId::Name(format!("issue-{index}").into()))
                         .px(px(8.0))
                         .py(px(4.0))
                         .when(index == issues.index, |row| row.bg(selected))
                         .child(format!("{}. {}", index + 1, issue.message))
-                        .when(go && index == issues.index, |row| {
+                        .when(show_go, |row| {
                             row.child(div().text_color(secondary).child("Go to field"))
                         })
+                        .on_hover(cx.listener(move |shell, hovering: &bool, _, cx| {
+                            if *hovering {
+                                shell.issues_hover = Some(index);
+                            } else if shell.issues_hover == Some(index) {
+                                shell.issues_hover = None;
+                            }
+                            cx.notify();
+                        }))
                         .on_click(cx.listener(move |shell, _: &ClickEvent, _, cx| {
                             shell.issues_index = index;
                             shell.jump_to_issue(index);
@@ -5631,6 +5742,31 @@ fn issues_drawer(
                         }))
                 }))
         })
+}
+
+fn notice_view(notice: Notice, panel: gpui::Hsla, border: gpui::Hsla) -> gpui::Div {
+    match notice {
+        Notice::Text(text) => div()
+            .px(px(12.0))
+            .py(px(8.0))
+            .bg(panel)
+            .border_1()
+            .border_color(border)
+            .child(text),
+        Notice::ExportRun(card) => div()
+            .w(px(card.width_px))
+            .px(px(12.0))
+            .py(px(8.0))
+            .bg(panel)
+            .border_1()
+            .border_color(border)
+            .flex()
+            .flex_col()
+            .gap(px(6.0))
+            .child(card.title)
+            .child(card.sentence)
+            .child(div().h(px(4.0)).w_full().child(card.bar)),
+    }
 }
 
 fn path_sheet_view(
