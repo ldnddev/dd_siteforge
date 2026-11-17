@@ -76,6 +76,27 @@ pub fn exporting_line(pages: usize, display: &str) -> String {
     format!("Exporting {pages} page(s) to {display}…")
 }
 
+pub const EXPORT_CARD_TITLE: &str = "Export run";
+pub const EXPORT_CARD_WIDTH_PX: f32 = 360.0;
+
+#[derive(Clone, Debug)]
+pub struct ExportRunCard {
+    pub title: &'static str,
+    pub sentence: String,
+    pub width_px: f32,
+    pub bar: &'static str,
+}
+
+/// The 360 px `Export run` card. The sentence is the same one the panel used.
+pub fn export_run_card(pages: usize, display: &str, reduced_motion: bool) -> ExportRunCard {
+    ExportRunCard {
+        title: EXPORT_CARD_TITLE,
+        sentence: exporting_line(pages, display),
+        width_px: EXPORT_CARD_WIDTH_PX,
+        bar: crate::motion::export_bar(reduced_motion),
+    }
+}
+
 pub fn build_running(cmd: &AssetBuildCommand) -> String {
     format!("Running `{}`…", cmd.display())
 }
@@ -97,7 +118,7 @@ pub enum PreviewView {
 pub fn preview_status(view: PreviewView, live_at: SystemTime) -> String {
     match view {
         PreviewView::Closed => "Preview closed · Ctrl+P".to_string(),
-        PreviewView::NotBuilt => "Preview not built".to_string(),
+        PreviewView::NotBuilt => "Preview not built · Ctrl+P".to_string(),
         PreviewView::Building => "Building… (autosave)".to_string(),
         PreviewView::Live => format!("Preview live {}", clock_label(live_at)),
         PreviewView::Stale { edits } => format!("{edits} edits since last render"),
@@ -168,6 +189,7 @@ pub struct PreviewChrome {
     pub url: String,
     pub status: String,
     pub follow: bool,
+    pub site_name: String,
 }
 
 #[cfg(test)]
@@ -281,5 +303,21 @@ mod tests {
             preview_status(PreviewView::Error, SystemTime::UNIX_EPOCH),
             "Preview failed · Show issue"
         );
+        assert_eq!(
+            preview_status(PreviewView::NotBuilt, SystemTime::UNIX_EPOCH),
+            "Preview not built · Ctrl+P"
+        );
+    }
+
+    #[test]
+    fn followup_export_run_card_is_360_with_the_existing_sentence() {
+        let card = export_run_card(3, "./web/", false);
+        assert_eq!(card.title, EXPORT_CARD_TITLE);
+        assert_eq!(card.title, "Export run");
+        assert_eq!(card.width_px, EXPORT_CARD_WIDTH_PX);
+        assert_eq!(card.width_px, 360.0);
+        assert_eq!(card.sentence, "Exporting 3 page(s) to ./web/…");
+        assert_eq!(card.bar, "indeterminate-bar");
+        assert_eq!(export_run_card(1, "./web/", true).bar, "bar-40");
     }
 }

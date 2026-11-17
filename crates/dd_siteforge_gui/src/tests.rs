@@ -784,3 +784,281 @@ fn a_save_job_runs_off_the_caller_thread() {
     let worker = rx.recv().unwrap();
     assert_ne!(caller, worker);
 }
+
+#[test]
+fn followup_go_to_field_shows_for_the_selected_or_hovered_row_with_a_target() {
+    assert!(crate::shell::go_to_field_visible(true, true, false));
+    assert!(crate::shell::go_to_field_visible(true, false, true));
+    assert!(!crate::shell::go_to_field_visible(true, false, false));
+    assert!(!crate::shell::go_to_field_visible(false, true, true));
+    assert!(!crate::shell::go_to_field_visible(false, false, true));
+}
+
+#[test]
+fn followup_shrink_offer_keys_are_enter_two_and_escape() {
+    use crate::shell::{ShrinkChoice, shrink_choice};
+    assert_eq!(shrink_choice("enter"), Some(ShrinkChoice::AsIs));
+    assert_eq!(shrink_choice("2"), Some(ShrinkChoice::Shrink));
+    assert_eq!(shrink_choice("escape"), Some(ShrinkChoice::Cancel));
+    assert_eq!(shrink_choice("s"), None);
+    assert_eq!(shrink_choice("S"), None);
+}
+
+fn satisfy_local_images(root: &std::path::Path, site: &Site) {
+    for _ in 0..8 {
+        let issues = dd_siteforge_core::validate::validate_site_with_root(site, Some(root));
+        if issues.is_empty() {
+            return;
+        }
+        for issue in issues {
+            let Some(rel) = issue.message.split("expected at ").nth(1) else {
+                continue;
+            };
+            let rel = rel.trim_end_matches(')').trim();
+            let file = root.join(rel);
+            if let Some(parent) = file.parent() {
+                std::fs::create_dir_all(parent).unwrap();
+            }
+            if !file.exists() {
+                std::fs::write(file, b"img").unwrap();
+            }
+        }
+    }
+}
+
+fn raster_file(
+    dir: &std::path::Path,
+    name: &str,
+    width: u32,
+    height: u32,
+    format: image::ImageFormat,
+) -> PathBuf {
+    let image = image::RgbImage::from_pixel(width, height, image::Rgb([9, 8, 7]));
+    let dynamic = image::DynamicImage::ImageRgb8(image);
+    let mut bytes = Vec::new();
+    dynamic
+        .write_to(&mut std::io::Cursor::new(&mut bytes), format)
+        .unwrap();
+    let path = dir.join(name);
+    std::fs::write(&path, bytes).unwrap();
+    path
+}
+
+#[gpui::test]
+fn followup_insert_footer_counts_the_context_and_keeps_data_table_interactive(
+    cx: &mut TestAppContext,
+) {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("site.json");
+    save_site(&path, &Site::starter()).unwrap();
+    let shell = mount(cx, opts(dir.path(), Some(path)));
+    shell.update(cx, |shell, _| {
+        shell.handle_key("/");
+        let text = shell.visible_text();
+        assert!(
+            text.contains("Enter inserts after the selection · 22 kinds"),
+            "{text}"
+        );
+        assert!(!text.contains("24 kinds"), "{text}");
+        let lines = shell.lines();
+        let data = lines
+            .iter()
+            .position(|line| line == "dd-data-table")
+            .expect("data table row");
+        assert_eq!(lines[data - 1], "INTERACTIVE");
+        shell.handle_key("escape");
+        shell.select_sidebar_label("Header");
+        shell.handle_key("/");
+        let text = shell.visible_text();
+        assert!(
+            text.contains("Enter inserts after the selection · 23 kinds"),
+            "{text}"
+        );
+        assert!(!text.contains("24 kinds"), "{text}");
+        shell.handle_key("z");
+        let text = shell.visible_text();
+        assert!(
+            text.contains("23 kinds"),
+            "search keeps the context count, got {text}"
+        );
+        shell.handle_key("escape");
+        shell.select_sidebar_label("Footer");
+        shell.handle_key("/");
+        assert!(
+            shell.visible_text().contains("23 kinds"),
+            "{}",
+            shell.visible_text()
+        );
+    });
+}
+
+#[gpui::test]
+fn followup_go_to_field_follows_the_hovered_row(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("site.json");
+    let mut site = Site::starter();
+    site.pages[0].head.title.clear();
+    let dd_siteforge_core::model::PageNode::Hero(hero) = &mut site.pages[0].nodes[0] else {
+        panic!("starter hero");
+    };
+    hero.parent_title.clear();
+    save_site(&path, &site).unwrap();
+    let shell = mount(cx, opts(dir.path(), Some(path)));
+    shell.update(cx, |shell, _| {
+        shell.handle_key("f3");
+        let selected = shell.visible_text();
+        assert_eq!(
+            selected.matches("Go to field").count(),
+            1,
+            "selected row only, got {selected}"
+        );
+        shell.hover_issue_row(Some(1));
+        let hovered = shell.visible_text();
+        assert_eq!(
+            hovered.matches("Go to field").count(),
+            2,
+            "selected and hovered, got {hovered}"
+        );
+        shell.hover_issue_row(None);
+        assert_eq!(shell.visible_text().matches("Go to field").count(), 1);
+    });
+}
+
+#[gpui::test]
+fn followup_image_shrink_keys_and_copy_errors(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("site.json");
+    save_site(&path, &Site::starter()).unwrap();
+    let large = raster_file(dir.path(), "Wide.PNG", 2561, 8, image::ImageFormat::Png);
+    let gif = raster_file(dir.path(), "anim.gif", 2561, 4, image::ImageFormat::Gif);
+    let shell = mount(cx, opts(dir.path(), Some(path)));
+    shell.update(cx, |shell, _| {
+        shell.select_outline_label("dd-hero");
+        shell.focus_inspector();
+        assert!(shell.focus_field_id("media_image_url"));
+        shell.import_dropped(large.clone(), None);
+        let offer = shell.visible_text();
+        assert!(
+            offer.contains("This image is 2561 px on the long edge."),
+            "{offer}"
+        );
+        shell.handle_key("s");
+        let after_s = shell.visible_text();
+        assert!(
+            after_s.contains("This image is 2561 px on the long edge."),
+            "s is not Copy as-is, got {after_s}"
+        );
+        assert!(!after_s.contains("Picked:"), "{after_s}");
+        shell.handle_key("escape");
+        assert!(!shell.visible_text().contains("This image is 2561 px"));
+        shell.focus_field_id("media_image_url");
+        shell.import_dropped(gif, None);
+        let copied = shell.visible_text();
+        assert!(
+            copied.contains("Picked: assets/images/anim.gif"),
+            "gif copies as-is, got {copied}"
+        );
+        assert!(!copied.contains("This image is"), "{copied}");
+        shell.focus_field_id("media_image_url");
+        shell.import_dropped(dir.path().join("missing.png"), None);
+        let missing = shell.visible_text();
+        assert!(missing.contains("Copy failed:"), "{missing}");
+        assert!(!missing.contains("Source folder not found:"), "{missing}");
+    });
+    let images = dir.path().join("source").join("images");
+    if images.exists() {
+        std::fs::remove_dir_all(&images).unwrap();
+    }
+    std::fs::create_dir_all(images.parent().unwrap()).unwrap();
+    std::fs::write(&images, b"not-a-directory").unwrap();
+    let small = raster_file(dir.path(), "small.png", 8, 8, image::ImageFormat::Png);
+    shell.update(cx, |shell, _| {
+        shell.focus_field_id("media_image_url");
+        shell.import_dropped(small, Some(false));
+        let failed = shell.visible_text();
+        assert!(failed.contains("Copy failed:"), "{failed}");
+        assert!(!failed.contains("Save failed:"), "{failed}");
+    });
+}
+
+#[gpui::test]
+fn followup_export_progress_is_the_toast_stack_card(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("site");
+    std::fs::create_dir_all(&root).unwrap();
+    let path = root.join("site.json");
+    let site = Site::starter();
+    save_site(&path, &site).unwrap();
+    satisfy_local_images(&root, &site);
+    let shell = mount(cx, opts(dir.path(), Some(path)));
+    shell.update(cx, |shell, _| {
+        shell.handle_key("ctrl-e");
+        shell.handle_key("enter");
+        let running = shell.visible_text();
+        assert!(running.contains("Export run"), "{running}");
+        assert!(running.contains("export-card:360"), "{running}");
+        assert!(
+            running.contains("Exporting ") && running.contains("page(s) to ./web/"),
+            "{running}"
+        );
+        for _ in 0..100 {
+            shell.poll_jobs();
+            if shell.visible_text().contains("Exported ") {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        let done = shell.visible_text();
+        assert!(done.contains("Exported "), "{done}");
+        assert!(done.contains("Reveal"), "{done}");
+        assert!(!done.contains("Export run"), "card replaced, got {done}");
+        assert!(!done.contains("export-card:360"), "{done}");
+    });
+}
+
+#[gpui::test]
+fn followup_preview_not_built_status_names_ctrl_p(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("site");
+    std::fs::create_dir_all(&root).unwrap();
+    let path = root.join("site.json");
+    let site = Site::starter();
+    save_site(&path, &site).unwrap();
+    satisfy_local_images(&root, &site);
+    let shell = mount(cx, opts(dir.path(), Some(path)));
+    shell.update(cx, |shell, _| {
+        assert!(shell.visible_text().contains("Preview closed · Ctrl+P"));
+        shell.handle_key("ctrl-p");
+        let text = shell.visible_text();
+        assert!(text.contains("Preview not built · Ctrl+P"), "{text}");
+        assert_eq!(shell.preview_window_title(), "Preview \u{2014} My Site");
+    });
+}
+
+#[gpui::test]
+fn followup_issues_double_click_resets_height_without_saving_it(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("site.json");
+    save_site(&path, &Site::starter()).unwrap();
+    let shell = mount(cx, opts(dir.path(), Some(path)));
+    let settings = dir.path().join("gui.json");
+    shell.update(cx, |shell, _| {
+        shell.handle_key("f3");
+        shell.set_issues_height(200.0);
+        assert!(shell.visible_text().contains("issues-height:200"));
+        let before = std::fs::read(&settings).unwrap();
+        assert!(!String::from_utf8_lossy(&before).contains("issues"));
+        shell.issues_handle_click(2);
+        assert!(
+            shell.visible_text().contains("issues-height:280"),
+            "{}",
+            shell.visible_text()
+        );
+        assert_eq!(std::fs::read(&settings).unwrap(), before);
+        shell.set_issues_height(220.0);
+        shell.issues_handle_click(1);
+        assert!(shell.visible_text().contains("issues-height:220"));
+        shell.set_issues_height(5000.0);
+        assert!(shell.visible_text().contains("issues-height:400"));
+    });
+}

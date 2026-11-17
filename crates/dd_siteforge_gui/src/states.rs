@@ -60,7 +60,7 @@ const CATALOG: &[ScreenCopy] = &[
     },
     ScreenCopy {
         screen: "preview",
-        empty: "Preview not built",
+        empty: "Preview not built · Ctrl+P",
         error: "Preview failed · Show issue",
     },
     ScreenCopy {
@@ -119,6 +119,11 @@ mod tests {
             assert!(!row.error.is_empty(), "{}", row.screen);
             names.push(row.screen);
         }
+        let preview = catalog()
+            .iter()
+            .find(|row| row.screen == "preview")
+            .expect("preview row");
+        assert_eq!(preview.empty, "Preview not built · Ctrl+P");
         for required in [
             "welcome",
             "loading",

@@ -88,6 +88,20 @@ pub fn clamp_issues_height(requested: f32, window_height: f32) -> f32 {
 
 pub const ISSUES_DEFAULT: f32 = 280.0;
 
+/// Double-click on the drawer handle resets to [`ISSUES_DEFAULT`], then the
+/// J26 clamp (160 px to half the window) still applies.
+pub fn issues_height_after_double_click(
+    click_count: usize,
+    current: f32,
+    window_height: f32,
+) -> f32 {
+    if click_count >= 2 {
+        clamp_issues_height(ISSUES_DEFAULT, window_height)
+    } else {
+        current
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -123,5 +137,16 @@ mod tests {
         assert_eq!(clamp_issues_height(10.0, 800.0), 160.0);
         assert_eq!(clamp_issues_height(900.0, 800.0), 400.0);
         assert_eq!(clamp_issues_height(200.0, 300.0), 160.0);
+    }
+
+    #[test]
+    fn followup_double_click_resets_issues_height_inside_the_drag_range() {
+        assert_eq!(
+            issues_height_after_double_click(2, 200.0, 800.0),
+            ISSUES_DEFAULT
+        );
+        assert_eq!(issues_height_after_double_click(2, 200.0, 800.0), 280.0);
+        assert_eq!(issues_height_after_double_click(1, 200.0, 800.0), 200.0);
+        assert_eq!(issues_height_after_double_click(2, 200.0, 300.0), 160.0);
     }
 }
