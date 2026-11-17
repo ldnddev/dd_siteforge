@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use dd_siteforge_core::model::Site;
+use dd_siteforge_core::model::{Page, PageTemplate, Site};
 use dd_siteforge_core::session::{self, RecentSite, Session};
 use dd_siteforge_core::storage::save_site;
 use gpui::{AppContext, TestAppContext};
@@ -20,6 +20,8 @@ fn opts(dir: &std::path::Path, path: Option<PathBuf>) -> ShellOptions {
         tick: false,
         quit_runtime: false,
         overlay: Some(dir.join("overlay")),
+        settings_file: dir.join("gui.json"),
+        wcag_bin: dir.join("dd_wcag"),
     }
 }
 
@@ -480,4 +482,126 @@ fn gui_export_from_the_shell_matches_core(cx: &mut TestAppContext) {
         assert!(text.contains("Reveal"), "{text}");
         assert!(root.join("web").join("index.html").is_file());
     });
+}
+
+#[gpui::test]
+fn palette_holds_init_and_f2_opens_appearance(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("site.json");
+    save_site(&path, &Site::starter()).unwrap();
+    let shell = mount(cx, opts(dir.path(), Some(path)));
+    shell.update(cx, |shell, _| {
+        let text = shell.visible_text();
+        assert!(text.contains("title-actions:Export,Preview"), "{text}");
+        assert!(!text.contains("Init site kit"), "{text}");
+        shell.handle_key("ctrl-k");
+        let text = shell.visible_text();
+        assert!(text.contains("Command palette"), "{text}");
+        assert!(text.contains("Init site kit"), "{text}");
+        assert!(text.contains("Init templates"), "{text}");
+        assert!(text.contains("Find in site"), "{text}");
+        shell.handle_key("escape");
+        assert!(shell.visible_text().contains("Command palette cancelled."));
+        shell.handle_key("f2");
+        let text = shell.visible_text();
+        assert!(text.contains("Settings › Appearance"), "{text}");
+        assert!(text.contains("Vim keys on"), "{text}");
+        assert!(text.contains("Density Comfortable"), "{text}");
+        assert!(!text.contains("Theme · "), "{text}");
+        shell.set_density(crate::settings::Density::Compact);
+        shell.set_vim_keys(false);
+        let text = shell.visible_text();
+        assert!(text.contains("Density Compact"), "{text}");
+        assert!(text.contains("Vim keys off"), "{text}");
+        shell.handle_key("escape");
+        shell.handle_key("f1");
+        let text = shell.visible_text();
+        assert!(text.contains("Shortcut sheet"), "{text}");
+        assert!(text.contains("Add page · Ctrl N · Shift+A"), "{text}");
+        assert!(text.contains("Refresh preview · F5 · —"), "{text}");
+    });
+}
+
+#[gpui::test]
+fn vim_off_types_and_vim_on_moves_and_collapses(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("site.json");
+    save_site(&path, &Site::starter()).unwrap();
+    let shell = mount(cx, opts(dir.path(), Some(path)));
+    shell.update(cx, |shell, _| {
+        shell.set_vim_keys(true);
+        shell.handle_key("j");
+        shell.handle_key("j");
+        let open = shell.visible_text();
+        shell.handle_key("h");
+        let collapsed = shell.visible_text();
+        assert_ne!(open, collapsed, "h collapses the section");
+        shell.handle_key("l");
+        shell.set_vim_keys(false);
+        shell.handle_key("j");
+        let text = shell.visible_text();
+        assert!(
+            text.contains("No pages match “j”") || text.contains("j"),
+            "{text}"
+        );
+    });
+}
+
+#[gpui::test]
+fn find_in_site_jumps_across_pages(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("site.json");
+    let mut site = Site::starter();
+    site.pages.push(Page::from_template(
+        "About the orchard",
+        PageTemplate::Blank,
+    ));
+    save_site(&path, &site).unwrap();
+    let shell = mount(cx, opts(dir.path(), Some(path)));
+    shell.update(cx, |shell, _| {
+        shell.handle_key("ctrl-f");
+        for ch in ["o", "r", "c", "h", "a", "r", "d"] {
+            shell.handle_key(ch);
+        }
+        shell.handle_key("enter");
+        let text = shell.visible_text();
+        assert!(text.contains("Jumped to"), "{text}");
+        assert!(text.contains("About the orchard"), "{text}");
+        assert!(!text.contains("Find in site\n"), "{text}");
+    });
+}
+
+#[gpui::test]
+fn invalid_hex_does_not_call_wcag_or_write_site_json(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("site.json");
+    save_site(&path, &Site::starter()).unwrap();
+    let before = std::fs::read(&path).unwrap();
+    let log = dir.path().join("called");
+    let script = dir.path().join("dd_wcag");
+    std::fs::write(
+        &script,
+        format!("#!/bin/sh\ntouch '{}'\nexit 0\n", log.display()),
+    )
+    .unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(&script).unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&script, perms).unwrap();
+    }
+    let mut options = opts(dir.path(), Some(path.clone()));
+    options.wcag_bin = script;
+    let shell = mount(cx, options);
+    shell.update(cx, |shell, _| {
+        shell.select_sidebar_label("Site settings");
+        shell.focus_inspector();
+        assert!(shell.set_active_field("primary_color", "red"));
+        shell.handle_key("ctrl-s");
+        let text = shell.visible_text();
+        assert!(text.contains("invalid primary_color"), "{text}");
+        assert!(!log.exists(), "dd_wcag was spawned");
+    });
+    assert_eq!(std::fs::read(&path).unwrap(), before);
 }
