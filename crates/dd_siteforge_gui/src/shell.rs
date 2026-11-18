@@ -174,6 +174,17 @@ struct NewSiteForm {
     field: u8,
 }
 
+struct TitleHover {
+    index: usize,
+    since: Instant,
+}
+
+struct TitleScroll {
+    index: Option<usize>,
+    elapsed_ms: u64,
+    reduced_motion: bool,
+}
+
 pub struct Shell {
     focus: FocusHandle,
     theme: LiveTheme,
@@ -268,6 +279,9 @@ pub struct Shell {
     last_height: f32,
     issues_drag: Option<(f32, f32)>,
     issues_hover: Option<usize>,
+    /// Sidebar page title currently under the pointer, for hover-scroll.
+    title_hover: Option<TitleHover>,
+    title_hover_gen: u64,
     motion_id: Option<&'static str>,
     motion_gen: u64,
     save_rx: Option<
@@ -388,6 +402,8 @@ impl Shell {
             last_height: 800.0,
             issues_drag: None,
             issues_hover: None,
+            title_hover: None,
+            title_hover_gen: 0,
             motion_id: None,
             motion_gen: 0,
             save_rx: None,
@@ -515,6 +531,99 @@ impl Shell {
 
     pub fn hover_issue_row(&mut self, index: Option<usize>) {
         self.issues_hover = index;
+    }
+
+    /// What the sidebar and Inspector will do with long text. The views paint
+    /// these same layouts.
+    pub fn overflow_report(&self) -> Vec<String> {
+        let metrics = crate::density::metrics(self.settings.density);
+        let reduced = self.settings.reduced_motion;
+        let mut lines = Vec::new();
+        if let Some(doc) = &self.document {
+            let (rows, _) = sidebar_rows(&doc.site, &self.filter);
+            for row in &rows {
+                let clip = crate::overflow::sidebar_row_layout(
+                    &row.label,
+                    row.depth,
+                    &row.badges,
+                    metrics,
+                );
+                let page = matches!(row.target, SideTarget::Page(_));
+                let scroll = crate::overflow::sidebar_scrolls(page, clip.truncated, reduced);
+                lines.push(format!(
+                    "side:{}|height:{}|shown:{}|tip:{}|scroll:{}",
+                    row.label,
+                    clip.height,
+                    clip.shown,
+                    clip.tooltip.as_deref().unwrap_or("-"),
+                    if scroll { "yes" } else { "no" }
+                ));
+            }
+        }
+        if self.screen == Screen::Editor {
+            for field in &self.inspector_view().fields {
+                let label =
+                    crate::overflow::field_label_layout(&field.label, field.required, metrics);
+                lines.push(format!(
+                    "label:{}|lines:{}|text:{}|truncated:{}|row:{}",
+                    field.label,
+                    label.lines,
+                    label.text,
+                    if label.truncated { "yes" } else { "no" },
+                    label.row_height
+                ));
+                if single_line_field(field.chrome) {
+                    let value = crate::overflow::field_value_layout(&field.value, metrics);
+                    lines.push(format!(
+                        "value:{}|height:{}|shown:{}|tip:{}|scroll:{}",
+                        field.id,
+                        value.clip.height,
+                        value.clip.shown,
+                        value.clip.tooltip.as_deref().unwrap_or("-"),
+                        if value.scrolls { "yes" } else { "no" }
+                    ));
+                }
+            }
+        }
+        lines
+    }
+
+    fn arm_title_scroll(&mut self, index: usize, cx: &mut Context<Self>) {
+        if self
+            .title_hover
+            .as_ref()
+            .is_some_and(|hover| hover.index == index)
+        {
+            return;
+        }
+        self.title_hover_gen = self.title_hover_gen.wrapping_add(1);
+        let generation = self.title_hover_gen;
+        self.title_hover = Some(TitleHover {
+            index,
+            since: Instant::now(),
+        });
+        cx.spawn(async move |this, cx| {
+            cx.background_executor()
+                .timer(std::time::Duration::from_millis(
+                    crate::overflow::HOVER_SCROLL_DELAY_MS,
+                ))
+                .await;
+            this.update(cx, |shell, cx| {
+                if shell.title_hover_gen == generation {
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn clear_title_scroll(&mut self) {
+        if self.title_hover.is_none() {
+            return;
+        }
+        self.title_hover = None;
+        self.title_hover_gen = self.title_hover_gen.wrapping_add(1);
     }
 
     pub fn preview_window_title(&self) -> String {
@@ -4656,6 +4765,15 @@ impl Render for Shell {
         });
         let show_backup_button = self.screen == Screen::Error && self.backup_available();
         let metrics = crate::density::metrics(self.settings.density);
+        let title_scroll = TitleScroll {
+            index: self.title_hover.as_ref().map(|hover| hover.index),
+            elapsed_ms: self
+                .title_hover
+                .as_ref()
+                .map(|hover| u64::try_from(hover.since.elapsed().as_millis()).unwrap_or(u64::MAX))
+                .unwrap_or(0),
+            reduced_motion: self.settings.reduced_motion,
+        };
         let bar = metrics.title_bar;
         let status_h = metrics.status_bar;
         let keyboard = self.keyboard_focus;
@@ -4693,7 +4811,7 @@ impl Render for Shell {
             .flex_col()
             .bg(base)
             .text_color(text)
-            .font_family(family)
+            .font_family(family.clone())
             .text_size(px(13.0))
             .child(title_bar(
                 cx,
@@ -4793,6 +4911,8 @@ impl Render for Shell {
                             keyboard,
                             focus,
                             issues_h,
+                            title_scroll,
+                            family,
                         ))
                     }),
             )
@@ -5514,6 +5634,8 @@ fn editor_body(
     keyboard: bool,
     focus: gpui::Hsla,
     issues_h: f32,
+    title_scroll: TitleScroll,
+    family: gpui::SharedString,
 ) -> gpui::Div {
     let rows = sidebar.clone().map(|(rows, _)| rows).unwrap_or_default();
     let count = sidebar.clone().map(|(_, count)| count).unwrap_or_default();
@@ -5561,6 +5683,7 @@ fn editor_body(
                 metrics,
                 keyboard,
                 focus,
+                &family,
             ))
         });
     div()
@@ -5582,6 +5705,7 @@ fn editor_body(
                 metrics,
                 keyboard,
                 focus,
+                title_scroll,
             ))
         })
         .child(
@@ -5921,6 +6045,108 @@ fn export_failure_view(
         )
 }
 
+fn sidebar_row(
+    cx: &mut Context<Shell>,
+    index: usize,
+    row: &SideRow,
+    selected: bool,
+    selected_bg: gpui::Hsla,
+    accent: gpui::Hsla,
+    keyboard: bool,
+    focus: gpui::Hsla,
+    metrics: crate::density::Metrics,
+    scroll: &TitleScroll,
+) -> gpui::Stateful<gpui::Div> {
+    let clip = crate::overflow::sidebar_row_layout(&row.label, row.depth, &row.badges, metrics);
+    let is_page = matches!(row.target, SideTarget::Page(_));
+    let scrolls = crate::overflow::sidebar_scrolls(is_page, clip.truncated, scroll.reduced_motion);
+    let hovering = scroll.index == Some(index);
+    let phase = if scrolls {
+        crate::overflow::scroll_phase(
+            hovering,
+            scroll.elapsed_ms,
+            clip.travel_px,
+            scroll.reduced_motion,
+        )
+    } else {
+        crate::overflow::ScrollPhase::Rest
+    };
+    let label = row.label.clone();
+    let shown = clip.shown.clone();
+    let tip = clip.tooltip.clone();
+    let travel = clip.travel_px;
+    let title = if matches!(phase, crate::overflow::ScrollPhase::Rest) {
+        div()
+            .flex_1()
+            .min_w(px(0.0))
+            .overflow_hidden()
+            .truncate()
+            .child(shown)
+            .into_any_element()
+    } else {
+        let cycle = crate::overflow::cycle_ms(travel).max(1);
+        div()
+            .flex_1()
+            .min_w(px(0.0))
+            .h_full()
+            .overflow_hidden()
+            .child(div().whitespace_nowrap().child(label).with_animation(
+                ("side-scroll", index),
+                Animation::new(std::time::Duration::from_millis(cycle)).repeat(),
+                move |el, delta| el.ml(px(-crate::overflow::offset_at_delta(delta, travel))),
+            ))
+            .into_any_element()
+    };
+    let badges = row.badges.clone();
+    div()
+        .id(("side", index))
+        .h(px(clip.height))
+        .overflow_hidden()
+        .flex()
+        .items_center()
+        .pl(px(
+            metrics.tree_indent * row.depth as f32 + crate::overflow::ROW_PAD_LEFT
+        ))
+        .pr(px(crate::overflow::ROW_PAD_RIGHT))
+        .when(selected, |row| {
+            row.bg(selected_bg).border_l_2().border_color(accent)
+        })
+        .when(selected && keyboard, |row| {
+            row.border_2().border_color(focus)
+        })
+        .child(title)
+        .children(badges.into_iter().map(|badge| {
+            div()
+                .ml(px(crate::overflow::BADGE_GAP))
+                .px(px(crate::overflow::BADGE_PAD_X / 2.0))
+                .flex_shrink_0()
+                .child(badge)
+        }))
+        .when_some(tip, |row, tip| {
+            row.tooltip(move |window, cx| {
+                gpui_component::tooltip::Tooltip::new(tip.clone()).build(window, cx)
+            })
+        })
+        .when(scrolls, |row| {
+            row.on_hover(cx.listener(move |shell, hovering: &bool, _, cx| {
+                if *hovering {
+                    shell.arm_title_scroll(index, cx);
+                } else {
+                    shell.clear_title_scroll();
+                    cx.notify();
+                }
+            }))
+        })
+        .on_click(cx.listener(move |shell, event: &ClickEvent, _, cx| {
+            shell.note_pointer();
+            shell.select_sidebar(index);
+            if event.click_count() >= 2 {
+                shell.begin_rename();
+            }
+            cx.notify();
+        }))
+}
+
 fn sidebar_view(
     cx: &mut Context<Shell>,
     rows: &[SideRow],
@@ -5935,6 +6161,7 @@ fn sidebar_view(
     metrics: crate::density::Metrics,
     keyboard: bool,
     focus: gpui::Hsla,
+    scroll: TitleScroll,
 ) -> gpui::Div {
     div()
         .w(px(metrics.sidebar_width))
@@ -5965,27 +6192,18 @@ fn sidebar_view(
                 .flex_1()
                 .overflow_y_scroll()
                 .children(rows.iter().enumerate().map(|(index, row)| {
-                    let mark = if index == selected { "> " } else { "" };
-                    let badges = row.badges.join(" ");
-                    div()
-                        .id(("side", index))
-                        .h(px(metrics.row))
-                        .pl(px(metrics.tree_indent * row.depth as f32 + 8.0))
-                        .when(index == selected, |row| {
-                            row.bg(selected_bg).border_l_2().border_color(accent)
-                        })
-                        .when(index == selected && keyboard, |row| {
-                            row.border_2().border_color(focus)
-                        })
-                        .child(format!("{mark}{} {badges}", row.label))
-                        .on_click(cx.listener(move |shell, event: &ClickEvent, _, cx| {
-                            shell.note_pointer();
-                            shell.select_sidebar(index);
-                            if event.click_count() >= 2 {
-                                shell.begin_rename();
-                            }
-                            cx.notify();
-                        }))
+                    sidebar_row(
+                        cx,
+                        index,
+                        row,
+                        index == selected,
+                        selected_bg,
+                        accent,
+                        keyboard,
+                        focus,
+                        metrics,
+                        &scroll,
+                    )
                 })),
         )
 }
@@ -6196,6 +6414,7 @@ fn inspector_view(
     metrics: crate::density::Metrics,
     keyboard: bool,
     focus: gpui::Hsla,
+    family: &gpui::SharedString,
 ) -> gpui::Stateful<gpui::Div> {
     let Some(view) = view else {
         return div().id("inspector-empty").w(px(360.0)).bg(panel);
@@ -6255,11 +6474,25 @@ fn inspector_view(
                     })),
             )
         })
-        .children(
-            view.fields.iter().map(|field| {
-                field_view(field, input, secondary, placeholder, error, border, metrics)
-            }),
-        )
+        .children(view.fields.iter().map(|field| {
+            field_view(
+                field,
+                input,
+                secondary,
+                placeholder,
+                error,
+                border,
+                metrics,
+                family,
+            )
+        }))
+}
+
+fn single_line_field(chrome: FieldChrome) -> bool {
+    matches!(
+        chrome,
+        FieldChrome::Text | FieldChrome::Select | FieldChrome::Page
+    )
 }
 
 fn field_view(
@@ -6270,37 +6503,72 @@ fn field_view(
     error: gpui::Hsla,
     border: gpui::Hsla,
     metrics: crate::density::Metrics,
-) -> gpui::Div {
+    family: &gpui::SharedString,
+) -> gpui::AnyElement {
     let value_color = if field.value == "Empty" {
         placeholder
     } else {
         secondary
     };
+    let label = label_line(
+        &field.label,
+        field.required,
+        secondary,
+        error,
+        metrics,
+        family,
+    );
     if field.chrome == FieldChrome::Toggle {
         return div()
             .flex()
             .items_center()
             .gap(px(12.0))
-            .child(label_line(&field.label, field.required, secondary, error))
-            .child(div().child(field.value.clone()));
+            .child(label.flex_1().min_w(px(0.0)))
+            .child(div().flex_shrink_0().child(field.value.clone()))
+            .into_any_element();
     }
     let image = field.chrome == FieldChrome::Image;
+    let single = single_line_field(field.chrome);
+    let value_layout = crate::overflow::field_value_layout(&field.value, metrics);
+    let shown = if single {
+        value_layout.clip.shown.clone()
+    } else {
+        field.value.clone()
+    };
+    let tip = if single {
+        value_layout.clip.tooltip.clone()
+    } else {
+        None
+    };
     div()
         .flex()
         .flex_col()
         .gap(px(metrics.label_gap))
-        .child(label_line(&field.label, field.required, secondary, error))
+        .child(label)
         .child(
             div()
+                .id(gpui::SharedString::from(format!("field-{}", field.id)))
                 .w_full()
-                .p(px(8.0))
-                .when(!image, |row| row.h(px(metrics.input)))
+                .when(!single, |row| row.p(px(8.0)))
+                .when(single, |row| {
+                    row.px(px(crate::overflow::VALUE_PAD_X))
+                        .h(px(value_layout.clip.height))
+                        .flex()
+                        .items_center()
+                        .truncate()
+                })
+                .when(!single && !image, |row| row.h(px(metrics.input)))
                 .bg(input)
                 .border_1()
                 .border_color(border)
                 .rounded(px(4.0))
                 .text_color(value_color)
-                .child(field.value.clone()),
+                .child(shown)
+                .when_some(tip, |row, tip| {
+                    row.tooltip(move |window, cx| {
+                        gpui_component::tooltip::Tooltip::new(tip.clone()).build(window, cx)
+                    })
+                }),
         )
         .when(field.toolbar, |col| {
             // S7: insert buttons only. The preview eye is not drawn.
@@ -6329,15 +6597,49 @@ fn field_view(
                     .child(field.error.clone().unwrap_or_default()),
             )
         })
+        .into_any_element()
 }
 
-fn label_line(label: &str, required: bool, secondary: gpui::Hsla, error: gpui::Hsla) -> gpui::Div {
+fn label_line(
+    label: &str,
+    required: bool,
+    secondary: gpui::Hsla,
+    error: gpui::Hsla,
+    metrics: crate::density::Metrics,
+    family: &gpui::SharedString,
+) -> gpui::Div {
+    let layout = crate::overflow::field_label_layout(label, required, metrics);
+    let mut text = label.to_string();
+    let label_bytes = text.len();
+    if required {
+        text.push_str(" *");
+    }
+    let mut font = gpui::Font::default();
+    font.family = family.clone();
+    let mut runs = vec![gpui::TextRun {
+        len: label_bytes,
+        font: font.clone(),
+        color: secondary,
+        background_color: None,
+        underline: None,
+        strikethrough: None,
+    }];
+    if required {
+        runs.push(gpui::TextRun {
+            len: " *".len(),
+            font,
+            color: error,
+            background_color: None,
+            underline: None,
+            strikethrough: None,
+        });
+    }
     div()
-        .flex()
-        .child(div().text_color(secondary).child(label.to_string()))
-        .when(required, |row| {
-            row.child(div().text_color(error).child(" *"))
-        })
+        .w_full()
+        .min_w(px(0.0))
+        .min_h(px(layout.lines as f32 * crate::overflow::label_line_px()))
+        .whitespace_normal()
+        .child(gpui::StyledText::new(text).with_runs(runs))
 }
 
 fn status_bar(

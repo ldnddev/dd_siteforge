@@ -1062,3 +1062,101 @@ fn followup_issues_double_click_resets_height_without_saving_it(cx: &mut TestApp
         assert!(shell.visible_text().contains("issues-height:400"));
     });
 }
+
+const LONG_PAGE_TITLE: &str = "Building Better Workflows: From Why Tools to Custom Frameworks";
+const LONG_META: &str = "A description that is much longer than the inspector field and used to overlap the Canonical URL row.";
+const LONG_LABEL: &str = "OG Image alt (uses hero alt, then site default)";
+
+fn site_with_long_copy() -> Site {
+    let mut site = Site::starter();
+    site.pages[0].head.title = LONG_PAGE_TITLE.to_string();
+    site.pages[0].head.meta_description = Some(LONG_META.to_string());
+    site.pages[0].head.og_description = Some(LONG_META.to_string());
+    site
+}
+
+fn report_line<'a>(report: &'a str, prefix: &str) -> &'a str {
+    report
+        .lines()
+        .find(|line| line.starts_with(prefix))
+        .unwrap_or_else(|| panic!("missing {prefix} in {report}"))
+}
+
+#[gpui::test]
+fn long_sidebar_title_and_inspector_text_stay_readable(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("site.json");
+    save_site(&path, &site_with_long_copy()).unwrap();
+    let shell = mount(cx, opts(dir.path(), Some(path)));
+    shell.update(cx, |shell, _| {
+        let text = shell.visible_text();
+        assert!(text.contains(LONG_PAGE_TITLE), "{text}");
+        assert!(text.contains(LONG_META), "{text}");
+        assert!(text.contains(LONG_LABEL), "{text}");
+        let report = shell.overflow_report().join("\n");
+        let side = report_line(&report, &format!("side:{LONG_PAGE_TITLE}|"));
+        assert!(side.contains("height:28"), "{side}");
+        assert!(side.contains('…'), "{side}");
+        assert!(side.contains(&format!("tip:{LONG_PAGE_TITLE}")), "{side}");
+        assert!(side.contains("scroll:yes"), "{side}");
+        let region = report_line(&report, "side:Site settings|");
+        assert!(region.contains("shown:Site settings"), "{region}");
+        assert!(region.contains("tip:-"), "{region}");
+        assert!(region.contains("scroll:no"), "{region}");
+        let value = report_line(&report, "value:meta_description|");
+        assert!(value.contains("height:28"), "{value}");
+        assert!(value.contains('…'), "{value}");
+        assert!(value.contains(&format!("tip:{LONG_META}")), "{value}");
+        assert!(value.contains("scroll:no"), "{value}");
+        let og = report_line(&report, "value:og_description|");
+        assert!(og.contains("scroll:no"), "{og}");
+        assert!(og.contains('…'), "{og}");
+        let label = report_line(&report, &format!("label:{LONG_LABEL}|"));
+        assert!(label.contains("truncated:no"), "{label}");
+        assert!(label.contains(&format!("text:{LONG_LABEL}")), "{label}");
+        assert!(
+            label.contains("lines:2") || label.contains("lines:3"),
+            "{label}"
+        );
+        let short = report_line(&report, "label:Title|");
+        assert!(short.contains("lines:1"), "{short}");
+        let short_row = short
+            .split("|row:")
+            .nth(1)
+            .and_then(|rest| rest.parse::<f32>().ok())
+            .expect("row height");
+        let long_row = label
+            .split("|row:")
+            .nth(1)
+            .and_then(|rest| rest.parse::<f32>().ok())
+            .expect("row height");
+        assert!(long_row > short_row, "{label} vs {short}");
+    });
+}
+
+#[gpui::test]
+fn reduced_motion_skips_sidebar_title_scroll(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("site.json");
+    save_site(&path, &site_with_long_copy()).unwrap();
+    crate::settings::save_to(
+        &dir.path().join("gui.json"),
+        &crate::settings::GuiSettings {
+            density: crate::settings::Density::Comfortable,
+            vim_keys: true,
+            reduced_motion: true,
+        },
+    )
+    .unwrap();
+    let shell = mount(cx, opts(dir.path(), Some(path)));
+    shell.update(cx, |shell, _| {
+        let report = shell.overflow_report().join("\n");
+        let side = report_line(&report, &format!("side:{LONG_PAGE_TITLE}|"));
+        assert!(side.contains(&format!("tip:{LONG_PAGE_TITLE}")), "{side}");
+        assert!(side.contains('…'), "{side}");
+        assert!(side.contains("scroll:no"), "{side}");
+        let value = report_line(&report, "value:meta_description|");
+        assert!(value.contains("scroll:no"), "{value}");
+        assert!(value.contains(&format!("tip:{LONG_META}")), "{value}");
+    });
+}
