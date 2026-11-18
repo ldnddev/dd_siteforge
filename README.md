@@ -126,12 +126,14 @@ GUI-only preferences live in `$XDG_CONFIG_HOME/ldnddev/dd_siteforge/gui.json` (d
 
 ### Hyprland / Omarchy
 
-Once team ticket #121 ships, or from the release that includes it, the windows use these app ids so you can write window rules (for example, to float the preview):
+The windows use these app ids so you can write window rules (for example, to float the preview):
 
 - Main window: `dev.ldnddev.dd_siteforge`
 - Preview companion: `dev.ldnddev.dd_siteforge.preview`
 
-Example Hyprland rule for the preview window, after that change (Hyprland 0.53+ syntax, as used in current Omarchy):
+The GUI launcher `~/.local/share/applications/dd_siteforge-gui.desktop` sets `StartupWMClass=dev.ldnddev.dd_siteforge`. The preview companion opens at 360×248 (minimum 320×200).
+
+Example Hyprland rule for the preview window (Hyprland 0.53+ syntax, as used in current Omarchy):
 
 ```
 windowrule = float on, match:class ^(dev\.ldnddev\.dd_siteforge\.preview)$
