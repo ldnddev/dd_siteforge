@@ -1,6 +1,7 @@
 //! Read-only shell data: sidebar, outline, inspector, welcome rows.
 //! Render and the view tests both read these strings.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use dd_siteforge_core::component_kind::ComponentKind;
@@ -11,7 +12,8 @@ use dd_siteforge_core::cursor::{
 };
 use dd_siteforge_core::editform::{COLUMN_ITEM_FORM, EditFormState, FieldKind};
 use dd_siteforge_core::model::{
-    DdSection, Page, PageNode, RobotsDirective, SectionColumn, SectionComponent, Site,
+    CardItem, DdHero, DdSection, Media, Page, PageNode, RobotsDirective, SectionColumn,
+    SectionComponent, Site, page_parent_index,
 };
 use dd_siteforge_core::session::Session;
 
@@ -21,7 +23,6 @@ pub enum SideTarget {
     Header,
     Footer,
     Page(usize),
-    Folder,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -30,6 +31,10 @@ pub struct SideRow {
     pub label: String,
     pub depth: u32,
     pub badges: Vec<&'static str>,
+    /// A page that has child pages. Site, header, and footer rows are never expandable.
+    pub expandable: bool,
+    /// Child pages are drawn under this row.
+    pub expanded: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -45,6 +50,13 @@ pub enum Target {
         node: usize,
         column: usize,
         component: usize,
+    },
+    /// One `dd-card` entry. The TUI lists these under the card; selecting one edits that item.
+    CardItem {
+        node: usize,
+        column: usize,
+        component: usize,
+        item: usize,
     },
     RegionRoot,
     HeaderAlert,
@@ -82,9 +94,61 @@ pub struct OutlineRow {
     pub label: String,
     pub detail: String,
     pub depth: u32,
+    /// A page section whose columns are hidden in the blueprint.
+    pub collapsed: bool,
     pub issues: usize,
     /// Header and footer sections draw these as one proportional row.
     pub columns: Vec<ColumnCard>,
+    /// Identifying content for the blueprint. Empty fields stay blank.
+    pub face: BlueprintFace,
+    /// Card entries share this `parts/whole` so the blueprint can pack a row.
+    pub card_span: Option<(u32, u32)>,
+}
+
+/// Text and image the blueprint draws for a hero or a card entry.
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct BlueprintFace {
+    pub image: String,
+    pub title: String,
+    pub subtitle: String,
+    pub copy: String,
+    pub links: Vec<String>,
+}
+
+/// One column inside a page-section frame, plus the components that sit in it.
+pub struct SectionColumnBlock {
+    pub header: usize,
+    pub body: Vec<OutlineBlock>,
+}
+
+/// One painted outline block. A page section wraps its columns. Card entries pack into rows.
+pub enum OutlineBlock {
+    Row(usize),
+    Cards(Vec<Vec<usize>>),
+    Section {
+        header: usize,
+        columns: Vec<SectionColumnBlock>,
+    },
+}
+
+fn bare_row(
+    target: Target,
+    label: String,
+    detail: String,
+    depth: u32,
+    issues: usize,
+) -> OutlineRow {
+    OutlineRow {
+        target,
+        label,
+        detail,
+        depth,
+        collapsed: false,
+        issues,
+        columns: Vec::new(),
+        face: BlueprintFace::default(),
+        card_span: None,
+    }
 }
 
 /// Screens 33 and 34 do not draw the header or footer column row.
@@ -184,6 +248,10 @@ pub struct FieldView {
     pub tab: InspTab,
     /// Markdown fields draw H2 / B / I / Link / List and no preview eye.
     pub toolbar: bool,
+    /// `value` is a stand-in ("Empty", a file prompt) rather than stored text.
+    pub placeholder: bool,
+    /// Enum choices for a dropdown. Empty for every other control, including toggles.
+    pub options: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -211,8 +279,12 @@ pub struct WelcomeRow {
     pub action: WelcomeAction,
 }
 
-pub fn sidebar_rows(site: &Site, filter: &str) -> (Vec<SideRow>, String) {
-    let pages = page_rows(site);
+pub fn sidebar_rows(
+    site: &Site,
+    filter: &str,
+    expanded: &HashSet<String>,
+) -> (Vec<SideRow>, String) {
+    let (pages, matched) = page_rows(site, expanded, filter);
     let q = filter.trim();
     if q.is_empty() {
         let mut rows = vec![
@@ -224,86 +296,91 @@ pub fn sidebar_rows(site: &Site, filter: &str) -> (Vec<SideRow>, String) {
         let count = site.pages.len();
         return (rows, count.to_string());
     }
-    let needle = q.to_ascii_lowercase();
-    let mut matched = 0usize;
-    let mut rows = Vec::new();
-    for row in pages {
-        let keep = match row.target {
-            SideTarget::Page(index) => {
-                let page = &site.pages[index];
-                let title = page.head.title.to_ascii_lowercase();
-                let slug = page.slug.to_ascii_lowercase();
-                title.contains(&needle) || slug.contains(&needle)
-            }
-            SideTarget::Folder => false,
-            _ => false,
-        };
-        if keep {
-            matched += 1;
-            rows.push(row);
-        }
-    }
-    // Keep parent folders of a match.
-    if matched > 0 {
-        rows = with_folders(&page_rows(site), &rows);
-    }
     let count = format!("{matched} of {}", site.pages.len());
-    (rows, count)
+    (pages, count)
 }
 
-fn with_folders(all: &[SideRow], matched: &[SideRow]) -> Vec<SideRow> {
-    let mut out = Vec::new();
-    let mut pending_folders: Vec<SideRow> = Vec::new();
-    for row in all {
-        match row.target {
-            SideTarget::Folder => pending_folders.push(row.clone()),
-            SideTarget::Page(_) => {
-                if matched
-                    .iter()
-                    .any(|hit| hit.label == row.label && hit.depth == row.depth)
-                {
-                    out.append(&mut pending_folders);
-                    out.push(row.clone());
-                } else {
-                    pending_folders.retain(|folder| folder.depth < row.depth);
+fn page_forest(site: &Site) -> (Vec<usize>, Vec<Vec<usize>>) {
+    let n = site.pages.len();
+    let mut children = vec![Vec::new(); n];
+    let mut roots = Vec::new();
+    for index in 0..n {
+        match page_parent_index(&site.pages, index) {
+            Some(parent) => children[parent].push(index),
+            None => roots.push(index),
+        }
+    }
+    (roots, children)
+}
+
+/// Visible page rows. An empty filter hides children of collapsed pages.
+/// A filter shows matches and their ancestor pages, and draws those ancestors open.
+fn page_rows(site: &Site, expanded: &HashSet<String>, filter: &str) -> (Vec<SideRow>, usize) {
+    let (roots, children) = page_forest(site);
+    let needle = filter.trim().to_ascii_lowercase();
+    let (keep, matched) = if needle.is_empty() {
+        (None, site.pages.len())
+    } else {
+        let mut keep = vec![false; site.pages.len()];
+        let mut matched = 0usize;
+        for (index, page) in site.pages.iter().enumerate() {
+            let title = page.head.title.to_ascii_lowercase();
+            let slug = page.slug.to_ascii_lowercase();
+            if title.contains(&needle) || slug.contains(&needle) {
+                matched += 1;
+                keep[index] = true;
+                let mut cur = index;
+                while let Some(parent) = page_parent_index(&site.pages, cur) {
+                    keep[parent] = true;
+                    if parent == cur {
+                        break;
+                    }
+                    cur = parent;
                 }
             }
-            _ => {}
         }
-    }
-    out
-}
-
-fn page_rows(site: &Site) -> Vec<SideRow> {
+        (Some(keep), matched)
+    };
     let mut rows = Vec::new();
-    let mut folders: Vec<String> = Vec::new();
-    for (index, page) in site.pages.iter().enumerate() {
-        let parts: Vec<&str> = page
-            .slug
-            .split('/')
-            .filter(|part| !part.is_empty())
-            .collect();
-        if parts.is_empty() {
-            rows.push(page_side(page, index, 0));
-            continue;
+    fn walk(
+        idx: usize,
+        depth: u32,
+        site: &Site,
+        children: &[Vec<usize>],
+        expanded: &HashSet<String>,
+        keep: Option<&[bool]>,
+        rows: &mut Vec<SideRow>,
+    ) {
+        if keep.is_some_and(|keep| !keep[idx]) {
+            return;
         }
-        let leaf = parts.len() - 1;
-        let mut depth_folders = Vec::new();
-        for (depth, part) in parts.iter().enumerate().take(leaf) {
-            depth_folders.push((*part).to_string());
-            if folders.len() > depth && folders[depth] == *part {
-                continue;
+        let has_children = !children[idx].is_empty();
+        let open = if let Some(keep) = keep {
+            children[idx].iter().any(|&child| keep[child])
+        } else {
+            has_children && expanded.contains(&site.pages[idx].id)
+        };
+        rows.push(page_side(
+            &site.pages[idx],
+            idx,
+            depth,
+            has_children,
+            open && has_children,
+        ));
+        if open {
+            for &child in &children[idx] {
+                walk(child, depth + 1, site, children, expanded, keep, rows);
             }
-            folders.truncate(depth);
-            folders.push((*part).to_string());
-            rows.push(side(*part, SideTarget::Folder, depth as u32, vec![]));
         }
-        rows.push(page_side(page, index, leaf as u32));
     }
-    rows
+    let keep_slice = keep.as_deref();
+    for &root in &roots {
+        walk(root, 0, site, &children, expanded, keep_slice, &mut rows);
+    }
+    (rows, matched)
 }
 
-fn page_side(page: &Page, index: usize, depth: u32) -> SideRow {
+fn page_side(page: &Page, index: usize, depth: u32, expandable: bool, expanded: bool) -> SideRow {
     let mut badges = Vec::new();
     if page.slug == "404" || page.slug.ends_with("/404") {
         badges.push("404");
@@ -319,7 +396,10 @@ fn page_side(page: &Page, index: usize, depth: u32) -> SideRow {
     } else {
         page.head.title.clone()
     };
-    side(label, SideTarget::Page(index), depth, badges)
+    let mut row = side(label, SideTarget::Page(index), depth, badges);
+    row.expandable = expandable;
+    row.expanded = expanded;
+    row
 }
 
 fn side(
@@ -333,23 +413,27 @@ fn side(
         label: label.into(),
         depth,
         badges,
+        expandable: false,
+        expanded: false,
     }
 }
 
-pub fn outline_rows(site: &Site, target_region: &SideTarget, page_index: usize) -> Vec<OutlineRow> {
+pub fn outline_rows(
+    site: &Site,
+    target_region: &SideTarget,
+    _page_index: usize,
+) -> Vec<OutlineRow> {
     match target_region {
-        SideTarget::Site => vec![OutlineRow {
-            target: Target::SiteSettings,
-            label: "Site settings".to_string(),
-            detail: site.name.clone(),
-            depth: 0,
-            issues: 0,
-            columns: Vec::new(),
-        }],
+        SideTarget::Site => vec![bare_row(
+            Target::SiteSettings,
+            "Site settings".to_string(),
+            site.name.clone(),
+            0,
+            0,
+        )],
         SideTarget::Header => region_rows(site, true),
         SideTarget::Footer => region_rows(site, false),
         SideTarget::Page(index) => page_outline(site, *index),
-        SideTarget::Folder => page_outline(site, page_index),
     }
 }
 
@@ -365,30 +449,30 @@ fn page_outline(site: &Site, index: usize) -> Vec<OutlineRow> {
         .filter(|text| !text.is_empty())
         .unwrap_or(page.head.title.as_str());
     let description = page.head.meta_description.as_deref().unwrap_or("");
-    rows.push(OutlineRow {
-        target: Target::PageHead,
-        label: "HEAD".to_string(),
-        detail: format!(
+    rows.push(bare_row(
+        Target::PageHead,
+        "HEAD".to_string(),
+        format!(
             "meta title {}/60 · description {}/160",
             meta_title.chars().count(),
             description.chars().count()
         ),
-        depth: 0,
-        issues: 0,
-        columns: Vec::new(),
-    });
+        0,
+        0,
+    ));
     for (node_idx, node) in page.nodes.iter().enumerate() {
         match node {
             PageNode::Hero(hero) => {
                 let state = hero_to_form_state(hero);
-                rows.push(OutlineRow {
-                    target: Target::Hero(node_idx),
-                    label: "dd-hero".to_string(),
-                    detail: hero.parent_title.clone(),
-                    depth: 0,
-                    issues: issue_count(&state),
-                    columns: Vec::new(),
-                });
+                let mut row = bare_row(
+                    Target::Hero(node_idx),
+                    "dd-hero".to_string(),
+                    hero.parent_title.clone(),
+                    0,
+                    issue_count(&state),
+                );
+                row.face = hero_face(hero);
+                rows.push(row);
             }
             PageNode::Section(section) => {
                 rows.push(section_row(Target::Section(node_idx), section, 0));
@@ -426,23 +510,21 @@ fn region_rows(site: &Site, header: bool) -> Vec<OutlineRow> {
             .filter(|text| !text.is_empty())
             .map(|label| format!("Header root · CTA label “{label}”"))
             .unwrap_or_else(|| "Header root".to_string());
-        rows.push(OutlineRow {
-            target: Target::RegionRoot,
-            label: "dd-header".to_string(),
-            detail: cta,
-            depth: 0,
-            issues: 0,
-            columns: Vec::new(),
-        });
+        rows.push(bare_row(
+            Target::RegionRoot,
+            "dd-header".to_string(),
+            cta,
+            0,
+            0,
+        ));
         if site.header.alert.is_some() {
-            rows.push(OutlineRow {
-                target: Target::HeaderAlert,
-                label: "dd-alert".to_string(),
-                detail: String::new(),
-                depth: 1,
-                issues: 0,
-                columns: Vec::new(),
-            });
+            rows.push(bare_row(
+                Target::HeaderAlert,
+                "dd-alert".to_string(),
+                String::new(),
+                1,
+                0,
+            ));
         }
         push_region_sections(&mut rows, &site.header.sections);
     } else {
@@ -453,14 +535,13 @@ fn region_rows(site: &Site, header: bool) -> Vec<OutlineRow> {
         } else {
             format!("Footer root · {blurb} · {copyright}")
         };
-        rows.push(OutlineRow {
-            target: Target::RegionRoot,
-            label: "dd-footer".to_string(),
+        rows.push(bare_row(
+            Target::RegionRoot,
+            "dd-footer".to_string(),
             detail,
-            depth: 0,
-            issues: 0,
-            columns: Vec::new(),
-        });
+            0,
+            0,
+        ));
         push_region_sections(&mut rows, &site.footer.sections);
     }
     rows
@@ -511,25 +592,23 @@ fn column_card(target: Target, index: usize, column: &SectionColumn) -> ColumnCa
 }
 
 fn section_row(target: Target, section: &DdSection, depth: u32) -> OutlineRow {
-    OutlineRow {
+    bare_row(
         target,
-        label: format!("DD-SECTION · {}", section.id.to_ascii_uppercase()),
-        detail: section.section_title.clone().unwrap_or_default(),
+        format!("DD-SECTION · {}", section.id.to_ascii_uppercase()),
+        section.section_title.clone().unwrap_or_default(),
         depth,
-        issues: 0,
-        columns: Vec::new(),
-    }
+        0,
+    )
 }
 
 fn column_row(target: Target, index: usize, column: &SectionColumn, depth: u32) -> OutlineRow {
-    OutlineRow {
+    bare_row(
         target,
-        label: format!("col {}", index + 1),
-        detail: column.width_class.clone(),
+        format!("col {}", index + 1),
+        column.width_class.clone(),
         depth,
-        issues: 0,
-        columns: Vec::new(),
-    }
+        0,
+    )
 }
 
 fn push_components(
@@ -541,15 +620,313 @@ fn push_components(
     for (component_idx, component) in components.iter().enumerate() {
         let kind = ComponentKind::from_section_component(component);
         let state = component_to_form_state(component);
-        rows.push(OutlineRow {
-            target: target_at(component_idx),
-            label: kind.label().to_string(),
-            detail: String::new(),
+        let target = target_at(component_idx);
+        let mut row = bare_row(
+            target.clone(),
+            kind.label().to_string(),
+            String::new(),
             depth,
-            issues: state.as_ref().map(issue_count).unwrap_or(0),
-            columns: Vec::new(),
-        });
+            state.as_ref().map(issue_count).unwrap_or(0),
+        );
+        if !matches!(component, SectionComponent::Card(_)) {
+            if let Some(state) = &state {
+                row.face = face_from_state(state);
+            }
+        }
+        rows.push(row);
+        let SectionComponent::Card(card) = component else {
+            continue;
+        };
+        let Target::Component {
+            node,
+            column,
+            component: comp,
+        } = target
+        else {
+            continue;
+        };
+        let span = largest_dd_u_ratio(&card.parent_width);
+        for (item_idx, item) in card.items.iter().enumerate() {
+            let mut row = bare_row(
+                Target::CardItem {
+                    node,
+                    column,
+                    component: comp,
+                    item: item_idx,
+                },
+                format!("- {}: {}", item_idx + 1, short_title(&item.child_title)),
+                String::new(),
+                depth + 1,
+                state
+                    .as_ref()
+                    .and_then(|parent| parent.sub_state.get("items"))
+                    .and_then(|items| items.get(item_idx))
+                    .map(issue_count)
+                    .unwrap_or(0),
+            );
+            row.face = card_item_face(item);
+            row.card_span = Some(span);
+            rows.push(row);
+        }
     }
+}
+
+/// Outline label for a card entry. Matches the TUI tree row, without the indent.
+fn short_title(value: &str) -> String {
+    let trimmed = value.trim();
+    let text = if trimmed.is_empty() {
+        "(untitled)"
+    } else {
+        trimmed
+    };
+    let chars: Vec<char> = text.chars().collect();
+    if chars.len() <= 40 {
+        return text.to_string();
+    }
+    let mut out: String = chars.into_iter().take(37).collect();
+    out.push_str("...");
+    out
+}
+
+fn one_line(value: &str) -> String {
+    let text = value.split_whitespace().collect::<Vec<_>>().join(" ");
+    let chars: Vec<char> = text.chars().collect();
+    if chars.len() <= 160 {
+        return text;
+    }
+    let mut out: String = chars.into_iter().take(157).collect();
+    out.push_str("...");
+    out
+}
+
+fn hero_face(hero: &DdHero) -> BlueprintFace {
+    let image = match hero.resolved_media() {
+        Media::Image { url, .. } => url.trim().to_string(),
+        _ => String::new(),
+    };
+    BlueprintFace {
+        image,
+        title: hero.parent_title.trim().to_string(),
+        subtitle: hero.parent_subtitle.trim().to_string(),
+        copy: one_line(hero.parent_copy.as_deref().unwrap_or("")),
+        links: hero
+            .resolved_links()
+            .into_iter()
+            .filter_map(|link| {
+                let label = link.label.trim();
+                if label.is_empty() {
+                    None
+                } else {
+                    Some(label.to_string())
+                }
+            })
+            .collect(),
+    }
+}
+
+fn card_item_face(item: &CardItem) -> BlueprintFace {
+    let label = item.child_link_label.as_deref().unwrap_or("").trim();
+    let url = item.child_link_url.as_deref().unwrap_or("").trim();
+    let link = if !label.is_empty() {
+        Some(label.to_string())
+    } else if !url.is_empty() {
+        Some(url.to_string())
+    } else {
+        None
+    };
+    BlueprintFace {
+        image: item.child_image_url.trim().to_string(),
+        title: item.child_title.trim().to_string(),
+        subtitle: item.child_subtitle.trim().to_string(),
+        copy: one_line(&item.child_copy),
+        links: link.into_iter().collect(),
+    }
+}
+
+fn face_from_state(state: &EditFormState) -> BlueprintFace {
+    let mut face = BlueprintFace::default();
+    for field in state.form.fields {
+        if !state.field_visible(field) {
+            continue;
+        }
+        let value = one_line(state.get(field.id));
+        if value.is_empty() {
+            continue;
+        }
+        match field.id {
+            "parent_title" | "child_title" | "section_title" | "text" => face.title = value,
+            "parent_subtitle" | "child_subtitle" => face.subtitle = value,
+            "parent_copy" | "child_copy" => face.copy = value,
+            "parent_image_url" | "media_image_url" | "child_image_url" if face.image.is_empty() => {
+                face.image = value;
+            }
+            "child_link_label" | "cta_label" => face.links.push(value),
+            "links" => {
+                let Some(items) = state.sub_state.get(field.id) else {
+                    continue;
+                };
+                for item in items {
+                    let label = one_line(item.get("label"));
+                    if !label.is_empty() {
+                        face.links.push(label);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    face
+}
+
+/// Largest authored `dd-u-*` breakpoint, matching the TUI card blueprint.
+fn largest_dd_u_ratio(width_class: &str) -> (u32, u32) {
+    let tokens: Vec<&str> = width_class.split_whitespace().collect();
+    for prefix in ["dd-u-xxl-", "dd-u-xl-", "dd-u-lg-", "dd-u-md-", "dd-u-sm-"] {
+        for token in &tokens {
+            if let Some(rest) = token.strip_prefix(prefix) {
+                if let Some(ratio) = parse_ratio(rest) {
+                    return ratio;
+                }
+            }
+        }
+    }
+    for token in &tokens {
+        if let Some(rest) = token.strip_prefix("dd-u-") {
+            if let Some(ratio) = parse_ratio(rest) {
+                return ratio;
+            }
+        }
+    }
+    (1, 1)
+}
+
+fn card_parent(target: &Target) -> Option<(usize, usize, usize)> {
+    match target {
+        Target::CardItem {
+            node,
+            column,
+            component,
+            ..
+        } => Some((*node, *column, *component)),
+        _ => None,
+    }
+}
+
+/// Group outline indexes. A page section owns every following row until the next
+/// top-level block, and its columns own the components under them. Card entries
+/// pack into rows the way the TUI packs `dd-u-*` fractions (three across at `8/24`).
+pub fn outline_blocks(rows: &[OutlineRow]) -> Vec<OutlineBlock> {
+    let mut blocks = Vec::new();
+    let mut index = 0;
+    while index < rows.len() {
+        if matches!(rows[index].target, Target::Section(_)) {
+            let header = index;
+            index += 1;
+            let body_end = (index..rows.len())
+                .find(|cursor| rows[*cursor].depth == 0)
+                .unwrap_or(rows.len());
+            let mut columns = Vec::new();
+            let mut cursor = index;
+            while cursor < body_end {
+                if matches!(rows[cursor].target, Target::Column { .. }) {
+                    let col_header = cursor;
+                    cursor += 1;
+                    let start = cursor;
+                    while cursor < body_end && !matches!(rows[cursor].target, Target::Column { .. })
+                    {
+                        cursor += 1;
+                    }
+                    columns.push(SectionColumnBlock {
+                        header: col_header,
+                        body: pack_inner(rows, start..cursor),
+                    });
+                } else {
+                    cursor += 1;
+                }
+            }
+            blocks.push(OutlineBlock::Section { header, columns });
+            index = body_end;
+        } else if rows[index].card_span.is_some() {
+            let parent = card_parent(&rows[index].target);
+            let start = index;
+            index += 1;
+            while index < rows.len()
+                && rows[index].card_span.is_some()
+                && card_parent(&rows[index].target) == parent
+            {
+                index += 1;
+            }
+            blocks.push(OutlineBlock::Cards(pack_card_rows(rows, start..index)));
+        } else {
+            blocks.push(OutlineBlock::Row(index));
+            index += 1;
+        }
+    }
+    blocks
+}
+
+fn pack_inner(rows: &[OutlineRow], range: std::ops::Range<usize>) -> Vec<OutlineBlock> {
+    let mut blocks = Vec::new();
+    let mut index = range.start;
+    while index < range.end {
+        if rows[index].card_span.is_none() {
+            blocks.push(OutlineBlock::Row(index));
+            index += 1;
+            continue;
+        }
+        let parent = card_parent(&rows[index].target);
+        let mut end = index + 1;
+        while end < range.end
+            && rows[end].card_span.is_some()
+            && card_parent(&rows[end].target) == parent
+        {
+            end += 1;
+        }
+        blocks.push(OutlineBlock::Cards(pack_card_rows(rows, index..end)));
+        index = end;
+    }
+    blocks
+}
+
+fn pack_card_rows(rows: &[OutlineRow], range: std::ops::Range<usize>) -> Vec<Vec<usize>> {
+    let mut visual = Vec::new();
+    let mut current = Vec::new();
+    let mut used_num = 0u64;
+    let mut used_den = 1u64;
+    for index in range {
+        let (parts, whole) = rows[index].card_span.unwrap_or((1, 1));
+        let parts = u64::from(parts.max(1));
+        let whole = u64::from(whole.max(1));
+        if current.is_empty() {
+            current.push(index);
+            used_num = parts;
+            used_den = whole;
+            continue;
+        }
+        let sum_num = used_num * whole + parts * used_den;
+        let sum_den = used_den * whole;
+        if sum_num * 64 > sum_den * 65 {
+            visual.push(std::mem::take(&mut current));
+            current.push(index);
+            used_num = parts;
+            used_den = whole;
+        } else {
+            current.push(index);
+            used_num = sum_num;
+            used_den = sum_den;
+        }
+    }
+    if !current.is_empty() {
+        visual.push(current);
+    }
+    visual
+}
+
+/// `assets/images/…` resolved under `source/images`, when that file exists.
+pub fn blueprint_image_file(site_json: &Path, url: &str) -> Option<PathBuf> {
+    let rel = dd_siteforge_core::og_image::source_image_rel(url)?;
+    let path = site_json.parent()?.join("source").join("images").join(rel);
+    path.is_file().then_some(path)
 }
 
 pub fn inspector(
@@ -649,6 +1026,8 @@ fn components_line(
         meta: None,
         tab: InspTab::Content,
         toolbar: false,
+        placeholder: false,
+        options: Vec::new(),
     }
 }
 
@@ -720,6 +1099,17 @@ fn visible_fields(state: &EditFormState) -> Vec<FieldView> {
                 }
                 _ => None,
             };
+            let placeholder = match chrome {
+                FieldChrome::Collection => false,
+                FieldChrome::Image | FieldChrome::Page => empty,
+                _ => empty,
+            };
+            let options = match (&field.kind, chrome) {
+                (FieldKind::Enum { options, .. }, FieldChrome::Select) => {
+                    options.iter().map(|option| (*option).to_string()).collect()
+                }
+                _ => Vec::new(),
+            };
             let value = if chrome == FieldChrome::Image && empty {
                 "Drop an image, or browse".to_string()
             } else if chrome == FieldChrome::Page && empty {
@@ -741,6 +1131,8 @@ fn visible_fields(state: &EditFormState) -> Vec<FieldView> {
                 meta,
                 tab,
                 toolbar: chrome == FieldChrome::Markdown,
+                placeholder,
+                options,
             }
         })
         .collect()
@@ -818,7 +1210,7 @@ fn issue_count(state: &EditFormState) -> usize {
         .fields
         .iter()
         .filter(|field| {
-            state.field_visible(field) && field.required && state.get(field.id).trim().is_empty()
+            state.field_visible(field) && field.required && state.field_value_empty(field)
         })
         .count()
 }
@@ -851,6 +1243,19 @@ pub fn form_state(
                 .components
                 .get(*component)
                 .and_then(component_to_form_state)
+        }
+        Target::CardItem {
+            node,
+            column,
+            component,
+            item,
+        } => {
+            let column = page_column(site, page_index, *node, *column)?;
+            component_to_form_state(column.components.get(*component)?)?
+                .sub_state
+                .get("items")?
+                .get(*item)
+                .cloned()
         }
         Target::RegionRoot => match region {
             SideTarget::Header => Some(header_root_to_form_state(&site.header)),
@@ -936,12 +1341,8 @@ pub fn breadcrumb(site: &Site, region: &SideTarget, page_index: usize, target: &
             _ => "Header".to_string(),
         },
         SideTarget::Footer => "Footer".to_string(),
-        SideTarget::Page(_) | SideTarget::Folder => {
-            let page_at = match region {
-                SideTarget::Page(index) => *index,
-                _ => page_index,
-            };
-            let page = site.pages.get(page_at);
+        SideTarget::Page(index) => {
+            let page = site.pages.get(*index);
             let slug = page.map(|page| page.slug.as_str()).unwrap_or("page");
             match target {
                 Target::PageHead => slug.to_string(),
@@ -972,24 +1373,40 @@ pub fn breadcrumb(site: &Site, region: &SideTarget, page_index: usize, target: &
                         .unwrap_or("block");
                     format!("{slug} › {id} › {kind}")
                 }
+                Target::CardItem {
+                    node,
+                    column,
+                    component,
+                    item,
+                } => {
+                    let id = section_at(site, page_index, *node)
+                        .map(|section| section.id.as_str())
+                        .unwrap_or("section");
+                    let title = page_column(site, page_index, *node, *column)
+                        .and_then(|column| column.components.get(*component))
+                        .and_then(|component| match component {
+                            SectionComponent::Card(card) => card.items.get(*item),
+                            _ => None,
+                        })
+                        .map(|entry| short_title(&entry.child_title))
+                        .unwrap_or_else(|| "(untitled)".to_string());
+                    format!("{slug} › {id} › dd-card › {}: {title}", item + 1)
+                }
                 _ => slug.to_string(),
             }
         }
     }
 }
 
-pub fn title_crumb(site: &Site, region: &SideTarget, page_index: usize) -> String {
+pub fn title_crumb(site: &Site, region: &SideTarget, _page_index: usize) -> String {
     match region {
         SideTarget::Site => "/ Site settings".to_string(),
         SideTarget::Header => "/ Header".to_string(),
         SideTarget::Footer => "/ Footer".to_string(),
-        SideTarget::Page(_) | SideTarget::Folder => {
+        SideTarget::Page(index) => {
             let slug = site
                 .pages
-                .get(match region {
-                    SideTarget::Page(index) => *index,
-                    _ => page_index,
-                })
+                .get(*index)
                 .map(|page| page.slug.as_str())
                 .unwrap_or("");
             let parts: Vec<&str> = slug.split('/').filter(|part| !part.is_empty()).collect();
@@ -1002,16 +1419,11 @@ pub fn title_crumb(site: &Site, region: &SideTarget, page_index: usize) -> Strin
     }
 }
 
-pub fn block_count(site: &Site, region: &SideTarget, page_index: usize) -> usize {
+pub fn block_count(site: &Site, region: &SideTarget, _page_index: usize) -> usize {
     match region {
         SideTarget::Page(index) => site
             .pages
             .get(*index)
-            .map(|page| page.nodes.len())
-            .unwrap_or(0),
-        SideTarget::Folder => site
-            .pages
-            .get(page_index)
             .map(|page| page.nodes.len())
             .unwrap_or(0),
         SideTarget::Header => site.header.sections.len(),
@@ -1022,11 +1434,8 @@ pub fn block_count(site: &Site, region: &SideTarget, page_index: usize) -> usize
 
 pub fn status_meta(site: &Site, region: &SideTarget, page_index: usize) -> String {
     match region {
-        SideTarget::Page(_) | SideTarget::Folder => {
-            let page = site.pages.get(match region {
-                SideTarget::Page(index) => *index,
-                _ => page_index,
-            });
+        SideTarget::Page(index) => {
+            let page = site.pages.get(*index);
             let slug = page.map(|page| page.slug.as_str()).unwrap_or("page");
             format!("{slug} · {} blocks", block_count(site, region, page_index))
         }
@@ -1038,11 +1447,8 @@ pub fn status_meta(site: &Site, region: &SideTarget, page_index: usize) -> Strin
 
 pub fn outline_caption(site: &Site, region: &SideTarget, page_index: usize) -> (String, String) {
     match region {
-        SideTarget::Page(_) | SideTarget::Folder => {
-            let page = site.pages.get(match region {
-                SideTarget::Page(index) => *index,
-                _ => page_index,
-            });
+        SideTarget::Page(index) => {
+            let page = site.pages.get(*index);
             let title = page
                 .map(|page| {
                     if page.head.title.trim().is_empty() {
@@ -1154,7 +1560,7 @@ pub fn default_target(region: &SideTarget) -> Target {
     match region {
         SideTarget::Site => Target::SiteSettings,
         SideTarget::Header | SideTarget::Footer => Target::RegionRoot,
-        SideTarget::Page(_) | SideTarget::Folder => Target::PageHead,
+        SideTarget::Page(_) => Target::PageHead,
     }
 }
 

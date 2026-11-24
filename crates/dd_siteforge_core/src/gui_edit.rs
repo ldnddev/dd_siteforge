@@ -33,6 +33,8 @@ pub struct Draft {
     /// One previous value for the field last typed in. Ctrl+Z uses it first.
     text_undo: Option<(String, String)>,
     pub expanded: bool,
+    /// Character index in the focused text, URL, or textarea value.
+    caret: usize,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -116,6 +118,10 @@ impl GuiEdit {
         }
     }
 
+    pub fn drilled_index(&self) -> Option<usize> {
+        self.active()?.drill.last().map(|frame| frame.item_idx)
+    }
+
     pub fn back_label(&self) -> Option<String> {
         let draft = self.active()?;
         let frame = draft.drill.last()?;
@@ -135,6 +141,7 @@ impl GuiEdit {
 
     pub fn open(&mut self, key: impl Into<String>, cursor: Cursor, fresh: EditFormState) {
         let key = key.into();
+        let created = !self.drafts.contains_key(&key);
         self.drafts.entry(key.clone()).or_insert(Draft {
             state: fresh,
             cursor,
@@ -142,8 +149,14 @@ impl GuiEdit {
             invalid: Vec::new(),
             text_undo: None,
             expanded: false,
+            caret: 0,
         });
         self.active = Some(key);
+        if created {
+            if let Some(draft) = self.active_mut() {
+                snap_caret_to_end(draft);
+            }
+        }
     }
 
     pub fn select_item(&mut self, index: usize) {
@@ -169,8 +182,20 @@ impl GuiEdit {
         else {
             return false;
         };
+        let already = draft.state.focused_field == index;
         draft.state.focused_field = index;
+        if !already {
+            snap_caret_to_end(draft);
+        }
         true
+    }
+
+    pub fn focused_id(&self) -> Option<&str> {
+        self.active()?.state.focused().map(|field| field.id)
+    }
+
+    pub fn caret(&self) -> usize {
+        self.active().map(|draft| draft.caret).unwrap_or(0)
     }
 
     pub fn set_field(&mut self, id: &str, value: impl Into<String>) -> bool {
@@ -182,9 +207,14 @@ impl GuiEdit {
         if previous == value {
             return true;
         }
+        let focused_here = draft.state.focused().is_some_and(|field| field.id == id);
         draft.text_undo = Some((id.to_string(), previous));
         draft.state.set(id, value);
         draft.invalid.retain(|existing| existing != id);
+        if focused_here {
+            let len = draft.state.get(id).chars().count();
+            draft.caret = draft.caret.min(len);
+        }
         true
     }
 
@@ -196,12 +226,15 @@ impl GuiEdit {
             .active()
             .map(|draft| draft.state.get(&id).to_string())
             .unwrap_or_default();
-        let next = if ch == '\n' {
-            format!("{current}\n")
-        } else {
-            format!("{current}{ch}")
-        };
-        self.set_field(&id, next)
+        let caret = self.caret();
+        let (next, new_caret) = splice_range(&current, caret, caret, &ch.to_string());
+        if !self.set_field(&id, next) {
+            return false;
+        }
+        if let Some(draft) = self.active_mut() {
+            draft.caret = new_caret;
+        }
+        true
     }
 
     pub fn backspace_field(&mut self) -> bool {
@@ -212,9 +245,58 @@ impl GuiEdit {
             .active()
             .map(|draft| draft.state.get(&id).to_string())
             .unwrap_or_default();
-        let mut next = current;
-        next.pop();
-        self.set_field(&id, next)
+        let caret = self.caret().min(current.chars().count());
+        if caret == 0 {
+            return true;
+        }
+        let (next, new_caret) = splice_range(&current, caret - 1, caret, "");
+        if !self.set_field(&id, next) {
+            return false;
+        }
+        if let Some(draft) = self.active_mut() {
+            draft.caret = new_caret;
+        }
+        true
+    }
+
+    pub fn delete_forward(&mut self) -> bool {
+        let Some(id) = self.focused_text_id() else {
+            return false;
+        };
+        let current = self
+            .active()
+            .map(|draft| draft.state.get(&id).to_string())
+            .unwrap_or_default();
+        let len = current.chars().count();
+        let caret = self.caret().min(len);
+        if caret >= len {
+            return true;
+        }
+        let (next, new_caret) = splice_range(&current, caret, caret + 1, "");
+        if !self.set_field(&id, next) {
+            return false;
+        }
+        if let Some(draft) = self.active_mut() {
+            draft.caret = new_caret;
+        }
+        true
+    }
+
+    /// Move the text caret by `delta` characters. No-op on enums and collections.
+    pub fn move_caret(&mut self, delta: isize) -> bool {
+        let Some(id) = self.focused_text_id() else {
+            return false;
+        };
+        let len = self
+            .active()
+            .map(|draft| draft.state.get(&id).chars().count())
+            .unwrap_or(0);
+        let Some(draft) = self.active_mut() else {
+            return false;
+        };
+        let current = draft.caret.min(len);
+        draft.caret = (current as isize + delta).clamp(0, len as isize) as usize;
+        true
     }
 
     pub fn insert_markdown(&mut self, insert: MarkdownInsert) -> bool {
@@ -232,7 +314,13 @@ impl GuiEdit {
             return false;
         }
         let next = apply_markdown_insert(draft.state.get(&id), insert);
-        self.set_field(&id, next)
+        if !self.set_field(&id, next) {
+            return false;
+        }
+        if let Some(draft) = self.active_mut() {
+            snap_caret_to_end(draft);
+        }
+        true
     }
 
     pub fn focused_is_textarea(&self) -> bool {
@@ -683,6 +771,27 @@ impl GuiEdit {
     }
 }
 
+fn snap_caret_to_end(draft: &mut Draft) {
+    let len = draft
+        .state
+        .focused()
+        .map(|field| draft.state.get(field.id).chars().count())
+        .unwrap_or(0);
+    draft.caret = len;
+}
+
+/// Replace `current[start..end]` with `insert` and return the caret after the insert.
+fn splice_range(current: &str, start: usize, end: usize, insert: &str) -> (String, usize) {
+    let chars: Vec<char> = current.chars().collect();
+    let start = start.min(chars.len());
+    let end = end.clamp(start, chars.len());
+    let mut next: String = chars[..start].iter().collect();
+    next.push_str(insert);
+    let caret = next.chars().count();
+    next.extend(chars[end..].iter().copied());
+    (next, caret)
+}
+
 fn focused_subform_id(state: &EditFormState) -> Option<String> {
     let field = state.focused()?;
     matches!(field.kind, FieldKind::SubForm { .. }).then(|| field.id.to_string())
@@ -916,6 +1025,45 @@ mod tests {
             }
             _ => panic!("hero"),
         }
+    }
+
+    #[test]
+    fn text_caret_inserts_and_deletes_in_the_middle() {
+        let site = Site::starter();
+        let PageNode::Hero(hero) = &site.pages[0].nodes[0] else {
+            panic!("hero");
+        };
+        let mut edit = GuiEdit::new();
+        edit.open(
+            "hero",
+            Cursor::PageHero { page: 0, node: 0 },
+            hero_to_form_state(hero),
+        );
+        assert!(edit.focus_field("parent_title"));
+        let original = edit.active().unwrap().state.get("parent_title").to_string();
+        assert_eq!(edit.caret(), original.chars().count());
+        assert!(edit.move_caret(-4));
+        assert!(edit.type_char('X'));
+        assert_eq!(
+            edit.active().unwrap().state.get("parent_title"),
+            "Build with dd-frameXwork"
+        );
+        assert!(edit.backspace_field());
+        assert_eq!(edit.active().unwrap().state.get("parent_title"), original);
+        assert!(edit.type_char('Y'));
+        assert!(edit.move_caret(-1));
+        assert!(edit.delete_forward());
+        assert_eq!(edit.active().unwrap().state.get("parent_title"), original);
+        assert!(edit.move_caret(isize::MIN));
+        assert_eq!(edit.caret(), 0);
+        assert!(edit.type_char('Q'));
+        assert!(
+            edit.active()
+                .unwrap()
+                .state
+                .get("parent_title")
+                .starts_with('Q')
+        );
     }
 
     #[test]

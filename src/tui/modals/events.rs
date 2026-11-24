@@ -134,11 +134,7 @@ impl App {
         }
 
         if let Event::Key(key) = &evt {
-            if key.code == KeyCode::F(1) {
-                self.overlay = Some(Overlay::Help { scroll: 0 });
-                return Some(ModalResult::Continue);
-            }
-            if key.code == KeyCode::F(2) {
+            if matches!(key.code, KeyCode::F(1) | KeyCode::F(2)) {
                 self.open_theme_ui();
                 return Some(ModalResult::Continue);
             }

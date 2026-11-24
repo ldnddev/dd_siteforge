@@ -12,15 +12,16 @@ use dd_siteforge_core::export::join_inside;
 use dd_siteforge_core::gui_edit::{Commit, GuiEdit};
 use dd_siteforge_core::health::page_health;
 use dd_siteforge_core::issue::{Issue, IssueNode};
-use dd_siteforge_core::model::{Page, PageTemplate, Site, page_file_name};
+use dd_siteforge_core::model::{Page, PageTemplate, Site, page_file_name, page_parent_index};
 use dd_siteforge_core::serve::StaticServer;
 use dd_siteforge_core::session;
 use dd_siteforge_core::storage::{self, checkpoint_path};
 use dd_siteforge_core::validate::validate_site_with_root;
 use gpui::{
-    Animation, AnimationExt, App, ClickEvent, Context, FocusHandle, Focusable, IntoElement,
-    KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Render,
-    StatefulInteractiveElement, Styled, Window, div, prelude::*, px,
+    Animation, AnimationExt, App, ClickEvent, Context, FocusHandle, Focusable, FontWeight,
+    IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
+    ParentElement, Render, ScrollHandle, StatefulInteractiveElement, Styled, Window, div,
+    prelude::*, px,
 };
 use gpui_component::button::{Button, ButtonVariants};
 use std::sync::mpsc::Receiver;
@@ -34,10 +35,11 @@ use crate::keys::{self, show_inspector_tooltip, show_sidebar_tooltip};
 use crate::new_site::{self, CreatedSite};
 use crate::paint::{self, token};
 use crate::present::{
-    FieldChrome, InspTab, InspectorView, OutlineRow, SideRow, SideTarget, Target, WelcomeAction,
-    WelcomeRow, column_layout, default_target, form_state, inspector, inspector_draft,
-    load_error_message, outline_caption, outline_rows, sidebar_rows, status_meta, title_crumb,
-    welcome_rows,
+    BlueprintFace, FieldChrome, InspTab, InspectorView, NARROW_COLUMN_MIN, OutlineBlock,
+    OutlineRow, SideRow, SideTarget, Target, WelcomeAction, WelcomeRow, blueprint_image_file,
+    column_layout, default_target, form_state, inspector, inspector_draft, load_error_message,
+    outline_blocks, outline_caption, outline_rows, sidebar_rows, status_meta, title_crumb,
+    welcome_rows, width_share,
 };
 use crate::preview;
 use crate::publish::{self, PreviewChrome, PreviewView};
@@ -91,6 +93,42 @@ struct Appearance {
     hex_error: Option<String>,
 }
 
+struct SettingsDrawer {
+    density: &'static str,
+    vim_on: bool,
+    source: String,
+    status: String,
+    save_label: String,
+    themes: Vec<SettingsThemeRow>,
+    colors: Option<SettingsColors>,
+    /// 0 Themes, 1 Window, 2 Help.
+    nav: u8,
+    page: String,
+    query: String,
+    query_on: bool,
+    row: usize,
+}
+
+const SETTINGS_NAV: [&str; 3] = ["Themes", "Window", "Help"];
+
+struct SettingsThemeRow {
+    index: usize,
+    label: String,
+    selected: bool,
+}
+
+struct SettingsColors {
+    rows: Vec<SettingsColorRow>,
+    hex_draft: String,
+    hex_error: Option<String>,
+}
+
+struct SettingsColorRow {
+    index: usize,
+    label: String,
+    selected: bool,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Zone {
     Sidebar,
@@ -101,6 +139,8 @@ enum Zone {
 struct ShrinkOffer {
     source: PathBuf,
     field_id: String,
+    /// The test text dump reads this. The sheet copy lives in that dump.
+    #[cfg_attr(not(test), allow(dead_code))]
     long_edge: u32,
 }
 
@@ -229,6 +269,8 @@ pub struct Shell {
     last_width: f32,
     edit: GuiEdit,
     zone: Zone,
+    /// Field id whose enum dropdown is open.
+    enum_open: Option<String>,
     rename: Option<String>,
     insert_open: bool,
     insert_query: String,
@@ -268,11 +310,18 @@ pub struct Shell {
     wcag_bin: PathBuf,
     palette: Option<QueryUi>,
     find: Option<QueryUi>,
-    shortcuts_open: bool,
     appearance: Option<Appearance>,
+    /// Settings page. 0 is Themes, 1 is Window, 2 is Help.
+    settings_nav: u8,
+    settings_row: usize,
+    settings_query: String,
+    settings_query_on: bool,
+    /// Scroll port for the Settings page. Theme rows are children of this port.
+    settings_scroll: ScrollHandle,
     brand: Option<brand::BrandView>,
-    brand_fix: Vec<String>,
     collapsed_sections: HashSet<usize>,
+    /// Page ids whose children are shown. Empty starts every branch collapsed.
+    expanded_pages: HashSet<String>,
     theme_repaint: bool,
     keyboard_focus: bool,
     issues_height: f32,
@@ -352,6 +401,7 @@ impl Shell {
             last_width: 1280.0,
             edit: GuiEdit::new(),
             zone: Zone::Outline,
+            enum_open: None,
             rename: None,
             insert_open: false,
             insert_query: String::new(),
@@ -391,11 +441,15 @@ impl Shell {
             wcag_bin: opts.wcag_bin,
             palette: None,
             find: None,
-            shortcuts_open: false,
             appearance: None,
+            settings_nav: 0,
+            settings_row: 0,
+            settings_query: String::new(),
+            settings_query_on: false,
+            settings_scroll: ScrollHandle::new(),
             brand: None,
-            brand_fix: Vec::new(),
             collapsed_sections: HashSet::new(),
+            expanded_pages: HashSet::new(),
             theme_repaint: false,
             keyboard_focus: false,
             issues_height: crate::density::ISSUES_DEFAULT,
@@ -498,6 +552,7 @@ impl Shell {
 
     /// Wait until a background save or export has been applied. Tests use this
     /// so a temp directory is not removed while a worker still has it open.
+    #[cfg(test)]
     pub fn drain_background(&mut self) {
         let deadline = Instant::now() + std::time::Duration::from_secs(2);
         while self.save_rx.is_some()
@@ -529,23 +584,26 @@ impl Shell {
         }
     }
 
+    #[cfg(test)]
     pub fn hover_issue_row(&mut self, index: Option<usize>) {
         self.issues_hover = index;
     }
 
     /// What the sidebar and Inspector will do with long text. The views paint
     /// these same layouts.
+    #[cfg(test)]
     pub fn overflow_report(&self) -> Vec<String> {
         let metrics = crate::density::metrics(self.settings.density);
         let reduced = self.settings.reduced_motion;
         let mut lines = Vec::new();
         if let Some(doc) = &self.document {
-            let (rows, _) = sidebar_rows(&doc.site, &self.filter);
+            let (rows, _) = sidebar_rows(&doc.site, &self.filter, &self.expanded_pages);
             for row in &rows {
                 let clip = crate::overflow::sidebar_row_layout(
                     &row.label,
                     row.depth,
                     &row.badges,
+                    matches!(row.target, SideTarget::Page(_)),
                     metrics,
                 );
                 let page = matches!(row.target, SideTarget::Page(_));
@@ -634,10 +692,12 @@ impl Shell {
         self.keyboard_focus = false;
     }
 
+    #[cfg(test)]
     pub fn set_page_filter(&mut self, query: &str) {
         self.filter = query.to_string();
     }
 
+    #[cfg(test)]
     pub fn testing_load_theme(&mut self, toml: &str) {
         let colors = ldnddev_theme::colors_from_str(toml).expect("theme toml");
         self.theme.gui = ldnddev_theme::resolve_gui_theme(&colors);
@@ -645,16 +705,98 @@ impl Shell {
         self.play("theme-apply");
     }
 
+    #[cfg(test)]
     pub fn testing_fail_preview(&mut self) {
         self.preview_failed = true;
         self.preview_window_open = true;
         self.play("status-crossfade");
     }
 
+    #[cfg(test)]
+    fn push_outline_line(&self, lines: &mut Vec<String>, row: &OutlineRow) {
+        lines.push(format!("outline:{}:{}", row.depth, row.label));
+        lines.push(row.label.clone());
+        if !row.detail.is_empty() {
+            lines.push(row.detail.clone());
+        }
+        push_face_lines(lines, &row.face);
+        let issues = row.issues + usize::from(self.draft_issue(&row.target));
+        if issues > 0 {
+            lines.push(format!(
+                "{} issue{}",
+                issues,
+                if issues == 1 { "" } else { "s" }
+            ));
+            lines.push("Issue".to_string());
+        }
+        if !row.columns.is_empty() {
+            let shares = row
+                .columns
+                .iter()
+                .map(|column| format!("{}/{}", column.parts, column.whole))
+                .collect::<Vec<_>>()
+                .join(" ");
+            lines.push(format!("column-row {shares}"));
+            for column in &row.columns {
+                let state = if column.target == self.target {
+                    "selected"
+                } else if column.empty {
+                    "empty"
+                } else {
+                    "filled"
+                };
+                lines.push(format!("{} {} {state}", column.label, column.md_class));
+                if column.empty {
+                    lines.push("Empty · / to add".to_string());
+                }
+                lines.extend(column.chips.iter().cloned());
+            }
+        }
+    }
+
+    #[cfg(test)]
+    fn push_outline_block(
+        &self,
+        lines: &mut Vec<String>,
+        outline: &[OutlineRow],
+        block: &OutlineBlock,
+    ) {
+        match block {
+            OutlineBlock::Row(index) => self.push_outline_line(lines, &outline[*index]),
+            OutlineBlock::Cards(visual_rows) => {
+                for visual in visual_rows {
+                    for index in visual {
+                        self.push_outline_line(lines, &outline[*index]);
+                    }
+                    if let Some(index) = visual.first() {
+                        let (parts, whole) = outline[*index].card_span.unwrap_or((1, 1));
+                        lines.push(format!("card-row:{parts}/{whole}:{}", visual.len()));
+                    }
+                }
+            }
+            OutlineBlock::Section { header, columns } => {
+                let row = &outline[*header];
+                let state = if row.collapsed { "closed" } else { "open" };
+                lines.push(format!("frame:{state}:{}", row.label));
+                lines.push(format!("section-columns:{}", columns.len()));
+                lines.push(column_count_label(columns.len()));
+                self.push_outline_line(lines, row);
+                for column in columns {
+                    self.push_outline_line(lines, &outline[column.header]);
+                    for child in &column.body {
+                        self.push_outline_block(lines, outline, child);
+                    }
+                }
+            }
+        }
+    }
+
+    #[cfg(test)]
     pub fn visible_text(&self) -> String {
         self.lines().join("\n")
     }
 
+    #[cfg(test)]
     pub fn lines(&self) -> Vec<String> {
         let mut lines = Vec::new();
         lines.push(match self.screen {
@@ -664,6 +806,9 @@ impl Shell {
             Screen::Editor => "screen:editor".to_string(),
         });
         lines.push(format!("title:{}", self.title_name()));
+        if matches!(self.screen, Screen::Editor | Screen::Welcome) {
+            lines.push("title-search:240".to_string());
+        }
         if self.screen == Screen::Editor {
             if let Some(doc) = &self.document {
                 lines.push(format!(
@@ -709,7 +854,7 @@ impl Shell {
             }
             Screen::Editor => {
                 if let Some(doc) = &self.document {
-                    let (rows, count) = sidebar_rows(&doc.site, &self.filter);
+                    let (rows, count) = sidebar_rows(&doc.site, &self.filter, &self.expanded_pages);
                     lines.push(format!("pages:{count}"));
                     if doc.site.pages.is_empty() && self.filter.is_empty() {
                         lines.push("No pages".to_string());
@@ -736,6 +881,16 @@ impl Shell {
                             label.push_str(badge);
                         }
                         lines.push(label);
+                        if matches!(row.target, SideTarget::Page(_)) {
+                            let state = if !row.expandable {
+                                "leaf"
+                            } else if row.expanded {
+                                "open"
+                            } else {
+                                "closed"
+                            };
+                            lines.push(format!("tree:{state}:depth:{}:{}", row.depth, row.label));
+                        }
                     }
                     let outline = self.outline();
                     let (heading, caption) =
@@ -745,43 +900,8 @@ impl Shell {
                     if outline.is_empty() && matches!(self.region, SideTarget::Page(_)) {
                         lines.push("No nodes on this page.".to_string());
                     }
-                    for row in &outline {
-                        lines.push(row.label.clone());
-                        if !row.detail.is_empty() {
-                            lines.push(row.detail.clone());
-                        }
-                        let issues = row.issues + usize::from(self.draft_issue(&row.target));
-                        if issues > 0 {
-                            lines.push(format!(
-                                "{} issue{}",
-                                issues,
-                                if issues == 1 { "" } else { "s" }
-                            ));
-                            lines.push("Issue".to_string());
-                        }
-                        if !row.columns.is_empty() {
-                            let shares = row
-                                .columns
-                                .iter()
-                                .map(|column| format!("{}/{}", column.parts, column.whole))
-                                .collect::<Vec<_>>()
-                                .join(" ");
-                            lines.push(format!("column-row {shares}"));
-                            for column in &row.columns {
-                                let state = if column.target == self.target {
-                                    "selected"
-                                } else if column.empty {
-                                    "empty"
-                                } else {
-                                    "filled"
-                                };
-                                lines.push(format!("{} {} {state}", column.label, column.md_class));
-                                if column.empty {
-                                    lines.push("Empty · / to add".to_string());
-                                }
-                                lines.extend(column.chips.iter().cloned());
-                            }
-                        }
+                    for block in outline_blocks(&outline) {
+                        self.push_outline_block(&mut lines, &outline, &block);
                     }
                     let view = self.inspector_view();
                     if view.empty {
@@ -798,9 +918,17 @@ impl Shell {
                                 lines.push(tab.label().to_string());
                             }
                         }
+                        let editing_id = if self.zone == Zone::Inspector {
+                            self.edit.focused_id().map(str::to_string)
+                        } else {
+                            None
+                        };
                         for field in &view.fields {
                             let star = if field.required { " *" } else { "" };
                             lines.push(format!("{}{star}", field.label));
+                            if editing_id.as_deref() == Some(field.id.as_str()) {
+                                lines.push(format!("editing {}", field.id));
+                            }
                             lines.push(field.value.clone());
                             if let Some(meta) = &field.meta {
                                 lines.push(meta.clone());
@@ -814,6 +942,19 @@ impl Shell {
                                 lines.push("I".to_string());
                                 lines.push("Link".to_string());
                                 lines.push("List".to_string());
+                            }
+                            if !field.options.is_empty() {
+                                lines.push(format!(
+                                    "dropdown:{}:{}",
+                                    field.id,
+                                    field.options.len()
+                                ));
+                                if self.enum_open.as_deref() == Some(field.id.as_str()) {
+                                    for option in &field.options {
+                                        let mark = if option == &field.value { "> " } else { "  " };
+                                        lines.push(format!("option:{mark}{option}"));
+                                    }
+                                }
                             }
                         }
                         if let Some(back) = &view.back {
@@ -1023,10 +1164,12 @@ impl Shell {
         lines
     }
 
+    #[cfg(test)]
     pub fn docks_visible(&self) -> (bool, bool) {
         self.docks(self.last_width)
     }
 
+    #[cfg(test)]
     pub fn dock_notes(&self, width: f32) -> Vec<String> {
         let mut notes = Vec::new();
         let (sidebar, inspector) = self.docks(width);
@@ -1053,6 +1196,7 @@ impl Shell {
         (sidebar, inspector)
     }
 
+    #[cfg(test)]
     fn sidebar_collapsed_for(&self, _width: f32) -> bool {
         false
     }
@@ -1077,10 +1221,12 @@ impl Shell {
             self.find_key(&key);
             return;
         }
-        if self.shortcuts_open {
-            if key == "escape" {
-                self.shortcuts_open = false;
-            }
+        if self.quit_dialog {
+            self.key_quit_dialog(&key);
+            return;
+        }
+        if self.restore_open {
+            self.key_restore(&key);
             return;
         }
         if self.appearance.is_some() {
@@ -1095,14 +1241,6 @@ impl Shell {
             {
                 self.begin_build();
             }
-            return;
-        }
-        if self.quit_dialog {
-            self.key_quit_dialog(&key);
-            return;
-        }
-        if self.restore_open {
-            self.key_restore(&key);
             return;
         }
         if self.template_open {
@@ -1130,6 +1268,19 @@ impl Shell {
         }
         if self.screen == Screen::Editor && self.edit_key(&key) {
             return;
+        }
+        if self.zone == Zone::Sidebar && self.screen == Screen::Editor {
+            match key.as_str() {
+                "left" => {
+                    self.set_sidebar_branch(false);
+                    return;
+                }
+                "right" => {
+                    self.set_sidebar_branch(true);
+                    return;
+                }
+                _ => {}
+            }
         }
         if key == keys::OPEN_KEY {
             self.request_choose_file();
@@ -1165,8 +1316,8 @@ impl Shell {
             KeyHit::Motion(Motion::Down) => self.move_sel(1),
             KeyHit::Motion(Motion::First) => self.move_edge(true),
             KeyHit::Motion(Motion::Last) => self.move_edge(false),
-            KeyHit::Motion(Motion::Collapse) => self.set_collapsed(true),
-            KeyHit::Motion(Motion::Expand) => self.set_collapsed(false),
+            KeyHit::Motion(Motion::Collapse) => self.collapse_focused(true),
+            KeyHit::Motion(Motion::Expand) => self.collapse_focused(false),
             KeyHit::Verb(verb) => self.run_verb(verb),
             KeyHit::Type(ch) => self.type_list(ch),
             KeyHit::Ignore => {}
@@ -1309,6 +1460,10 @@ impl Shell {
         if self.document.is_none() {
             return;
         }
+        if self.zone == Zone::Sidebar {
+            self.move_sidebar(delta);
+            return;
+        }
         let len = self.outline().len() as i32;
         if len == 0 {
             return;
@@ -1358,6 +1513,9 @@ impl Shell {
                 self.load_error = None;
                 self.screen = Screen::Editor;
                 self.new_site.open = false;
+                self.expanded_pages.clear();
+                self.reveal_page_ancestors();
+                self.sync_selection_indices();
             }
             Err(err) => {
                 self.load_error = Some(LoadFailure {
@@ -1371,11 +1529,13 @@ impl Shell {
         }
     }
 
+    #[cfg(test)]
     pub fn show_loading(&mut self, label: &str) {
         self.loading_label = label.to_string();
         self.screen = Screen::Loading;
     }
 
+    #[cfg(test)]
     pub fn show_phase(&mut self, phase: SavePhase) {
         if let Some(doc) = self.document.as_mut() {
             doc.show_phase(phase);
@@ -1567,6 +1727,8 @@ impl Shell {
         self.target = Target::PageHead;
         self.outline_index = 0;
         self.template_open = false;
+        self.reveal_page_ancestors();
+        self.sync_selection_indices();
         self.toast("New page — fill in title and HEAD, Ctrl+S to add.");
     }
 
@@ -1581,6 +1743,7 @@ impl Shell {
         let Some(doc) = self.document.as_mut() else {
             return;
         };
+        let mut applied = false;
         if self.edit.active_key().is_some() {
             match self.edit.commit(&mut doc.site) {
                 Commit::Blocked(message) | Commit::Failed(message) => {
@@ -1591,7 +1754,10 @@ impl Shell {
                     self.toast("Item saved — editing parent.");
                     return;
                 }
-                Commit::Applied => doc.mark_dirty(),
+                Commit::Applied => {
+                    doc.mark_dirty();
+                    applied = true;
+                }
             }
         }
         let kind = if doc.conflict {
@@ -1600,8 +1766,12 @@ impl Shell {
             SaveKind::Checkpoint
         };
         self.enqueue_save(kind);
+        if applied {
+            self.sync_selection_indices();
+        }
     }
 
+    #[cfg(test)]
     pub fn revealed(&self) -> Option<PathBuf> {
         self.revealed.clone()
     }
@@ -1612,19 +1782,22 @@ impl Shell {
         self.refresh_new_site_error();
     }
 
+    #[cfg(test)]
     pub fn new_site_project(&mut self, name: &str) {
         self.new_site.project = name.to_string();
         self.new_site.field = 1;
     }
 
+    #[cfg(test)]
     pub fn select_sidebar_label(&mut self, label: &str) {
         let Some(doc) = &self.document else { return };
-        let (rows, _) = sidebar_rows(&doc.site, &self.filter);
+        let (rows, _) = sidebar_rows(&doc.site, &self.filter, &self.expanded_pages);
         if let Some(index) = rows.iter().position(|row| row.label == label) {
             self.select_sidebar(index);
         }
     }
 
+    #[cfg(test)]
     pub fn select_outline_label(&mut self, label: &str) {
         let rows = self.outline();
         if let Some(index) = rows.iter().position(|row| row.label == label) {
@@ -1648,6 +1821,7 @@ impl Shell {
     }
 
     /// `row` or `stack` for the current region's column grids at a window width.
+    #[cfg(test)]
     pub fn column_row_mode(&self, window_width: f32) -> &'static str {
         if self.document.is_none() {
             return "row";
@@ -2536,11 +2710,12 @@ impl Shell {
     }
 
     fn sync_selection_indices(&mut self) {
+        self.reveal_page_ancestors();
         let sidebar_index = {
             let Some(doc) = self.document.as_ref() else {
                 return;
             };
-            let (rows, _) = sidebar_rows(&doc.site, &self.filter);
+            let (rows, _) = sidebar_rows(&doc.site, &self.filter, &self.expanded_pages);
             rows.iter().position(|row| row.target == self.region)
         };
         if let Some(index) = sidebar_index {
@@ -2553,17 +2728,19 @@ impl Shell {
     }
 
     pub fn select_sidebar(&mut self, index: usize) {
-        let Some(doc) = &self.document else { return };
-        let (rows, _) = sidebar_rows(&doc.site, &self.filter);
-        let Some(row) = rows.get(index) else { return };
-        if matches!(row.target, SideTarget::Folder) {
-            return;
-        }
+        let target = {
+            let Some(doc) = &self.document else { return };
+            let (rows, _) = sidebar_rows(&doc.site, &self.filter, &self.expanded_pages);
+            let Some(row) = rows.get(index) else { return };
+            row.target.clone()
+        };
+        self.enum_open = None;
         self.zone = Zone::Sidebar;
         self.sidebar_index = index;
-        self.region = row.target.clone();
-        if let SideTarget::Page(page) = row.target {
+        self.region = target.clone();
+        if let SideTarget::Page(page) = target {
             self.page_index = page;
+            self.reveal_page_ancestors();
         }
         self.target = default_target(&self.region);
         self.outline_index = 0;
@@ -2572,7 +2749,159 @@ impl Shell {
         self.sync_follow();
     }
 
+    /// Expand ancestors of the current page so its row is in the list.
+    /// The page itself stays collapsed.
+    fn reveal_page_ancestors(&mut self) {
+        let Some(doc) = &self.document else {
+            return;
+        };
+        if doc.site.pages.is_empty() {
+            return;
+        }
+        let mut cur = self.page_index.min(doc.site.pages.len() - 1);
+        let mut ids = Vec::new();
+        for _ in 0..doc.site.pages.len() {
+            let Some(parent) = page_parent_index(&doc.site.pages, cur) else {
+                break;
+            };
+            if parent == cur {
+                break;
+            }
+            if let Some(id) = doc.site.pages.get(parent).map(|page| page.id.clone()) {
+                ids.push(id);
+            }
+            cur = parent;
+        }
+        for id in ids {
+            self.expanded_pages.insert(id);
+        }
+    }
+
+    fn page_is_under(&self, page_idx: usize, ancestor: usize) -> bool {
+        let Some(doc) = &self.document else {
+            return false;
+        };
+        if page_idx == ancestor || page_idx >= doc.site.pages.len() {
+            return false;
+        }
+        let mut cur = page_idx;
+        for _ in 0..doc.site.pages.len() {
+            let Some(parent) = page_parent_index(&doc.site.pages, cur) else {
+                return false;
+            };
+            if parent == ancestor {
+                return true;
+            }
+            if parent == cur {
+                return false;
+            }
+            cur = parent;
+        }
+        false
+    }
+
+    fn page_branch_open(&self, page_idx: usize) -> bool {
+        self.document
+            .as_ref()
+            .and_then(|doc| doc.site.pages.get(page_idx))
+            .is_some_and(|page| self.expanded_pages.contains(&page.id))
+    }
+
+    fn set_page_branch(&mut self, page_idx: usize, expanded: bool) {
+        let Some(id) = self
+            .document
+            .as_ref()
+            .and_then(|doc| doc.site.pages.get(page_idx))
+            .map(|page| page.id.clone())
+        else {
+            return;
+        };
+        if expanded {
+            self.expanded_pages.insert(id);
+        } else {
+            self.expanded_pages.remove(&id);
+            if self.page_is_under(self.page_index, page_idx) {
+                self.page_index = page_idx;
+                self.region = SideTarget::Page(page_idx);
+                self.target = default_target(&self.region);
+                self.outline_index = 0;
+                self.tab = None;
+            }
+        }
+        self.sync_selection_indices();
+    }
+
+    fn toggle_sidebar_row(&mut self, index: usize) {
+        let Some(page_idx) = self.sidebar_page_at(index) else {
+            return;
+        };
+        let open = if self.filter.trim().is_empty() {
+            self.sidebar_row_expanded(index)
+        } else {
+            self.page_branch_open(page_idx)
+        };
+        self.set_page_branch(page_idx, !open);
+    }
+
+    fn set_sidebar_branch(&mut self, expand: bool) {
+        let Some(page_idx) = self.sidebar_page_at(self.sidebar_index) else {
+            return;
+        };
+        let open = if self.filter.trim().is_empty() {
+            self.sidebar_row_expanded(self.sidebar_index)
+        } else {
+            self.page_branch_open(page_idx)
+        };
+        if open == expand {
+            return;
+        }
+        self.set_page_branch(page_idx, expand);
+    }
+
+    fn sidebar_page_at(&self, index: usize) -> Option<usize> {
+        let doc = self.document.as_ref()?;
+        let (rows, _) = sidebar_rows(&doc.site, &self.filter, &self.expanded_pages);
+        let row = rows.get(index)?;
+        if !row.expandable {
+            return None;
+        }
+        match row.target {
+            SideTarget::Page(page) => Some(page),
+            _ => None,
+        }
+    }
+
+    fn sidebar_row_expanded(&self, index: usize) -> bool {
+        self.document
+            .as_ref()
+            .and_then(|doc| {
+                let (rows, _) = sidebar_rows(&doc.site, &self.filter, &self.expanded_pages);
+                rows.get(index).map(|row| row.expanded)
+            })
+            .unwrap_or(false)
+    }
+
+    fn move_sidebar(&mut self, delta: i32) {
+        let len = self
+            .document
+            .as_ref()
+            .map(|doc| {
+                sidebar_rows(&doc.site, &self.filter, &self.expanded_pages)
+                    .0
+                    .len()
+            })
+            .unwrap_or(0);
+        if len == 0 {
+            return;
+        }
+        let next = (self.sidebar_index as i32 + delta).clamp(0, len as i32 - 1) as usize;
+        if next != self.sidebar_index {
+            self.select_sidebar(next);
+        }
+    }
+
     pub fn select_outline(&mut self, index: usize) {
+        self.enum_open = None;
         self.leave_draft();
         self.zone = Zone::Outline;
         self.outline_index = index;
@@ -2583,6 +2912,7 @@ impl Shell {
 
     pub fn select_tab(&mut self, tab: InspTab) {
         self.tab = Some(tab);
+        self.enum_open = None;
     }
 
     pub fn toggle_sidebar(&mut self, width: f32) {
@@ -2662,6 +2992,14 @@ impl Shell {
         Some(rows)
     }
 
+    fn editing_field(&self) -> Option<(String, usize)> {
+        if self.zone != Zone::Inspector {
+            return None;
+        }
+        let id = self.edit.focused_id()?.to_string();
+        Some((id, self.edit.caret()))
+    }
+
     fn inspector_view(&self) -> InspectorView {
         let Some(doc) = &self.document else {
             return InspectorView {
@@ -2705,6 +3043,7 @@ impl Shell {
             .unwrap_or_else(|| "page".to_string())
     }
 
+    #[cfg(test)]
     fn push_issue_lines(&self, lines: &mut Vec<String>) {
         let health = self.health_items();
         let health_issues = health.iter().filter(|item| !item.ok).count();
@@ -2778,6 +3117,7 @@ impl Shell {
         }
     }
 
+    #[cfg(test)]
     fn push_notice_lines(&self, lines: &mut Vec<String>) {
         for notice in &self.toasts {
             match notice {
@@ -2836,11 +3176,10 @@ impl Shell {
     }
 
     fn on_key_down(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) {
-        self.handle_key(&chord(event));
-        if self.open_companion {
-            self.open_companion = false;
-            self.open_preview_window(cx);
+        if !self.try_type_key(event) {
+            self.handle_key(&chord(event));
         }
+        self.settle_companion(cx);
         if self.awaiting_choose {
             self.portal_choose(cx);
         }
@@ -2852,19 +3191,43 @@ impl Shell {
         }
     }
 
+    fn settle_companion(&mut self, cx: &mut Context<Self>) {
+        if self.open_companion {
+            self.open_companion = false;
+            self.open_preview_window(cx);
+        }
+    }
+
+    /// Opens the companion after this Shell update returns.
+    ///
+    /// `open_window` draws the new window before it returns, and that first
+    /// draw reads this Shell. Doing it here, while the key or click handler
+    /// still holds the update lease, panics.
     fn open_preview_window(&mut self, cx: &mut Context<Self>) {
         if !self.quit_runtime {
             self.preview_window_open = true;
             return;
         }
         let shell = cx.entity();
-        if !crate::preview_window::open(shell, cx) {
-            self.preview_window_open = false;
-            self.browser_fallback = true;
-            self.toast("Couldn't open the preview window");
-        } else {
-            self.preview_window_open = true;
-        }
+        cx.defer(move |cx| {
+            let opened = crate::preview_window::open(shell.clone(), cx);
+            let _ = shell.update(cx, |shell, cx| {
+                if opened {
+                    shell.preview_window_open = true;
+                } else {
+                    shell.preview_window_open = false;
+                    shell.browser_fallback = true;
+                    shell.toast("Couldn't open the preview window");
+                }
+                cx.notify();
+            });
+        });
+    }
+
+    #[cfg(test)]
+    pub fn testing_open_companion(&mut self, cx: &mut Context<Self>) {
+        self.open_companion = true;
+        self.settle_companion(cx);
     }
 
     fn portal_choose(&mut self, cx: &mut Context<Self>) {
@@ -2999,6 +3362,10 @@ impl Shell {
                 self.enter_inspector();
                 true
             }
+            "escape" if self.enum_open.is_some() => {
+                self.enum_open = None;
+                true
+            }
             "escape" if self.zone == Zone::Inspector => {
                 self.escape_inspector();
                 true
@@ -3019,11 +3386,35 @@ impl Shell {
     fn inspector_key(&mut self, key: &str) -> bool {
         use dd_siteforge_core::editform::FieldKind;
         match key {
+            "down" if self.enum_open.is_some() => {
+                self.edit.cycle_enum(true);
+                true
+            }
+            "up" if self.enum_open.is_some() => {
+                self.edit.cycle_enum(false);
+                true
+            }
+            "j" if self.enum_open.is_some()
+                && self.settings.vim_keys
+                && !self.focused_text_field() =>
+            {
+                self.edit.cycle_enum(true);
+                true
+            }
+            "k" if self.enum_open.is_some()
+                && self.settings.vim_keys
+                && !self.focused_text_field() =>
+            {
+                self.edit.cycle_enum(false);
+                true
+            }
             "tab" | "down" => {
+                self.enum_open = None;
                 self.edit.focus_next();
                 true
             }
             "shift-tab" | "up" => {
+                self.enum_open = None;
                 self.edit.focus_prev();
                 true
             }
@@ -3036,34 +3427,55 @@ impl Shell {
                 true
             }
             "left" => {
-                self.edit.cycle_enum(false);
+                if self.focused_text_field() {
+                    let _ = self.edit.move_caret(-1);
+                } else {
+                    self.edit.cycle_enum(false);
+                    self.reveal_enum_menu();
+                }
                 true
             }
             "right" => {
-                self.edit.cycle_enum(true);
+                if self.focused_text_field() {
+                    let _ = self.edit.move_caret(1);
+                } else {
+                    self.edit.cycle_enum(true);
+                    self.reveal_enum_menu();
+                }
                 true
             }
-            "shift-a" if self.settings.vim_keys => {
+            "home" if self.focused_text_field() => {
+                let _ = self.edit.move_caret(isize::MIN);
+                true
+            }
+            "end" if self.focused_text_field() => {
+                let _ = self.edit.move_caret(isize::MAX);
+                true
+            }
+            "shift-a" if self.settings.vim_keys && !self.focused_text_field() => {
                 let change = self.edit.add_item();
                 self.toast_sub(change);
                 true
             }
-            "shift-x" if self.settings.vim_keys => {
+            "shift-x" if self.settings.vim_keys && !self.focused_text_field() => {
                 let change = self.edit.remove_item();
                 self.toast_sub(change);
                 true
             }
-            "shift-j" if self.settings.vim_keys => {
+            "shift-j" if self.settings.vim_keys && !self.focused_text_field() => {
                 let change = self.edit.move_item(true);
                 self.toast_sub(change);
                 true
             }
-            "shift-k" if self.settings.vim_keys => {
+            "shift-k" if self.settings.vim_keys && !self.focused_text_field() => {
                 let change = self.edit.move_item(false);
                 self.toast_sub(change);
                 true
             }
             "enter" => {
+                if self.enum_open.take().is_some() {
+                    return true;
+                }
                 let kind = self
                     .edit
                     .active()
@@ -3097,18 +3509,182 @@ impl Shell {
                 let _ = self.edit.backspace_field();
                 true
             }
+            "delete" => {
+                if self.focused_text_field() {
+                    let _ = self.edit.delete_forward();
+                }
+                true
+            }
             "ctrl-o" => {
                 self.browse_focused_image();
                 true
             }
-            other if is_text(other) => {
-                if let Some(ch) = other.chars().next() {
-                    let _ = self.edit.type_char(ch);
+            other => {
+                if let Some(ch) = typed_char(other) {
+                    if self.focused_text_field() {
+                        let _ = self.edit.type_char(ch);
+                    }
+                    return true;
                 }
-                true
+                false
             }
-            _ => false,
         }
+    }
+
+    /// Platform text input. `chord` drops Shift and turns Space into `"space"`,
+    /// so a focused field reads `key_char` before that mapping.
+    fn try_type_key(&mut self, event: &KeyDownEvent) -> bool {
+        if self.screen != Screen::Editor
+            || self.chrome_takes_keys()
+            || self.zone != Zone::Inspector
+            || !self.focused_text_field()
+        {
+            return false;
+        }
+        let mods = event.keystroke.modifiers;
+        if mods.control || mods.platform || mods.alt || mods.function {
+            return false;
+        }
+        let Some(text) = event.keystroke.key_char.as_deref() else {
+            return false;
+        };
+        let mut chars = text.chars();
+        let Some(ch) = chars.next() else {
+            return false;
+        };
+        if chars.next().is_some() || ch.is_control() {
+            return false;
+        }
+        self.keyboard_focus = true;
+        let _ = self.edit.type_char(ch);
+        true
+    }
+
+    /// Click a right-panel field. The first click focuses it. A toggle flips
+    /// on that click. An enum opens its dropdown. A later click on an image
+    /// field browses.
+    pub fn focus_inspector_field(&mut self, id: &str) {
+        self.keyboard_focus = true;
+        let same = self.zone == Zone::Inspector && self.edit.focused_id() == Some(id);
+        self.zone = Zone::Inspector;
+        self.open_current_draft();
+        if !self.focus_field_id(id) {
+            return;
+        }
+        self.show_field_tab(id);
+        if self.focused_is_toggle() {
+            self.enum_open = None;
+            self.edit.cycle_enum(true);
+        } else if self.focused_is_enum() {
+            self.enum_open = Some(id.to_string());
+        } else {
+            self.enum_open = None;
+            if same && self.focused_import_field().is_some() {
+                self.browse_focused_image();
+            }
+        }
+    }
+
+    /// Open or close the dropdown for an enum field.
+    pub fn toggle_enum_menu(&mut self, id: &str) {
+        let open = self.enum_open.as_deref() == Some(id);
+        self.focus_inspector_field(id);
+        if open {
+            self.enum_open = None;
+        }
+    }
+
+    /// Pick one enum option and close the dropdown.
+    pub fn choose_enum_option(&mut self, id: &str, value: &str) {
+        self.focus_inspector_field(id);
+        if !self.focused_is_enum() {
+            return;
+        }
+        let _ = self.edit.set_field(id, value);
+        self.enum_open = None;
+    }
+
+    pub fn apply_markdown_button(&mut self, field_id: &str, insert: MarkdownInsert) {
+        self.keyboard_focus = true;
+        self.zone = Zone::Inspector;
+        self.open_current_draft();
+        let _ = self.focus_field_id(field_id);
+        self.show_field_tab(field_id);
+        let _ = self.edit.insert_markdown(insert);
+    }
+
+    fn show_field_tab(&mut self, id: &str) {
+        self.tab = Some(
+            if id == "sal" || id == "sal_duration" || id == "sal_delay" {
+                InspTab::Animation
+            } else if id.starts_with("media_") || id.starts_with("parent_image") {
+                InspTab::Media
+            } else {
+                InspTab::Content
+            },
+        );
+    }
+
+    fn focused_is_enum(&self) -> bool {
+        use dd_siteforge_core::editform::FieldKind;
+        self.edit.active().is_some_and(|draft| {
+            draft
+                .state
+                .focused()
+                .is_some_and(|field| matches!(field.kind, FieldKind::Enum { .. }))
+        })
+    }
+
+    /// Left/Right on a closed enum opens the list so the other choices are visible.
+    fn reveal_enum_menu(&mut self) {
+        if self.focused_is_toggle() || !self.focused_is_enum() {
+            return;
+        }
+        let id = self.edit.focused_id().map(str::to_string);
+        if let Some(id) = id {
+            self.enum_open = Some(id);
+        }
+    }
+
+    /// Dialogs and sheets handle their own keys. A focused field must not steal them.
+    fn chrome_takes_keys(&self) -> bool {
+        self.palette.is_some()
+            || self.find.is_some()
+            || self.appearance.is_some()
+            || self.quit_dialog
+            || self.restore_open
+            || self.template_open
+            || self.new_site.open
+            || self.switcher
+            || self.path_sheet.is_some()
+            || self.export_failure.is_some()
+            || self.issues_keys
+            || self.shrink.is_some()
+            || self.rename.is_some()
+            || self.insert_open
+    }
+
+    fn focus_field_from_click(
+        &mut self,
+        id: &str,
+        window: &mut gpui::Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.focus_inspector_field(id);
+        self.focus.focus(window, cx);
+        if self.awaiting_image.is_some() {
+            self.portal_image(cx);
+        }
+        cx.notify();
+    }
+
+    fn focused_is_toggle(&self) -> bool {
+        self.edit.active().is_some_and(|draft| {
+            draft
+                .state
+                .focused()
+                .is_some_and(|field| dd_siteforge_core::controls::control_for(field).is_toggle())
+        })
     }
 
     fn toast_sub(&mut self, change: SubChange) {
@@ -3144,7 +3720,19 @@ impl Shell {
             Commit::Applied => doc.mark_dirty(),
             Commit::Blocked(message) => self.toast(message),
             Commit::Failed(message) => self.toast(message),
-            Commit::ItemSaved => self.toast("Item saved — editing parent."),
+            Commit::ItemSaved => {
+                // `leave` wrote the item back onto the parent draft and stopped.
+                // Write the parent now, or the edit stays off the site when the
+                // selection moves to another block.
+                match self.edit.commit(&mut doc.site) {
+                    Commit::Applied => {
+                        doc.mark_dirty();
+                        self.toast("Item saved.");
+                    }
+                    Commit::Blocked(message) | Commit::Failed(message) => self.toast(message),
+                    Commit::ItemSaved => self.toast("Item saved — editing parent."),
+                }
+            }
         }
     }
 
@@ -3154,10 +3742,12 @@ impl Shell {
         self.open_current_draft();
     }
 
+    #[cfg(test)]
     pub fn focus_inspector(&mut self) {
         self.enter_inspector();
     }
 
+    #[cfg(test)]
     pub fn set_active_field(&mut self, id: &str, value: &str) -> bool {
         self.edit.set_field(id, value)
     }
@@ -3169,6 +3759,10 @@ impl Shell {
         let Some(cursor) = current_cursor(&self.region, self.page_index, &self.target) else {
             return;
         };
+        let card_item = match self.target {
+            Target::CardItem { item, .. } => Some(item),
+            _ => None,
+        };
         let key = match self.target {
             Target::Column { node, column } => {
                 format!("column:{}:{node}:{column}", self.page_index)
@@ -3179,12 +3773,25 @@ impl Shell {
             _ => format!("{cursor:?}"),
         };
         if self.edit.activate(&key) {
+            if let Some(item) = card_item {
+                self.drill_into_card_item(item);
+            }
             return;
         }
         let source = match self.target {
             Target::Column { node, .. } => Target::Section(node),
             Target::RegionColumn { section, .. } => Target::RegionSection(section),
-            _ => self.target.clone(),
+            Target::CardItem {
+                node,
+                column,
+                component,
+                ..
+            } => Target::Component {
+                node,
+                column,
+                component,
+            },
+            ref other => other.clone(),
         };
         let Some(state) = form_state(&doc.site, &self.region, self.page_index, &source) else {
             return;
@@ -3194,6 +3801,39 @@ impl Shell {
             self.edit.focus_field("columns");
             self.edit.select_item(column);
             let _ = self.edit.drill();
+        } else if let Some(item) = card_item {
+            self.drill_into_card_item(item);
+        }
+    }
+
+    /// Open one card entry on the parent card draft. A different open entry is
+    /// written back first so its fields are not dropped.
+    fn drill_into_card_item(&mut self, item: usize) {
+        if self.edit.drilled_index() == Some(item) {
+            return;
+        }
+        if self.edit.drilled_index().is_some() {
+            let _ = self.edit.save_item();
+        }
+        self.edit.focus_field("items");
+        self.edit.select_item(item);
+        let _ = self.edit.drill();
+    }
+
+    /// Click one row of an Items list. Opens that entry's fields.
+    pub fn edit_collection_item(&mut self, field_id: &str, index: usize) {
+        self.keyboard_focus = true;
+        self.zone = Zone::Inspector;
+        self.open_current_draft();
+        if self.edit.drilled_index().is_some() {
+            let _ = self.edit.save_item();
+        }
+        if !self.edit.focus_field(field_id) {
+            return;
+        }
+        self.edit.select_item(index);
+        if self.edit.drill().is_ok() {
+            self.toast("Editing item. Ctrl+S returns to parent.");
         }
     }
 
@@ -3218,12 +3858,19 @@ impl Shell {
         let Some(doc) = self.document.as_mut() else {
             return;
         };
-        match self.edit.undo(&mut doc.site) {
+        let changed = match self.edit.undo(&mut doc.site) {
             Ok(message) => {
                 doc.mark_dirty();
                 self.toast(message);
+                true
             }
-            Err(message) => self.toast(message),
+            Err(message) => {
+                self.toast(message);
+                false
+            }
+        };
+        if changed {
+            self.sync_selection_indices();
         }
     }
 
@@ -3232,12 +3879,19 @@ impl Shell {
         let Some(doc) = self.document.as_mut() else {
             return;
         };
-        match self.edit.redo(&mut doc.site) {
+        let changed = match self.edit.redo(&mut doc.site) {
             Ok(message) => {
                 doc.mark_dirty();
                 self.toast(message);
+                true
             }
-            Err(message) => self.toast(message),
+            Err(message) => {
+                self.toast(message);
+                false
+            }
+        };
+        if changed {
+            self.sync_selection_indices();
         }
     }
 
@@ -3286,6 +3940,7 @@ impl Shell {
         }
     }
 
+    #[cfg(test)]
     fn insert_kind_count(&self) -> usize {
         ComponentKind::all()
             .iter()
@@ -3341,6 +3996,12 @@ impl Shell {
                 node,
                 column,
                 component,
+            }
+            | Target::CardItem {
+                node,
+                column,
+                component,
+                ..
             } => (page, node, column, component),
             Target::Section(node) | Target::Hero(node) => (page, node, 0, 0),
             Target::Column { node, column } => (page, node, column, 0),
@@ -3460,6 +4121,7 @@ impl Shell {
         }
     }
 
+    #[cfg(test)]
     pub fn drag_collection_to(&mut self, from: usize, to: usize) {
         if self.edit.drag_item(from, to) {
             self.toast("Moved item.");
@@ -3498,6 +4160,7 @@ impl Shell {
         }
     }
 
+    #[cfg(test)]
     pub fn rename_page_to(&mut self, title: &str) {
         self.rename = Some(title.to_string());
         self.commit_rename();
@@ -3608,24 +4271,33 @@ impl Shell {
             .then(|| field.id.to_string())
     }
 
+    #[cfg(test)]
     pub fn set_field_value(&mut self, id: &str, value: &str) -> bool {
         self.edit.set_field(id, value)
+    }
+
+    #[cfg(test)]
+    pub fn testing_site(&self) -> Option<Site> {
+        self.document.as_ref().map(|doc| doc.site.clone())
     }
 
     pub fn focus_field_id(&mut self, id: &str) -> bool {
         self.edit.focus_field(id)
     }
 
+    #[cfg(test)]
     pub fn focused_field_id(&self) -> Option<String> {
         self.edit
             .active()
             .and_then(|draft| draft.state.focused().map(|field| field.id.to_string()))
     }
 
+    #[cfg(test)]
     pub fn insert_markdown(&mut self, which: MarkdownInsert) -> bool {
         self.edit.insert_markdown(which)
     }
 
+    #[cfg(test)]
     pub fn undo_depth(&self) -> usize {
         self.edit.undo_len()
     }
@@ -3700,10 +4372,16 @@ impl Shell {
         outline_rows(&doc.site, &self.region, self.page_index)
             .into_iter()
             .filter(|row| match &row.target {
-                Target::Column { node, .. } | Target::Component { node, .. } => {
-                    !self.collapsed_sections.contains(node)
-                }
+                Target::Column { node, .. }
+                | Target::Component { node, .. }
+                | Target::CardItem { node, .. } => !self.collapsed_sections.contains(node),
                 _ => true,
+            })
+            .map(|mut row| {
+                if let Target::Section(node) = row.target {
+                    row.collapsed = self.collapsed_sections.contains(&node);
+                }
+                row
             })
             .collect()
     }
@@ -3754,67 +4432,94 @@ impl Shell {
                 lines.push(format!("{mark} {}", hit.label));
             }
         }
-        if self.shortcuts_open {
-            lines.extend(crate::shortcuts::lines());
-        }
         if let Some(appearance) = &self.appearance {
-            lines.push("Settings › Appearance".to_string());
-            lines.push(format!(
-                "Density {}",
-                match self.settings.density {
-                    crate::settings::Density::Comfortable => "Comfortable",
-                    crate::settings::Density::Compact => "Compact",
-                }
-            ));
-            lines.push(format!(
-                "Vim keys {}",
-                if self.settings.vim_keys { "on" } else { "off" }
-            ));
-            lines.push(format!("Source: {}", self.theme.label));
-            let status = self
-                .theme
-                .warning
-                .clone()
-                .unwrap_or_else(|| "OK (loaded cleanly)".to_string());
-            lines.push(format!("Status: {status}"));
-            lines.push(format!("Save to {}", appearance.picker.save_target.label()));
-            if let Some(editor) = &appearance.editor {
-                lines.push("Theme color editor".to_string());
-                lines.push(
-                    if appearance.direct_editor {
-                        "Revert"
-                    } else {
-                        "Back"
-                    }
-                    .to_string(),
-                );
-                for (index, field) in editor.fields.iter().enumerate() {
-                    let hex = editor
-                        .palette
-                        .get(field.key)
-                        .map(|color| color.to_hex())
-                        .unwrap_or_else(|| "#000000".to_string());
-                    let mark = if index == editor.selected { ">" } else { " " };
-                    lines.push(format!("{mark} {} {hex}", field.key));
-                }
-                lines.push(editor.hex_draft.clone());
-                if let Some(err) = &appearance.hex_error {
-                    lines.push(err.clone());
-                }
+            lines.push("settings-panel:right:70".to_string());
+            lines.push("settings-nav:Themes,Window,Help".to_string());
+            let page = if !self.settings_query.trim().is_empty() {
+                "Results"
             } else {
-                for (index, row) in appearance.picker.rows.iter().enumerate() {
-                    let mark = if index == appearance.picker.selected {
-                        ">"
-                    } else {
-                        " "
-                    };
-                    lines.push(format!("{mark} {}", theme_row_label(row)));
-                }
-                lines.push("Edit colors…".to_string());
+                SETTINGS_NAV
+                    .get(self.settings_nav as usize)
+                    .copied()
+                    .unwrap_or("Themes")
+            };
+            lines.push(format!("settings-page:{page}"));
+            lines.push("Settings".to_string());
+            for (index, label) in SETTINGS_NAV.iter().enumerate() {
+                let mark = if self.settings_query.trim().is_empty()
+                    && self.settings_nav as usize == index
+                {
+                    ">"
+                } else {
+                    " "
+                };
+                lines.push(format!("{mark} {label}"));
             }
-            lines.push("Save".to_string());
-            lines.push("Comfortable".to_string());
-            lines.push("Compact".to_string());
+            if !self.settings_query.trim().is_empty() {
+                lines.push("Results".to_string());
+                lines.extend(self.settings_results());
+            } else if self.settings_nav == 1 {
+                lines.push(format!(
+                    "Density {}",
+                    match self.settings.density {
+                        crate::settings::Density::Comfortable => "Comfortable",
+                        crate::settings::Density::Compact => "Compact",
+                    }
+                ));
+                lines.push(format!(
+                    "Vim keys {}",
+                    if self.settings.vim_keys { "on" } else { "off" }
+                ));
+                lines.push("Comfortable".to_string());
+                lines.push("Compact".to_string());
+            } else if self.settings_nav == 2 {
+                lines.extend(crate::shortcuts::lines());
+            } else {
+                lines.push(format!("Source: {}", self.theme.label));
+                let status = self
+                    .theme
+                    .warning
+                    .clone()
+                    .unwrap_or_else(|| "OK (loaded cleanly)".to_string());
+                lines.push(format!("Status: {status}"));
+                lines.push(format!("Save to {}", appearance.picker.save_target.label()));
+                if let Some(editor) = &appearance.editor {
+                    lines.push("Theme color editor".to_string());
+                    lines.push(
+                        if appearance.direct_editor {
+                            "Revert"
+                        } else {
+                            "Back"
+                        }
+                        .to_string(),
+                    );
+                    for (index, field) in editor.fields.iter().enumerate() {
+                        let hex = editor
+                            .palette
+                            .get(field.key)
+                            .map(|color| color.to_hex())
+                            .unwrap_or_else(|| "#000000".to_string());
+                        let mark = if index == editor.selected { ">" } else { " " };
+                        lines.push(format!("{mark} {} {hex}", field.key));
+                    }
+                    lines.push(editor.hex_draft.clone());
+                    if let Some(err) = &appearance.hex_error {
+                        lines.push(err.clone());
+                    }
+                } else {
+                    lines.push("theme-list:flow".to_string());
+                    for (index, row) in appearance.picker.rows.iter().enumerate() {
+                        let mark = if index == appearance.picker.selected {
+                            ">"
+                        } else {
+                            " "
+                        };
+                        lines.push(format!("{mark} {}", theme_row_label(row)));
+                    }
+                    lines.push("Edit colors…".to_string());
+                }
+                lines.push("Save".to_string());
+            }
         }
         lines
     }
@@ -3862,6 +4567,22 @@ impl Shell {
         if self.screen != Screen::Editor {
             return;
         }
+        if self.zone == Zone::Sidebar {
+            let len = self
+                .document
+                .as_ref()
+                .map(|doc| {
+                    sidebar_rows(&doc.site, &self.filter, &self.expanded_pages)
+                        .0
+                        .len()
+                })
+                .unwrap_or(0);
+            if len == 0 {
+                return;
+            }
+            self.select_sidebar(if first { 0 } else { len - 1 });
+            return;
+        }
         let len = self.outline().len();
         if len == 0 {
             return;
@@ -3870,21 +4591,52 @@ impl Shell {
         self.activate_outline();
     }
 
-    fn set_collapsed(&mut self, collapse: bool) {
-        let node = self
-            .outline()
+    fn collapse_focused(&mut self, collapse: bool) {
+        if self.zone == Zone::Sidebar {
+            self.set_sidebar_branch(!collapse);
+        } else {
+            self.set_collapsed(collapse);
+        }
+    }
+
+    fn focused_section_node(&self) -> Option<usize> {
+        self.outline()
             .get(self.outline_index)
             .and_then(|row| match &row.target {
                 Target::Section(node)
                 | Target::Column { node, .. }
-                | Target::Component { node, .. } => Some(*node),
+                | Target::Component { node, .. }
+                | Target::CardItem { node, .. } => Some(*node),
                 _ => None,
-            });
-        let Some(node) = node else {
+            })
+    }
+
+    fn set_collapsed(&mut self, collapse: bool) {
+        let Some(node) = self.focused_section_node() else {
             return;
         };
+        self.set_section_collapsed(node, collapse);
+    }
+
+    pub fn toggle_section(&mut self, node: usize) {
+        let collapse = !self.collapsed_sections.contains(&node);
+        self.set_section_collapsed(node, collapse);
+    }
+
+    fn set_section_collapsed(&mut self, node: usize, collapse: bool) {
         if collapse {
             self.collapsed_sections.insert(node);
+            if matches!(
+                self.target,
+                Target::Section(n)
+                    | Target::Column { node: n, .. }
+                    | Target::Component { node: n, .. }
+                    | Target::CardItem { node: n, .. }
+                    if n == node
+            ) {
+                self.target = Target::Section(node);
+                self.sync_selection_indices();
+            }
         } else {
             self.collapsed_sections.remove(&node);
         }
@@ -3895,12 +4647,17 @@ impl Shell {
             return;
         }
         match verb {
-            Verb::Insert => self.open_insert(),
             Verb::Delete => self.delete_selection(),
             Verb::Undo => self.undo_edit(),
             Verb::Rename => self.begin_rename(),
             Verb::Copy | Verb::Paste | Verb::Repeat => {}
-            Verb::ToggleExpand => self.toggle_collapsed(),
+            Verb::ToggleExpand => {
+                if self.zone == Zone::Sidebar {
+                    self.toggle_sidebar_row(self.sidebar_index);
+                } else {
+                    self.toggle_collapsed();
+                }
+            }
             Verb::AddItem => {
                 let change = self.edit.add_item();
                 self.toast_sub(change);
@@ -3919,23 +4676,10 @@ impl Shell {
     }
 
     fn toggle_collapsed(&mut self) {
-        let node = self
-            .outline()
-            .get(self.outline_index)
-            .and_then(|row| match &row.target {
-                Target::Section(node)
-                | Target::Column { node, .. }
-                | Target::Component { node, .. } => Some(*node),
-                _ => None,
-            });
-        let Some(node) = node else {
+        let Some(node) = self.focused_section_node() else {
             return;
         };
-        if self.collapsed_sections.contains(&node) {
-            self.collapsed_sections.remove(&node);
-        } else {
-            self.collapsed_sections.insert(node);
-        }
+        self.toggle_section(node);
     }
 
     fn cycle_column(&mut self, delta: isize) {
@@ -3965,6 +4709,7 @@ impl Shell {
             Target::Section(node)
             | Target::Column { node, .. }
             | Target::Component { node, .. }
+            | Target::CardItem { node, .. }
             | Target::Hero(node) => node,
             _ => return,
         };
@@ -3983,7 +4728,9 @@ impl Shell {
     fn remove_outline_column(&mut self) {
         let (node, column) = match self.target {
             Target::Column { node, column } => (node, column),
-            Target::Component { node, column, .. } => (node, column),
+            Target::Component { node, column, .. } | Target::CardItem { node, column, .. } => {
+                (node, column)
+            }
             _ => return,
         };
         let Some(doc) = self.document.as_mut() else {
@@ -4008,14 +4755,7 @@ impl Shell {
             CommandId::RefreshPreview => self.refresh_preview(),
             CommandId::Validate => self.open_validation(),
             CommandId::Save => self.checkpoint(),
-            CommandId::Help => {
-                self.palette = None;
-                self.find = None;
-                self.appearance = None;
-                self.play("sheet-open");
-                self.shortcuts_open = true;
-            }
-            CommandId::Theme => self.open_appearance(),
+            CommandId::Help | CommandId::Theme => self.open_appearance(),
             CommandId::Find => self.open_find(),
             CommandId::Insert => self.open_insert(),
             CommandId::AddPage => self.open_template(),
@@ -4045,7 +4785,6 @@ impl Shell {
 
     fn open_palette(&mut self) {
         self.find = None;
-        self.shortcuts_open = false;
         self.appearance = None;
         self.play("popover-open");
         self.palette = Some(QueryUi {
@@ -4056,7 +4795,6 @@ impl Shell {
 
     fn open_find(&mut self) {
         self.palette = None;
-        self.shortcuts_open = false;
         self.appearance = None;
         self.play("popover-open");
         self.find = Some(QueryUi {
@@ -4273,6 +5011,10 @@ impl Shell {
     }
 
     fn open_appearance(&mut self) {
+        if self.appearance.is_some() {
+            self.revert_appearance();
+            return;
+        }
         let extras = theme_extras();
         let mut palette = ldnddev_theme::Palette::builtin();
         palette.omarchy = self.theme.choice.clone();
@@ -4290,59 +5032,357 @@ impl Shell {
         }
         self.palette = None;
         self.find = None;
-        self.shortcuts_open = false;
+        self.settings_nav = 0;
+        self.settings_row = 0;
+        self.settings_query.clear();
+        self.settings_query_on = false;
         self.play("sheet-open");
         self.appearance = Some(appearance);
+        self.reveal_theme_row();
+    }
+
+    fn settings_snapshot(&self) -> Option<SettingsDrawer> {
+        let appearance = self.appearance.as_ref()?;
+        let colors = appearance.editor.as_ref().map(|editor| SettingsColors {
+            rows: editor
+                .fields
+                .iter()
+                .enumerate()
+                .map(|(index, field)| {
+                    let hex = editor
+                        .palette
+                        .get(field.key)
+                        .map(|color| color.to_hex())
+                        .unwrap_or_else(|| "#000000".to_string());
+                    SettingsColorRow {
+                        index,
+                        label: format!("{} {hex}", field.key),
+                        selected: index == editor.selected,
+                    }
+                })
+                .collect(),
+            hex_draft: editor.hex_draft.clone(),
+            hex_error: appearance.hex_error.clone(),
+        });
+        let page = if !self.settings_query.trim().is_empty() {
+            "Results".to_string()
+        } else {
+            SETTINGS_NAV
+                .get(self.settings_nav as usize)
+                .copied()
+                .unwrap_or("Themes")
+                .to_string()
+        };
+        Some(SettingsDrawer {
+            density: match self.settings.density {
+                crate::settings::Density::Comfortable => "Comfortable",
+                crate::settings::Density::Compact => "Compact",
+            },
+            vim_on: self.settings.vim_keys,
+            source: self.theme.label.clone(),
+            status: self
+                .theme
+                .warning
+                .clone()
+                .unwrap_or_else(|| "OK (loaded cleanly)".to_string()),
+            save_label: appearance.picker.save_target.label().to_string(),
+            themes: appearance
+                .picker
+                .rows
+                .iter()
+                .enumerate()
+                .map(|(index, row)| SettingsThemeRow {
+                    index,
+                    label: theme_row_label(row),
+                    selected: index == appearance.picker.selected,
+                })
+                .collect(),
+            colors,
+            nav: self.settings_nav,
+            page,
+            query: self.settings_query.clone(),
+            query_on: self.settings_query_on,
+            row: self.settings_row,
+        })
+    }
+
+    fn choose_theme(&mut self, index: usize) {
+        let editing = self
+            .appearance
+            .as_ref()
+            .is_some_and(|appearance| appearance.editor.is_some());
+        if editing {
+            return;
+        }
+        if let Some(appearance) = &mut self.appearance {
+            appearance.picker.select(index);
+        }
+        self.apply_selected_theme();
+        self.reveal_theme_row();
+    }
+
+    fn choose_color_field(&mut self, index: usize) {
+        if let Some(editor) = self
+            .appearance
+            .as_mut()
+            .and_then(|appearance| appearance.editor.as_mut())
+        {
+            editor.select(index);
+        }
+    }
+
+    fn toggle_save_target(&mut self) {
+        let Some(appearance) = &mut self.appearance else {
+            return;
+        };
+        appearance.picker.save_target = appearance.picker.save_target.toggled();
+        let target = appearance.picker.save_target;
+        if let Some(editor) = &mut appearance.editor {
+            editor.save_target = target;
+        }
+    }
+
+    fn editing_hex(&self) -> bool {
+        self.appearance
+            .as_ref()
+            .and_then(|appearance| appearance.editor.as_ref())
+            .is_some_and(|editor| editor.editing_hex)
+    }
+
+    fn jump_settings_section(&mut self, dir: i32) {
+        let next = (self.settings_nav as i32 + dir).clamp(0, (SETTINGS_NAV.len() - 1) as i32) as u8;
+        if next != self.settings_nav {
+            self.settings_nav = next;
+            self.settings_row = 0;
+            self.reveal_theme_row();
+        }
+    }
+
+    fn settings_section_dir(key: &str, editing_hex: bool) -> Option<i32> {
+        match key {
+            "tab" => Some(1),
+            "shift-tab" | "backtab" => Some(-1),
+            "]" if !editing_hex => Some(1),
+            "[" if !editing_hex => Some(-1),
+            _ => None,
+        }
     }
 
     fn appearance_key(&mut self, key: &str) {
-        if self
-            .appearance
-            .as_ref()
-            .is_some_and(|appearance| appearance.editor.is_some())
+        if matches!(key, "f1" | "f2" | "ctrl-/" | "ctrl-,") {
+            self.revert_appearance();
+            return;
+        }
+        if self.settings_query_on {
+            self.settings_query_key(key);
+            return;
+        }
+        let editing_hex = self.editing_hex();
+        if key == "/" && !editing_hex {
+            self.settings_query_on = true;
+            self.settings_query.clear();
+            self.settings_row = 0;
+            return;
+        }
+        if let Some(dir) = Self::settings_section_dir(key, editing_hex) {
+            self.jump_settings_section(dir);
+            return;
+        }
+        if self.settings_nav == 0 && key == "t" && !editing_hex {
+            self.toggle_save_target();
+            return;
+        }
+        if self.settings_nav == 0
+            && self
+                .appearance
+                .as_ref()
+                .is_some_and(|appearance| appearance.editor.is_some())
         {
             self.editor_key(key);
             return;
         }
         let vim = self.settings.vim_keys;
+        if self.settings_nav == 0 {
+            match key {
+                "escape" => self.revert_appearance(),
+                "enter" => self.apply_selected_theme(),
+                "e" => self.open_color_editor(),
+                "s" | "y" => self.save_appearance(),
+                "up" => self.move_theme(-1),
+                "down" => self.move_theme(1),
+                "pageup" => self.move_theme(-8),
+                "pagedown" => self.move_theme(8),
+                "k" if vim => self.move_theme(-1),
+                "j" if vim => self.move_theme(1),
+                "g" if vim => self.move_theme_edge(true),
+                "shift-g" if vim => self.move_theme_edge(false),
+                _ => {}
+            }
+            return;
+        }
+        if self.settings_nav == 1 {
+            let last = 1usize;
+            match key {
+                "escape" => self.revert_appearance(),
+                "up" => self.settings_row = self.settings_row.saturating_sub(1),
+                "down" => self.settings_row = (self.settings_row + 1).min(last),
+                "pageup" => self.settings_row = 0,
+                "pagedown" => self.settings_row = last,
+                "k" if vim => self.settings_row = self.settings_row.saturating_sub(1),
+                "j" if vim => self.settings_row = (self.settings_row + 1).min(last),
+                "g" if vim => self.settings_row = 0,
+                "shift-g" if vim => self.settings_row = last,
+                "enter" => self.activate_window_row(),
+                _ => {}
+            }
+            return;
+        }
+        if key == "escape" {
+            self.revert_appearance();
+        }
+    }
+
+    fn settings_query_key(&mut self, key: &str) {
         match key {
-            "escape" => self.revert_appearance(),
-            "enter" => self.apply_selected_theme(),
-            "e" => self.open_color_editor(),
-            "s" | "y" => self.save_appearance(),
-            "tab" => {
-                if let Some(appearance) = &mut self.appearance {
-                    appearance.picker.save_target = appearance.picker.save_target.toggled();
+            "escape" => {
+                self.settings_query_on = false;
+                self.settings_query.clear();
+                self.settings_row = 0;
+            }
+            "backspace" => {
+                self.settings_query.pop();
+                self.settings_row = 0;
+            }
+            "enter" => self.activate_settings_result(),
+            "up" | "k" => self.settings_row = self.settings_row.saturating_sub(1),
+            "down" | "j" => {
+                let count = self.settings_results().len();
+                if count > 0 {
+                    self.settings_row = (self.settings_row + 1).min(count - 1);
                 }
             }
-            "up" => self.move_theme(-1),
-            "down" => self.move_theme(1),
-            "k" if vim => self.move_theme(-1),
-            "j" if vim => self.move_theme(1),
-            "g" if vim => self.move_theme_edge(true),
-            "shift-g" if vim => self.move_theme_edge(false),
+            other if other.chars().count() == 1 && !other.chars().any(|ch| ch.is_control()) => {
+                self.settings_query.push_str(other);
+                self.settings_row = 0;
+            }
             _ => {}
         }
     }
 
-    fn move_theme(&mut self, delta: i32) {
-        let Some(appearance) = &mut self.appearance else {
+    fn settings_results(&self) -> Vec<String> {
+        let query = self.settings_query.trim().to_ascii_lowercase();
+        if query.is_empty() {
+            return Vec::new();
+        }
+        let mut hits = Vec::new();
+        if let Some(appearance) = &self.appearance {
+            for row in &appearance.picker.rows {
+                let label = theme_row_label(row);
+                if label.to_ascii_lowercase().contains(&query) {
+                    hits.push(label);
+                }
+            }
+        }
+        for label in ["Density", "Vim keys"] {
+            if label.to_ascii_lowercase().contains(&query) {
+                hits.push(label.to_string());
+            }
+        }
+        for row in crate::shortcuts::rows() {
+            if row.action.to_ascii_lowercase().contains(&query) {
+                hits.push(row.action.to_string());
+            }
+        }
+        hits
+    }
+
+    fn activate_settings_result(&mut self) {
+        let Some(label) = self.settings_results().get(self.settings_row).cloned() else {
             return;
         };
-        let len = appearance.picker.rows.len() as i32;
-        if len == 0 {
+        self.settings_query_on = false;
+        self.settings_query.clear();
+        if label == "Density" || label == "Vim keys" {
+            self.settings_nav = 1;
+            self.settings_row = usize::from(label == "Vim keys");
+            self.activate_window_row();
             return;
         }
-        let next = (appearance.picker.selected as i32 + delta).clamp(0, len - 1) as usize;
-        appearance.picker.select(next);
+        if let Some(appearance) = &self.appearance {
+            if let Some(index) = appearance
+                .picker
+                .rows
+                .iter()
+                .position(|row| theme_row_label(row) == label)
+            {
+                self.settings_nav = 0;
+                self.choose_theme(index);
+                return;
+            }
+        }
+        self.settings_nav = 2;
+        self.settings_row = 0;
+    }
+
+    fn activate_window_row(&mut self) {
+        if self.settings_row == 0 {
+            let next = match self.settings.density {
+                crate::settings::Density::Comfortable => crate::settings::Density::Compact,
+                crate::settings::Density::Compact => crate::settings::Density::Comfortable,
+            };
+            self.set_density(next);
+        } else {
+            self.set_vim_keys(!self.settings.vim_keys);
+        }
+    }
+
+    fn move_theme(&mut self, delta: i32) {
+        let next = {
+            let Some(appearance) = &mut self.appearance else {
+                return;
+            };
+            let len = appearance.picker.rows.len() as i32;
+            if len == 0 {
+                return;
+            }
+            (appearance.picker.selected as i32 + delta).clamp(0, len - 1) as usize
+        };
+        if let Some(appearance) = &mut self.appearance {
+            appearance.picker.select(next);
+        }
+        self.apply_selected_theme();
+        self.reveal_theme_row();
     }
 
     fn move_theme_edge(&mut self, first: bool) {
-        let Some(appearance) = &mut self.appearance else {
+        let last = self
+            .appearance
+            .as_ref()
+            .map(|appearance| appearance.picker.rows.len().saturating_sub(1))
+            .unwrap_or(0);
+        if let Some(appearance) = &mut self.appearance {
+            appearance.picker.select(if first { 0 } else { last });
+        }
+        self.apply_selected_theme();
+        self.reveal_theme_row();
+    }
+
+    /// Theme names are the first children of `settings-scroll` on the Themes
+    /// page. Scroll that child into the port.
+    fn reveal_theme_row(&self) {
+        if self.settings_nav != 0 || self.settings_query_on {
+            return;
+        }
+        let Some(index) = self.appearance.as_ref().and_then(|appearance| {
+            if appearance.editor.is_some() {
+                None
+            } else {
+                Some(appearance.picker.selected)
+            }
+        }) else {
             return;
         };
-        let last = appearance.picker.rows.len().saturating_sub(1);
-        appearance.picker.select(if first { 0 } else { last });
+        self.settings_scroll.scroll_to_item(THEME_ROW_LEAD + index);
     }
 
     fn apply_selected_theme(&mut self) {
@@ -4523,6 +5563,20 @@ impl Shell {
         }
     }
 
+    /// Scrim and the header close control follow Escape.
+    /// A color editor steps back to the theme list. The theme list reverts.
+    fn close_settings(&mut self) {
+        if self
+            .appearance
+            .as_ref()
+            .is_some_and(|appearance| appearance.editor.is_some())
+        {
+            self.editor_key("escape");
+            return;
+        }
+        self.revert_appearance();
+    }
+
     pub fn set_vim_keys(&mut self, on: bool) {
         self.settings.vim_keys = on;
         self.play("vim-toggle");
@@ -4535,16 +5589,11 @@ impl Shell {
         let _ = crate::settings::save_to(&self.settings_file, &self.settings);
     }
 
-    pub fn launched_fix(&self) -> &[String] {
-        &self.brand_fix
-    }
-
     pub fn fix_brand(&mut self) {
         let colors = self.brand_colors_now();
         let Ok(colors) = brand::screen(&colors) else {
             return;
         };
-        self.brand_fix = brand::generate_args(&colors);
         if self.quit_runtime {
             let _ = brand::spawn_generate(&self.wcag_bin, &colors);
         }
@@ -4657,7 +5706,7 @@ impl Render for Shell {
         let sidebar = self
             .document
             .as_ref()
-            .map(|doc| sidebar_rows(&doc.site, &self.filter));
+            .map(|doc| sidebar_rows(&doc.site, &self.filter, &self.expanded_pages));
         let view = if self.screen == Screen::Editor {
             Some(self.inspector_view())
         } else {
@@ -4746,7 +5795,8 @@ impl Render for Shell {
         let toasts = self.toasts.clone();
         let preview_note = self.preview_note.clone();
         let phase5 = self.phase5_lines();
-        let appearance_open = self.appearance.is_some();
+        let settings = self.settings_snapshot();
+        let appearance_open = settings.is_some();
         let show_fix = self.brand.as_ref().is_some_and(|view| {
             brand::view_lines(view)
                 .iter()
@@ -4763,6 +5813,7 @@ impl Render for Shell {
                 .filter(|tab| view.tabs.contains(tab))
                 .or(view.tabs.first().copied())
         });
+        let editing = self.editing_field();
         let show_backup_button = self.screen == Screen::Error && self.backup_available();
         let metrics = crate::density::metrics(self.settings.density);
         let title_scroll = TitleScroll {
@@ -4807,6 +5858,7 @@ impl Render for Shell {
                 cx.notify();
             }))
             .size_full()
+            .relative()
             .flex()
             .flex_col()
             .bg(base)
@@ -4821,10 +5873,12 @@ impl Render for Shell {
                 sidebar_on,
                 inspector_on,
                 bar,
+                metrics.icon_button,
                 secondary,
                 placeholder,
                 border,
                 selected,
+                input,
             ))
             .when(save_error.is_some(), |row| {
                 let err = save_error.clone().unwrap_or_default();
@@ -4893,6 +5947,7 @@ impl Render for Shell {
                             sidebar_on,
                             inspector_on,
                             active_tab,
+                            editing,
                             panel,
                             base,
                             raised,
@@ -4913,6 +5968,8 @@ impl Render for Shell {
                             issues_h,
                             title_scroll,
                             family,
+                            self.enum_open.clone(),
+                            self.document.as_ref().map(|doc| doc.path.clone()),
                         ))
                     }),
             )
@@ -5064,11 +6121,10 @@ impl Render for Shell {
             .when(!preview_note.is_empty(), |row| {
                 row.child(div().px(px(12.0)).child(preview_note.clone()))
             })
-            .when(!phase5.is_empty(), |row| {
+            .when(!phase5.is_empty() && !appearance_open, |row| {
                 let panel = phase5_panel(
                     cx,
                     &phase5,
-                    appearance_open,
                     show_fix,
                     panel,
                     border,
@@ -5076,8 +6132,7 @@ impl Render for Shell {
                     text,
                     metrics.palette_inset,
                 );
-                let open =
-                    motion.is_some_and(|(id, _, _, _)| id == "popover-open" || id == "sheet-open");
+                let open = motion.is_some_and(|(id, _, _, _)| id == "popover-open");
                 row.child(animate_enter(panel, open, motion))
             })
             .child(div().px(px(12.0)).text_color(placeholder).child(mode_label))
@@ -5088,6 +6143,24 @@ impl Render for Shell {
                         .text_color(secondary)
                         .child(theme_warning.clone().unwrap_or_default()),
                 )
+            })
+            .when(appearance_open, |row| {
+                row.child(settings_panel(
+                    cx,
+                    settings.as_ref().unwrap(),
+                    show_fix,
+                    panel,
+                    border,
+                    secondary,
+                    text,
+                    selected,
+                    error,
+                    raised,
+                    metrics.palette_inset,
+                    bar,
+                    status_h,
+                    &self.settings_scroll,
+                ))
             })
     }
 }
@@ -5100,87 +6173,165 @@ fn title_bar(
     sidebar_on: bool,
     inspector_on: bool,
     height: f32,
+    icon: f32,
     secondary: gpui::Hsla,
     placeholder: gpui::Hsla,
     border: gpui::Hsla,
     selected: gpui::Hsla,
+    input: gpui::Hsla,
 ) -> gpui::Div {
+    let sidebar_tip = if sidebar_on {
+        "Hide sidebar".to_string()
+    } else {
+        show_sidebar_tooltip()
+    };
+    let inspector_tip = if inspector_on {
+        "Hide inspector".to_string()
+    } else {
+        show_inspector_tooltip()
+    };
     div()
         .h(px(height))
         .px(px(8.0))
         .flex()
         .items_center()
-        .gap(px(6.0))
+        .gap(px(8.0))
         .border_b_1()
         .border_color(border)
         .child(
-            Button::new("toggle-sidebar")
-                .label(if sidebar_on {
-                    "Sidebar".to_string()
-                } else {
-                    show_sidebar_tooltip()
-                })
-                .on_click(cx.listener(|shell, _: &ClickEvent, window, cx| {
-                    let width = f32::from(window.viewport_size().width);
-                    shell.toggle_sidebar(width);
-                    cx.notify();
-                })),
+            div()
+                .flex_1()
+                .min_w(px(0.0))
+                .flex()
+                .items_center()
+                .gap(px(8.0))
+                .child(icon_button(
+                    cx,
+                    "toggle-sidebar",
+                    "▤",
+                    icon,
+                    sidebar_tip,
+                    |shell, window, cx| {
+                        let width = f32::from(window.viewport_size().width);
+                        shell.toggle_sidebar(width);
+                        cx.notify();
+                    },
+                ))
+                .child(
+                    div()
+                        .id("site-switcher")
+                        .px(px(4.0))
+                        .flex()
+                        .items_center()
+                        .gap(px(4.0))
+                        .when(editor, |row| row.bg(selected))
+                        .child(title.to_string())
+                        .when(editor, |row| row.child("▾"))
+                        .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
+                            if shell.screen == Screen::Editor {
+                                shell.toggle_switcher();
+                                cx.notify();
+                            }
+                        })),
+                )
+                .when(editor && !crumb.is_empty(), |row| {
+                    row.child(div().text_color(secondary).child(crumb))
+                }),
         )
+        .child(title_search(cx, input, border, placeholder, secondary))
         .child(
             div()
-                .id("site-switcher")
-                .px(px(4.0))
-                .when(editor, |row| row.bg(selected))
-                .child(title.to_string())
-                .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
-                    if shell.screen == Screen::Editor {
-                        shell.toggle_switcher();
-                        cx.notify();
-                    }
-                })),
+                .flex_1()
+                .min_w(px(0.0))
+                .flex()
+                .items_center()
+                .justify_end()
+                .gap(px(8.0))
+                .when(editor, |row| {
+                    row.child(
+                        Button::new("preview-site")
+                            .label("Preview")
+                            .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
+                                shell.begin_preview();
+                                shell.settle_companion(cx);
+                                cx.notify();
+                            })),
+                    )
+                    .child(icon_button(
+                        cx,
+                        "toggle-inspector",
+                        "▦",
+                        icon,
+                        inspector_tip,
+                        |shell, window, cx| {
+                            let width = f32::from(window.viewport_size().width);
+                            shell.toggle_inspector(width);
+                            cx.notify();
+                        },
+                    ))
+                }),
         )
-        .when(editor && !crumb.is_empty(), |row| {
-            row.child(div().text_color(secondary).child(crumb))
+}
+
+fn icon_button(
+    cx: &mut Context<Shell>,
+    id: &'static str,
+    mark: &'static str,
+    size: f32,
+    tip: String,
+    action: impl Fn(&mut Shell, &mut Window, &mut Context<Shell>) + 'static,
+) -> gpui::Stateful<gpui::Div> {
+    div()
+        .id(id)
+        .w(px(size))
+        .h(px(size))
+        .flex_shrink_0()
+        .flex()
+        .items_center()
+        .justify_center()
+        .rounded(px(4.0))
+        .child(mark)
+        .tooltip(move |window, cx| {
+            gpui_component::tooltip::Tooltip::new(tip.clone()).build(window, cx)
         })
-        .when(!editor, |row| {
-            row.child(div().text_color(placeholder).child(""))
-        })
-        .child(div().flex_1())
-        .when(editor, |row| {
-            row.child(
-                Button::new("export-site")
-                    .label("Export")
-                    .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
-                        shell.begin_export();
-                        cx.notify();
-                    })),
-            )
-            .child(
-                Button::new("preview-site")
-                    .label("Preview")
-                    .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
-                        shell.begin_preview();
-                        if shell.open_companion {
-                            shell.open_companion = false;
-                            shell.open_preview_window(cx);
-                        }
-                        cx.notify();
-                    })),
-            )
-            .child(
-                Button::new("toggle-inspector")
-                    .label(if inspector_on {
-                        "Inspector".to_string()
-                    } else {
-                        show_inspector_tooltip()
-                    })
-                    .on_click(cx.listener(|shell, _: &ClickEvent, window, cx| {
-                        let width = f32::from(window.viewport_size().width);
-                        shell.toggle_inspector(width);
-                        cx.notify();
-                    })),
-            )
-        })
+        .on_click(cx.listener(move |shell, _: &ClickEvent, window, cx| {
+            action(shell, window, cx);
+        }))
+}
+
+/// Centered 240×24 launcher. Ctrl K and a click open the command palette.
+fn title_search(
+    cx: &mut Context<Shell>,
+    input: gpui::Hsla,
+    border: gpui::Hsla,
+    placeholder: gpui::Hsla,
+    secondary: gpui::Hsla,
+) -> gpui::Stateful<gpui::Div> {
+    div()
+        .id("title-search")
+        .w(px(240.0))
+        .h(px(24.0))
+        .flex_shrink_0()
+        .px(px(8.0))
+        .flex()
+        .items_center()
+        .justify_between()
+        .gap(px(8.0))
+        .rounded(px(4.0))
+        .bg(input)
+        .border_1()
+        .border_color(border)
+        .child(div().text_color(placeholder).child("Search pages…"))
+        .child(
+            div()
+                .text_color(secondary)
+                .text_size(px(11.0))
+                .child("Ctrl K"),
+        )
+        .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
+            shell.open_palette();
+            cx.notify();
+        }))
 }
 
 fn nudge_query(query: Option<&mut QueryUi>, len: usize, delta: i32) {
@@ -5270,7 +6421,6 @@ fn animate_enter(
 fn phase5_panel(
     cx: &mut Context<Shell>,
     lines: &[String],
-    appearance: bool,
     show_fix: bool,
     panel: gpui::Hsla,
     border: gpui::Hsla,
@@ -5293,58 +6443,6 @@ fn phase5_panel(
                 .cloned()
                 .map(|line| div().text_color(text).child(line)),
         )
-        .when(appearance, |col| {
-            col.child(
-                Button::new("appearance-save")
-                    .label("Save")
-                    .primary()
-                    .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
-                        shell.save_appearance();
-                        cx.notify();
-                    })),
-            )
-            .child(
-                Button::new("appearance-revert")
-                    .label("Revert")
-                    .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
-                        shell.revert_appearance();
-                        cx.notify();
-                    })),
-            )
-            .child(
-                Button::new("appearance-edit")
-                    .label("Edit colors…")
-                    .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
-                        shell.open_color_editor();
-                        cx.notify();
-                    })),
-            )
-            .child(
-                Button::new("density-comfortable")
-                    .label("Comfortable")
-                    .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
-                        shell.set_density(crate::settings::Density::Comfortable);
-                        cx.notify();
-                    })),
-            )
-            .child(
-                Button::new("density-compact")
-                    .label("Compact")
-                    .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
-                        shell.set_density(crate::settings::Density::Compact);
-                        cx.notify();
-                    })),
-            )
-            .child(
-                Button::new("vim-toggle")
-                    .label("Vim keys")
-                    .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
-                        let on = !shell.settings.vim_keys;
-                        shell.set_vim_keys(on);
-                        cx.notify();
-                    })),
-            )
-        })
         .when(show_fix, |col| {
             col.child(
                 Button::new("fix-wcag")
@@ -5358,6 +6456,775 @@ fn phase5_panel(
         .text_color(secondary)
 }
 
+fn settings_line(line: String, color: gpui::Hsla) -> gpui::Div {
+    div()
+        .w_full()
+        .whitespace_normal()
+        .text_color(color)
+        .child(line)
+}
+
+fn push_shortcut(
+    groups: &mut Vec<(&'static str, Vec<crate::shortcuts::Shortcut>)>,
+    row: crate::shortcuts::Shortcut,
+) {
+    if groups
+        .last()
+        .is_some_and(|(section, _)| *section == row.section)
+    {
+        groups.last_mut().unwrap().1.push(row);
+    } else {
+        groups.push((row.section, vec![row]));
+    }
+}
+
+fn shortcut_column(
+    groups: &[(&'static str, Vec<crate::shortcuts::Shortcut>)],
+    secondary: gpui::Hsla,
+    text: gpui::Hsla,
+    border: gpui::Hsla,
+    raised: gpui::Hsla,
+) -> gpui::Div {
+    div()
+        .flex()
+        .flex_col()
+        .gap(px(SECTION_GAP))
+        .child(settings_line(
+            "GUI key, then TUI key. F1 opens and closes this panel.".to_string(),
+            secondary,
+        ))
+        .children(groups.iter().map(|(section, rows)| {
+            outlined(
+                section,
+                border,
+                raised,
+                text,
+                div().flex().flex_col().children(
+                    rows.iter()
+                        .copied()
+                        .map(|row| shortcut_row(row, text, secondary)),
+                ),
+            )
+        }))
+        .child(settings_line(
+            "Letters j k g G h l work only with Vim keys on, and never inside text fields."
+                .to_string(),
+            secondary,
+        ))
+}
+
+fn shortcut_row(
+    row: crate::shortcuts::Shortcut,
+    text: gpui::Hsla,
+    secondary: gpui::Hsla,
+) -> gpui::Div {
+    div()
+        .h(px(24.0))
+        .flex()
+        .items_center()
+        .gap(px(8.0))
+        .text_color(text)
+        .child(div().flex_1().min_w(px(0.0)).child(row.action.to_string()))
+        .child(row.gui.to_string())
+        .child(
+            div()
+                .w(px(104.0))
+                .text_color(secondary)
+                .child(row.tui.to_string()),
+        )
+}
+
+fn shortcut_section(
+    secondary: gpui::Hsla,
+    text: gpui::Hsla,
+    border: gpui::Hsla,
+    raised: gpui::Hsla,
+) -> gpui::Div {
+    let mut groups = Vec::new();
+    for row in crate::shortcuts::rows() {
+        push_shortcut(&mut groups, *row);
+    }
+    outlined(
+        "Keyboard shortcuts",
+        border,
+        raised,
+        text,
+        shortcut_column(&groups, secondary, text, border, raised),
+    )
+}
+
+fn settings_panel(
+    cx: &mut Context<Shell>,
+    settings: &SettingsDrawer,
+    show_fix: bool,
+    panel: gpui::Hsla,
+    border: gpui::Hsla,
+    secondary: gpui::Hsla,
+    text: gpui::Hsla,
+    selected: gpui::Hsla,
+    error: gpui::Hsla,
+    raised: gpui::Hsla,
+    inset: f32,
+    top: f32,
+    bottom: f32,
+    scroll: &ScrollHandle,
+) -> gpui::Stateful<gpui::Div> {
+    let hint = settings_hint(settings);
+    div()
+        .id("settings-panel")
+        .occlude()
+        .absolute()
+        .top(px(top))
+        .right(px(0.0))
+        .bottom(px(bottom))
+        .w(gpui::relative(0.7))
+        .flex()
+        .flex_col()
+        .overflow_hidden()
+        .bg(panel)
+        .text_color(text)
+        .border_l_1()
+        .border_color(border)
+        .on_click(cx.listener(|_shell, _: &ClickEvent, _, cx| {
+            cx.stop_propagation();
+        }))
+        .child(settings_header(cx, border, secondary))
+        .child(
+            div()
+                .flex_1()
+                .min_h(px(0.0))
+                .flex()
+                .flex_row()
+                .overflow_hidden()
+                .child(settings_nav_column(
+                    cx, settings, border, secondary, selected, text,
+                ))
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w(px(0.0))
+                        .h_full()
+                        .flex()
+                        .flex_col()
+                        .overflow_hidden()
+                        .child(
+                            div()
+                                .h(px(28.0))
+                                .px(px(8.0))
+                                .flex()
+                                .items_center()
+                                .font_weight(FontWeight::BOLD)
+                                .bg(raised)
+                                .border_b_1()
+                                .border_color(border)
+                                .child(settings.page.clone()),
+                        )
+                        .child(
+                            div()
+                                .px(px(8.0))
+                                .py(px(4.0))
+                                .text_color(secondary)
+                                .child(hint),
+                        )
+                        .child(settings_body(
+                            cx, settings, show_fix, secondary, text, selected, error, border,
+                            raised, inset, scroll,
+                        )),
+                ),
+        )
+}
+
+fn settings_hint(settings: &SettingsDrawer) -> String {
+    if settings.query_on {
+        return "type to filter    up/down move    Enter    Esc clear".to_string();
+    }
+    if settings.nav == 0 && settings.colors.is_some() {
+        return format!(
+            "j/k move    Tab section    y save {}    t target    Esc back",
+            settings.save_label
+        );
+    }
+    if settings.nav == 2 {
+        return "Tab section    Esc close".to_string();
+    }
+    if settings.nav == 0 {
+        return "j/k move    Enter    / search    Tab section    y save    t target    Esc revert"
+            .to_string();
+    }
+    "j/k move    Enter    / search    Tab section    Esc close".to_string()
+}
+
+fn settings_nav_column(
+    cx: &mut Context<Shell>,
+    settings: &SettingsDrawer,
+    border: gpui::Hsla,
+    secondary: gpui::Hsla,
+    selected: gpui::Hsla,
+    text: gpui::Hsla,
+) -> gpui::Div {
+    let query = if settings.query.is_empty() {
+        "Search".to_string()
+    } else {
+        settings.query.clone()
+    };
+    let mut column = div()
+        .w(px(200.0))
+        .h_full()
+        .flex()
+        .flex_col()
+        .overflow_hidden()
+        .border_r_1()
+        .border_color(border)
+        .child(
+            div()
+                .id("settings-search")
+                .h(px(36.0))
+                .px(px(8.0))
+                .flex()
+                .items_center()
+                .cursor_pointer()
+                .text_color(if settings.query_on { text } else { secondary })
+                .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
+                    shell.settings_query_on = true;
+                    cx.stop_propagation();
+                    cx.notify();
+                }))
+                .child(query),
+        );
+    for (index, label) in SETTINGS_NAV.iter().enumerate() {
+        let on = settings.query.trim().is_empty() && settings.nav as usize == index;
+        let nav = index as u8;
+        column = column.child(
+            div()
+                .id(("settings-nav", index))
+                .h(px(32.0))
+                .px(px(8.0))
+                .flex()
+                .items_center()
+                .overflow_hidden()
+                .whitespace_nowrap()
+                .cursor_pointer()
+                .when(on, |row| row.bg(selected))
+                .on_click(cx.listener(move |shell, _: &ClickEvent, _, cx| {
+                    shell.settings_nav = nav;
+                    shell.settings_row = 0;
+                    shell.settings_query.clear();
+                    shell.settings_query_on = false;
+                    cx.stop_propagation();
+                    cx.notify();
+                }))
+                .child(format!("> {label}")),
+        );
+    }
+    column
+}
+
+fn settings_header(
+    cx: &mut Context<Shell>,
+    border: gpui::Hsla,
+    secondary: gpui::Hsla,
+) -> gpui::Div {
+    div()
+        .flex_shrink_0()
+        .h(px(48.0))
+        .px(px(16.0))
+        .flex()
+        .items_center()
+        .gap(px(12.0))
+        .border_b_1()
+        .border_color(border)
+        .child("Settings")
+        .child(div().flex_1())
+        .child(div().text_color(secondary).child("F1"))
+        .child(
+            div()
+                .id("settings-close")
+                .px(px(8.0))
+                .child("Close")
+                .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
+                    shell.close_settings();
+                    cx.stop_propagation();
+                    cx.notify();
+                })),
+        )
+}
+
+/// Theme names are the first children of `settings-scroll` on the Themes page.
+const THEME_ROW_LEAD: usize = 0;
+const SECTION_GAP: f32 = 12.0;
+
+fn settings_body(
+    cx: &mut Context<Shell>,
+    settings: &SettingsDrawer,
+    show_fix: bool,
+    secondary: gpui::Hsla,
+    text: gpui::Hsla,
+    selected: gpui::Hsla,
+    error: gpui::Hsla,
+    border: gpui::Hsla,
+    raised: gpui::Hsla,
+    inset: f32,
+    scroll: &ScrollHandle,
+) -> gpui::Stateful<gpui::Div> {
+    let mut body = div()
+        .id("settings-scroll")
+        .track_scroll(scroll)
+        .flex_1()
+        .min_h(px(0.0))
+        .overflow_y_scroll()
+        .flex()
+        .flex_col()
+        .p(px(inset));
+    if !settings.query.trim().is_empty() {
+        let hits = settings_result_labels(settings);
+        if hits.is_empty() {
+            return body.child(settings_line(
+                "(no matching settings)".to_string(),
+                secondary,
+            ));
+        }
+        for (index, label) in hits.into_iter().enumerate() {
+            let on = index == settings.row;
+            body = body.child(
+                div()
+                    .id(("settings-result", index))
+                    .h(px(28.0))
+                    .px(px(8.0))
+                    .flex()
+                    .items_center()
+                    .when(on, |row| row.bg(selected))
+                    .child(label),
+            );
+        }
+        return body;
+    }
+    if settings.nav == 1 {
+        return body
+            .child(density_section(
+                cx, settings, secondary, selected, border, raised, text,
+            ))
+            .child(section_gap())
+            .child(keys_section(
+                cx, settings, secondary, selected, border, raised, text,
+            ));
+    }
+    if settings.nav == 2 {
+        return body.child(shortcut_section(secondary, text, border, raised));
+    }
+    if let Some(colors) = &settings.colors {
+        return body.child(outlined(
+            "Colors",
+            border,
+            raised,
+            text,
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(8.0))
+                .child(color_editor(cx, colors, selected, error, text))
+                .child(appearance_buttons(cx, false, false)),
+        ));
+    }
+    for row in &settings.themes {
+        body = body.child(theme_row(cx, row, selected, border));
+    }
+    body.child(settings_line(
+        format!("Source: {} · Status: {}", settings.source, settings.status),
+        secondary,
+    ))
+    .child(theme_actions(
+        cx, settings, show_fix, selected, border, secondary,
+    ))
+}
+
+fn settings_result_labels(settings: &SettingsDrawer) -> Vec<String> {
+    let query = settings.query.trim().to_ascii_lowercase();
+    let mut hits = Vec::new();
+    for row in &settings.themes {
+        if row.label.to_ascii_lowercase().contains(&query) {
+            hits.push(row.label.clone());
+        }
+    }
+    for label in ["Density", "Vim keys"] {
+        if label.to_ascii_lowercase().contains(&query) {
+            hits.push(label.to_string());
+        }
+    }
+    for row in crate::shortcuts::rows() {
+        if row.action.to_ascii_lowercase().contains(&query) {
+            hits.push(row.action.to_string());
+        }
+    }
+    hits
+}
+
+fn section_gap() -> gpui::Div {
+    div().h(px(SECTION_GAP)).w_full()
+}
+
+/// One settings box: a header band, then the body, closed by a 1px outline.
+fn outlined(
+    title: &str,
+    border: gpui::Hsla,
+    raised: gpui::Hsla,
+    text: gpui::Hsla,
+    body: gpui::Div,
+) -> gpui::Div {
+    div()
+        .w_full()
+        .border_1()
+        .border_color(border)
+        .flex()
+        .flex_col()
+        .child(
+            div()
+                .h(px(28.0))
+                .px(px(8.0))
+                .flex()
+                .items_center()
+                .overflow_hidden()
+                .whitespace_nowrap()
+                .bg(raised)
+                .text_color(text)
+                .font_weight(FontWeight::BOLD)
+                .border_b_1()
+                .border_color(border)
+                .child(title.to_string()),
+        )
+        .child(div().p(px(8.0)).child(body))
+}
+
+fn theme_row(
+    cx: &mut Context<Shell>,
+    row: &SettingsThemeRow,
+    selected: gpui::Hsla,
+    border: gpui::Hsla,
+) -> gpui::Stateful<gpui::Div> {
+    let index = row.index;
+    div()
+        .id(("settings-theme", index))
+        .h(px(28.0))
+        .w_full()
+        .px(px(8.0))
+        .flex()
+        .items_center()
+        .overflow_hidden()
+        .whitespace_nowrap()
+        .border_l_1()
+        .border_r_1()
+        .border_color(border)
+        .cursor_pointer()
+        .when(row.selected, |line| line.bg(selected))
+        .child(row.label.clone())
+        .on_click(cx.listener(move |shell, _: &ClickEvent, _, cx| {
+            shell.choose_theme(index);
+            cx.stop_propagation();
+            cx.notify();
+        }))
+}
+
+fn theme_actions(
+    cx: &mut Context<Shell>,
+    settings: &SettingsDrawer,
+    show_fix: bool,
+    selected: gpui::Hsla,
+    border: gpui::Hsla,
+    secondary: gpui::Hsla,
+) -> gpui::Div {
+    div()
+        .flex()
+        .flex_wrap()
+        .items_center()
+        .justify_between()
+        .gap(px(8.0))
+        .child(save_target_control(
+            cx,
+            &settings.save_label,
+            selected,
+            border,
+            secondary,
+        ))
+        .child(appearance_buttons(cx, true, show_fix))
+}
+
+fn color_editor(
+    cx: &mut Context<Shell>,
+    colors: &SettingsColors,
+    selected: gpui::Hsla,
+    error: gpui::Hsla,
+    text: gpui::Hsla,
+) -> gpui::Div {
+    let mid = colors.rows.len().div_ceil(2);
+    div()
+        .flex()
+        .flex_col()
+        .gap(px(8.0))
+        .child(
+            div()
+                .flex()
+                .items_start()
+                .gap(px(16.0))
+                .child(color_column(cx, &colors.rows[..mid], selected))
+                .child(color_column(cx, &colors.rows[mid..], selected)),
+        )
+        .child(settings_line(colors.hex_draft.clone(), text))
+        .when(colors.hex_error.is_some(), |col| {
+            col.child(settings_line(
+                colors.hex_error.clone().unwrap_or_default(),
+                error,
+            ))
+        })
+}
+
+fn color_column(
+    cx: &mut Context<Shell>,
+    rows: &[SettingsColorRow],
+    selected: gpui::Hsla,
+) -> gpui::Div {
+    div()
+        .flex_1()
+        .min_w(px(0.0))
+        .flex()
+        .flex_col()
+        .children(rows.iter().map(|row| {
+            let index = row.index;
+            div()
+                .id(("settings-color", index))
+                .h(px(28.0))
+                .w_full()
+                .px(px(8.0))
+                .flex()
+                .items_center()
+                .when(row.selected, |line| line.bg(selected))
+                .child(row.label.clone())
+                .on_click(cx.listener(move |shell, _: &ClickEvent, _, cx| {
+                    shell.choose_color_field(index);
+                    cx.stop_propagation();
+                    cx.notify();
+                }))
+        }))
+}
+
+fn save_target_control(
+    cx: &mut Context<Shell>,
+    save_label: &str,
+    selected: gpui::Hsla,
+    border: gpui::Hsla,
+    secondary: gpui::Hsla,
+) -> gpui::Div {
+    let global = save_label.eq_ignore_ascii_case("global");
+    div()
+        .flex()
+        .items_center()
+        .gap(px(8.0))
+        .child(div().text_color(secondary).child("Save to"))
+        .child(
+            segment_item("save-global", "Global", global, selected, border).on_click(cx.listener(
+                |shell, _: &ClickEvent, _, cx| {
+                    pick_save_target(shell, "global");
+                    cx.stop_propagation();
+                    cx.notify();
+                },
+            )),
+        )
+        .child(
+            segment_item("save-local", "Local", !global, selected, border).on_click(cx.listener(
+                |shell, _: &ClickEvent, _, cx| {
+                    pick_save_target(shell, "local");
+                    cx.stop_propagation();
+                    cx.notify();
+                },
+            )),
+        )
+}
+
+fn pick_save_target(shell: &mut Shell, label: &str) {
+    let current = shell
+        .appearance
+        .as_ref()
+        .map(|appearance| appearance.picker.save_target.label())
+        .unwrap_or("");
+    if !current.eq_ignore_ascii_case(label) {
+        shell.toggle_save_target();
+    }
+}
+
+fn density_section(
+    cx: &mut Context<Shell>,
+    settings: &SettingsDrawer,
+    secondary: gpui::Hsla,
+    selected: gpui::Hsla,
+    border: gpui::Hsla,
+    raised: gpui::Hsla,
+    text: gpui::Hsla,
+) -> gpui::Div {
+    let comfortable = settings.density == "Comfortable";
+    outlined(
+        "Density",
+        border,
+        raised,
+        text,
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(8.0))
+            .child(settings_line(
+                "Row heights, padding, and type size of every panel. Saved on this machine."
+                    .to_string(),
+                secondary,
+            ))
+            .child(
+                div()
+                    .flex()
+                    .gap(px(4.0))
+                    .child(
+                        segment_item(
+                            "density-comfortable",
+                            "Comfortable",
+                            comfortable,
+                            selected,
+                            border,
+                        )
+                        .on_click(cx.listener(
+                            |shell, _: &ClickEvent, _, cx| {
+                                shell.set_density(crate::settings::Density::Comfortable);
+                                cx.stop_propagation();
+                                cx.notify();
+                            },
+                        )),
+                    )
+                    .child(
+                        segment_item("density-compact", "Compact", !comfortable, selected, border)
+                            .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
+                                shell.set_density(crate::settings::Density::Compact);
+                                cx.stop_propagation();
+                                cx.notify();
+                            })),
+                    ),
+            ),
+    )
+}
+
+fn keys_section(
+    cx: &mut Context<Shell>,
+    settings: &SettingsDrawer,
+    secondary: gpui::Hsla,
+    selected: gpui::Hsla,
+    border: gpui::Hsla,
+    raised: gpui::Hsla,
+    text: gpui::Hsla,
+) -> gpui::Div {
+    let on = settings.vim_on;
+    outlined(
+        "Keys",
+        border,
+        raised,
+        text,
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(8.0))
+            .child(
+                div()
+                    .id("vim-toggle")
+                    .flex()
+                    .items_center()
+                    .gap(px(8.0))
+                    .child(
+                        div()
+                            .w(px(28.0))
+                            .h(px(16.0))
+                            .px(px(2.0))
+                            .rounded(px(8.0))
+                            .flex()
+                            .items_center()
+                            .bg(if on { selected } else { secondary })
+                            .when(on, |track| track.justify_end())
+                            .child(div().size(px(12.0)).rounded(px(6.0)).bg(gpui::white())),
+                    )
+                    .child("Vim keys")
+                    .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
+                        let on = !shell.settings.vim_keys;
+                        shell.set_vim_keys(on);
+                        cx.stop_propagation();
+                        cx.notify();
+                    })),
+            )
+            .child(settings_line(
+                "On by default. j / k move, g / G jump to the first or last row, and h / l collapse or expand, in the outline and the page tree.".to_string(),
+                secondary,
+            )),
+    )
+}
+
+fn appearance_buttons(cx: &mut Context<Shell>, show_edit: bool, show_fix: bool) -> gpui::Div {
+    div()
+        .flex()
+        .flex_wrap()
+        .items_center()
+        .gap(px(8.0))
+        .when(show_edit, |row| {
+            row.child(
+                Button::new("appearance-edit")
+                    .label("Edit colors…")
+                    .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
+                        shell.open_color_editor();
+                        cx.stop_propagation();
+                        cx.notify();
+                    })),
+            )
+        })
+        .child(
+            Button::new("appearance-revert")
+                .label("Revert")
+                .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
+                    shell.revert_appearance();
+                    cx.stop_propagation();
+                    cx.notify();
+                })),
+        )
+        .child(
+            Button::new("appearance-save")
+                .label("Save")
+                .primary()
+                .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
+                    shell.save_appearance();
+                    cx.stop_propagation();
+                    cx.notify();
+                })),
+        )
+        .when(show_fix, |row| {
+            row.child(
+                Button::new("fix-wcag-settings")
+                    .label("Fix in dd_wcag")
+                    .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
+                        shell.fix_brand();
+                        cx.stop_propagation();
+                        cx.notify();
+                    })),
+            )
+        })
+}
+
+fn segment_item(
+    id: &'static str,
+    label: &'static str,
+    on: bool,
+    selected: gpui::Hsla,
+    border: gpui::Hsla,
+) -> gpui::Stateful<gpui::Div> {
+    div()
+        .id(id)
+        .h(px(24.0))
+        .px(px(10.0))
+        .flex()
+        .items_center()
+        .rounded(px(4.0))
+        .border_1()
+        .border_color(border)
+        .when(on, |item| item.bg(selected))
+        .child(label)
+}
 fn banner(
     cx: &mut Context<Shell>,
     err: &str,
@@ -5602,6 +7469,25 @@ fn load_error_view(
     )
 }
 
+#[cfg(test)]
+fn push_face_lines(lines: &mut Vec<String>, face: &BlueprintFace) {
+    if !face.image.is_empty() {
+        lines.push(format!("face:image:{}", face.image));
+    }
+    if !face.title.is_empty() {
+        lines.push(format!("face:title:{}", face.title));
+    }
+    if !face.subtitle.is_empty() {
+        lines.push(format!("face:subtitle:{}", face.subtitle));
+    }
+    if !face.copy.is_empty() {
+        lines.push(format!("face:copy:{}", face.copy));
+    }
+    for link in &face.links {
+        lines.push(format!("face:link:{link}"));
+    }
+}
+
 fn editor_body(
     cx: &mut Context<Shell>,
     sidebar: Option<(Vec<SideRow>, String)>,
@@ -5616,6 +7502,7 @@ fn editor_body(
     sidebar_on: bool,
     inspector_on: bool,
     active_tab: Option<InspTab>,
+    editing: Option<(String, usize)>,
     panel: gpui::Hsla,
     base: gpui::Hsla,
     raised: gpui::Hsla,
@@ -5636,6 +7523,8 @@ fn editor_body(
     issues_h: f32,
     title_scroll: TitleScroll,
     family: gpui::SharedString,
+    enum_open: Option<String>,
+    site_json: Option<PathBuf>,
 ) -> gpui::Div {
     let rows = sidebar.clone().map(|(rows, _)| rows).unwrap_or_default();
     let count = sidebar.clone().map(|(_, count)| count).unwrap_or_default();
@@ -5667,12 +7556,14 @@ fn editor_body(
             metrics,
             keyboard,
             focus,
+            site_json.as_deref(),
         ))
         .when(inspector_on, |body| {
             body.child(inspector_view(
                 cx,
                 view.as_ref(),
                 active_tab,
+                editing.as_ref(),
                 panel,
                 input,
                 secondary,
@@ -5684,6 +7575,7 @@ fn editor_body(
                 keyboard,
                 focus,
                 &family,
+                enum_open.as_deref(),
             ))
         });
     div()
@@ -5982,10 +7874,7 @@ fn path_sheet_view(
                             .on_click(cx.listener(
                                 move |shell, _: &ClickEvent, _, cx| {
                                     shell.key_path_sheet("enter");
-                                    if shell.open_companion {
-                                        shell.open_companion = false;
-                                        shell.open_preview_window(cx);
-                                    }
+                                    shell.settle_companion(cx);
                                     cx.notify();
                                 },
                             )),
@@ -6057,7 +7946,13 @@ fn sidebar_row(
     metrics: crate::density::Metrics,
     scroll: &TitleScroll,
 ) -> gpui::Stateful<gpui::Div> {
-    let clip = crate::overflow::sidebar_row_layout(&row.label, row.depth, &row.badges, metrics);
+    let clip = crate::overflow::sidebar_row_layout(
+        &row.label,
+        row.depth,
+        &row.badges,
+        matches!(row.target, SideTarget::Page(_)),
+        metrics,
+    );
     let is_page = matches!(row.target, SideTarget::Page(_));
     let scrolls = crate::overflow::sidebar_scrolls(is_page, clip.truncated, scroll.reduced_motion);
     let hovering = scroll.index == Some(index);
@@ -6098,6 +7993,31 @@ fn sidebar_row(
             .into_any_element()
     };
     let badges = row.badges.clone();
+    let disclosure = if row.expandable {
+        let mark = if row.expanded { "▾" } else { "▸" };
+        Some(
+            div()
+                .id(("side-toggle", index))
+                .w(px(metrics.tree_indent))
+                .flex_shrink_0()
+                .child(mark)
+                .on_click(cx.listener(move |shell, _: &ClickEvent, _, cx| {
+                    shell.note_pointer();
+                    shell.toggle_sidebar_row(index);
+                    cx.notify();
+                }))
+                .into_any_element(),
+        )
+    } else if matches!(row.target, SideTarget::Page(_)) {
+        Some(
+            div()
+                .w(px(metrics.tree_indent))
+                .flex_shrink_0()
+                .into_any_element(),
+        )
+    } else {
+        None
+    };
     div()
         .id(("side", index))
         .h(px(clip.height))
@@ -6114,6 +8034,7 @@ fn sidebar_row(
         .when(selected && keyboard, |row| {
             row.border_2().border_color(focus)
         })
+        .children(disclosure)
         .child(title)
         .children(badges.into_iter().map(|badge| {
             div()
@@ -6230,7 +8151,9 @@ fn outline_view(
     metrics: crate::density::Metrics,
     keyboard: bool,
     focus: gpui::Hsla,
+    site_json: Option<&Path>,
 ) -> gpui::Div {
+    let blocks = outline_blocks(rows);
     div()
         .flex_1()
         .h_full()
@@ -6257,76 +8180,720 @@ fn outline_view(
                 .flex()
                 .flex_col()
                 .gap(px(metrics.outline_gap))
-                .children(rows.iter().enumerate().map(|(index, row)| {
-                    let grid = column_grid(
+                .children(blocks.into_iter().map(|block| {
+                    paint_outline_block(
                         cx,
-                        row,
+                        &block,
+                        rows,
+                        selected,
                         outline_width,
                         selected_target,
-                        panel,
                         raised,
+                        panel,
+                        selected_bg,
                         secondary,
                         placeholder,
                         border,
                         border_card,
                         border_active,
-                    );
-                    let drag_target = row.target.clone();
-                    let drag_target_up = drag_target.clone();
-                    div()
-                        .id(("outline", index))
-                        .when(row.columns.is_empty(), |card| {
-                            card.p(px(12.0))
-                                .bg(if index == selected {
-                                    selected_bg
-                                } else {
-                                    raised
-                                })
-                                .border_1()
-                                .border_color(if index == selected && !keyboard {
-                                    accent
-                                } else if index == selected {
-                                    focus
-                                } else {
-                                    border
-                                })
-                                .ml(px(metrics.tree_indent * row.depth as f32))
-                        })
-                        .child(row.label.clone())
-                        .when(!row.detail.is_empty(), |card| {
-                            card.child(div().text_color(secondary).child(row.detail.clone()))
-                        })
-                        .when(row.issues > 0, |card| {
-                            card.child(div().text_color(error).child(format!(
-                                "{} issue{}",
-                                row.issues,
-                                if row.issues == 1 { "" } else { "s" }
-                            )))
-                        })
-                        .when(grid.is_some(), |card| card.child(grid.unwrap()))
-                        .on_mouse_down(
-                            gpui::MouseButton::Left,
-                            cx.listener(move |shell, _, _, _| {
-                                shell.note_pointer();
-                                shell.drag_arm = Some(drag_target.clone());
-                            }),
-                        )
-                        .on_mouse_up(
-                            gpui::MouseButton::Left,
-                            cx.listener(move |shell, _, _, cx| {
-                                shell.finish_row_drag(drag_target_up.clone());
-                                cx.notify();
-                            }),
-                        )
-                        .on_click(cx.listener(move |shell, _: &ClickEvent, _, cx| {
-                            shell.select_outline(index);
-                            cx.notify();
-                        }))
+                        accent,
+                        error,
+                        metrics,
+                        keyboard,
+                        focus,
+                        site_json,
+                    )
                 }))
                 .when(rows.is_empty(), |col| {
                     col.child(div().text_color(secondary).child("No nodes on this page."))
                 }),
         )
+}
+
+fn paint_outline_block(
+    cx: &mut Context<Shell>,
+    block: &OutlineBlock,
+    rows: &[OutlineRow],
+    selected: usize,
+    outline_width: f32,
+    selected_target: &Target,
+    raised: gpui::Hsla,
+    panel: gpui::Hsla,
+    selected_bg: gpui::Hsla,
+    secondary: gpui::Hsla,
+    placeholder: gpui::Hsla,
+    border: gpui::Hsla,
+    border_card: gpui::Hsla,
+    border_active: gpui::Hsla,
+    accent: gpui::Hsla,
+    error: gpui::Hsla,
+    metrics: crate::density::Metrics,
+    keyboard: bool,
+    focus: gpui::Hsla,
+    site_json: Option<&Path>,
+) -> gpui::AnyElement {
+    match block {
+        OutlineBlock::Row(index) => outline_block_row(
+            cx,
+            rows,
+            *index,
+            selected,
+            outline_width,
+            selected_target,
+            raised,
+            panel,
+            selected_bg,
+            secondary,
+            placeholder,
+            border,
+            border_card,
+            border_active,
+            accent,
+            error,
+            metrics,
+            keyboard,
+            focus,
+            site_json,
+        )
+        .into_any_element(),
+        OutlineBlock::Cards(visual) => card_grid(
+            cx,
+            rows,
+            visual,
+            selected,
+            selected_bg,
+            raised,
+            secondary,
+            border,
+            accent,
+            error,
+            metrics,
+            keyboard,
+            focus,
+            site_json,
+        )
+        .into_any_element(),
+        OutlineBlock::Section { header, columns } => section_frame(
+            cx,
+            rows,
+            *header,
+            columns,
+            selected,
+            outline_width,
+            selected_target,
+            raised,
+            panel,
+            selected_bg,
+            secondary,
+            placeholder,
+            border,
+            border_card,
+            border_active,
+            accent,
+            error,
+            metrics,
+            keyboard,
+            focus,
+            site_json,
+        )
+        .into_any_element(),
+    }
+}
+
+fn column_count_label(count: usize) -> String {
+    if count == 1 {
+        "1 column".to_string()
+    } else {
+        format!("{count} columns")
+    }
+}
+
+fn section_frame(
+    cx: &mut Context<Shell>,
+    rows: &[OutlineRow],
+    header: usize,
+    columns: &[crate::present::SectionColumnBlock],
+    selected: usize,
+    outline_width: f32,
+    selected_target: &Target,
+    raised: gpui::Hsla,
+    panel: gpui::Hsla,
+    selected_bg: gpui::Hsla,
+    secondary: gpui::Hsla,
+    placeholder: gpui::Hsla,
+    border: gpui::Hsla,
+    border_card: gpui::Hsla,
+    border_active: gpui::Hsla,
+    accent: gpui::Hsla,
+    error: gpui::Hsla,
+    metrics: crate::density::Metrics,
+    keyboard: bool,
+    focus: gpui::Hsla,
+    site_json: Option<&Path>,
+) -> gpui::Stateful<gpui::Div> {
+    let row = &rows[header];
+    let node = match row.target {
+        Target::Section(node) => node,
+        _ => 0,
+    };
+    let collapsed = row.collapsed;
+    let picked = header == selected;
+    let label = row.label.clone();
+    let count = column_count_label(columns.len());
+    let mark = if collapsed { "▸" } else { "▾" };
+    let tip = if collapsed {
+        "Expand section"
+    } else {
+        "Collapse section"
+    };
+    let stack = section_columns_stack(columns, rows, outline_width);
+    div()
+        .id(("section-frame", header))
+        .w_full()
+        .flex()
+        .flex_col()
+        .gap(px(metrics.outline_gap))
+        .p(px(8.0))
+        .rounded(px(6.0))
+        .border_1()
+        .border_color(if picked && !keyboard {
+            accent
+        } else if picked {
+            focus
+        } else {
+            border
+        })
+        .child(
+            div()
+                .id(("outline", header))
+                .w_full()
+                .flex()
+                .items_center()
+                .gap(px(8.0))
+                .child(label)
+                .child(div().text_color(secondary).child(count))
+                .child(div().flex_1())
+                .child(
+                    div()
+                        .id(("section-toggle", header))
+                        .w(px(24.0))
+                        .h(px(24.0))
+                        .flex_shrink_0()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .child(mark)
+                        .tooltip(move |window, cx| {
+                            gpui_component::tooltip::Tooltip::new(tip).build(window, cx)
+                        })
+                        .on_click(cx.listener(move |shell, _: &ClickEvent, _, cx| {
+                            shell.note_pointer();
+                            shell.select_outline(header);
+                            shell.toggle_section(node);
+                            cx.stop_propagation();
+                            cx.notify();
+                        })),
+                )
+                .on_click(cx.listener(move |shell, _: &ClickEvent, _, cx| {
+                    shell.note_pointer();
+                    shell.select_outline(header);
+                    cx.notify();
+                })),
+        )
+        .when(!collapsed, |frame| {
+            frame.child(
+                div()
+                    .w_full()
+                    .flex()
+                    .gap(px(metrics.outline_gap))
+                    .when(!stack, |band| band.flex_row())
+                    .when(stack, |band| band.flex_col())
+                    .children(columns.iter().map(|column| {
+                        column_frame(
+                            cx,
+                            rows,
+                            column,
+                            stack,
+                            selected,
+                            outline_width,
+                            selected_target,
+                            raised,
+                            panel,
+                            selected_bg,
+                            secondary,
+                            placeholder,
+                            border,
+                            border_card,
+                            border_active,
+                            accent,
+                            error,
+                            metrics,
+                            keyboard,
+                            focus,
+                            site_json,
+                        )
+                    })),
+            )
+        })
+}
+
+fn section_columns_stack(
+    columns: &[crate::present::SectionColumnBlock],
+    rows: &[OutlineRow],
+    outline_width: f32,
+) -> bool {
+    if columns.len() <= 1 || outline_width <= 0.0 {
+        return false;
+    }
+    let parts: Vec<u32> = columns
+        .iter()
+        .map(|column| width_share(&rows[column.header].detail).0)
+        .collect();
+    let whole: u32 = parts.iter().copied().sum();
+    if whole == 0 {
+        return true;
+    }
+    parts
+        .iter()
+        .any(|part| outline_width * (*part as f32) / (whole as f32) < NARROW_COLUMN_MIN)
+}
+
+fn column_frame(
+    cx: &mut Context<Shell>,
+    rows: &[OutlineRow],
+    column: &crate::present::SectionColumnBlock,
+    stack: bool,
+    selected: usize,
+    outline_width: f32,
+    selected_target: &Target,
+    raised: gpui::Hsla,
+    panel: gpui::Hsla,
+    selected_bg: gpui::Hsla,
+    secondary: gpui::Hsla,
+    placeholder: gpui::Hsla,
+    border: gpui::Hsla,
+    border_card: gpui::Hsla,
+    border_active: gpui::Hsla,
+    accent: gpui::Hsla,
+    error: gpui::Hsla,
+    metrics: crate::density::Metrics,
+    keyboard: bool,
+    focus: gpui::Hsla,
+    site_json: Option<&Path>,
+) -> gpui::Stateful<gpui::Div> {
+    let header = column.header;
+    let row = &rows[header];
+    let (parts, _, _) = width_share(&row.detail);
+    let picked = header == selected;
+    let label = row.label.clone();
+    let detail = row.detail.clone();
+    div()
+        .id(("column-frame", header))
+        .when(!stack, |card| {
+            card.flex_grow(parts as f32)
+                .flex_basis(px(0.0))
+                .min_w(px(0.0))
+        })
+        .when(stack, |card| card.w_full())
+        .p(px(8.0))
+        .flex()
+        .flex_col()
+        .gap(px(metrics.outline_gap))
+        .rounded(px(6.0))
+        .border_1()
+        .border_color(if picked && !keyboard {
+            accent
+        } else if picked {
+            focus
+        } else {
+            border
+        })
+        .bg(if picked { selected_bg } else { raised })
+        .child(
+            div()
+                .id(("outline", header))
+                .w_full()
+                .child(label)
+                .when(!detail.is_empty(), |col| {
+                    col.child(div().text_color(secondary).child(detail))
+                })
+                .on_click(cx.listener(move |shell, _: &ClickEvent, _, cx| {
+                    shell.note_pointer();
+                    shell.select_outline(header);
+                    cx.notify();
+                })),
+        )
+        .children(column.body.iter().map(|block| {
+            paint_outline_block(
+                cx,
+                block,
+                rows,
+                selected,
+                outline_width,
+                selected_target,
+                raised,
+                panel,
+                selected_bg,
+                secondary,
+                placeholder,
+                border,
+                border_card,
+                border_active,
+                accent,
+                error,
+                metrics,
+                keyboard,
+                focus,
+                site_json,
+            )
+        }))
+}
+
+fn outline_block_row(
+    cx: &mut Context<Shell>,
+    rows: &[OutlineRow],
+    index: usize,
+    selected: usize,
+    outline_width: f32,
+    selected_target: &Target,
+    raised: gpui::Hsla,
+    panel: gpui::Hsla,
+    selected_bg: gpui::Hsla,
+    secondary: gpui::Hsla,
+    placeholder: gpui::Hsla,
+    border: gpui::Hsla,
+    border_card: gpui::Hsla,
+    border_active: gpui::Hsla,
+    accent: gpui::Hsla,
+    error: gpui::Hsla,
+    metrics: crate::density::Metrics,
+    keyboard: bool,
+    focus: gpui::Hsla,
+    site_json: Option<&Path>,
+) -> gpui::Stateful<gpui::Div> {
+    let row = &rows[index];
+    let grid = column_grid(
+        cx,
+        row,
+        outline_width,
+        selected_target,
+        panel,
+        raised,
+        secondary,
+        placeholder,
+        border,
+        border_card,
+        border_active,
+    );
+    let drag_target = row.target.clone();
+    let drag_target_up = drag_target.clone();
+    let show_detail = !row.detail.is_empty() && row.detail != row.face.title;
+    let label = row.label.clone();
+    let detail = row.detail.clone();
+    let issues = row.issues;
+    let bare = row.columns.is_empty();
+    let face = face_nodes(
+        &row.face, site_json, secondary, accent, metrics, 160.0, false,
+    );
+    div()
+        .id(("outline", index))
+        .w_full()
+        .when(bare, |card| {
+            card.p(px(12.0))
+                .bg(if index == selected {
+                    selected_bg
+                } else {
+                    raised
+                })
+                .border_1()
+                .border_color(if index == selected && !keyboard {
+                    accent
+                } else if index == selected {
+                    focus
+                } else {
+                    border
+                })
+        })
+        .child(label)
+        .when(show_detail, |card| {
+            card.child(div().text_color(secondary).child(detail))
+        })
+        .when(issues > 0, |card| {
+            card.child(div().text_color(error).child(format!(
+                "{} issue{}",
+                issues,
+                if issues == 1 { "" } else { "s" }
+            )))
+        })
+        .when(grid.is_some(), |card| card.child(grid.unwrap()))
+        .children(face)
+        .on_mouse_down(
+            gpui::MouseButton::Left,
+            cx.listener(move |shell, _, _, _| {
+                shell.note_pointer();
+                shell.drag_arm = Some(drag_target.clone());
+            }),
+        )
+        .on_mouse_up(
+            gpui::MouseButton::Left,
+            cx.listener(move |shell, _, _, cx| {
+                shell.finish_row_drag(drag_target_up.clone());
+                cx.notify();
+            }),
+        )
+        .on_click(cx.listener(move |shell, _: &ClickEvent, _, cx| {
+            shell.select_outline(index);
+            cx.notify();
+        }))
+}
+
+fn card_grid(
+    cx: &mut Context<Shell>,
+    rows: &[OutlineRow],
+    visual: &[Vec<usize>],
+    selected: usize,
+    selected_bg: gpui::Hsla,
+    raised: gpui::Hsla,
+    secondary: gpui::Hsla,
+    border: gpui::Hsla,
+    accent: gpui::Hsla,
+    error: gpui::Hsla,
+    metrics: crate::density::Metrics,
+    keyboard: bool,
+    focus: gpui::Hsla,
+    site_json: Option<&Path>,
+) -> gpui::Stateful<gpui::Div> {
+    let anchor = visual
+        .first()
+        .and_then(|group| group.first().copied())
+        .unwrap_or(0);
+    div()
+        .id(("card-grid", anchor))
+        .w_full()
+        .flex()
+        .flex_col()
+        .gap(px(metrics.outline_gap))
+        .children(visual.iter().map(|group| {
+            card_visual_row(
+                cx,
+                rows,
+                group,
+                selected,
+                selected_bg,
+                raised,
+                secondary,
+                border,
+                accent,
+                error,
+                metrics,
+                keyboard,
+                focus,
+                site_json,
+            )
+        }))
+}
+
+fn card_visual_row(
+    cx: &mut Context<Shell>,
+    rows: &[OutlineRow],
+    group: &[usize],
+    selected: usize,
+    selected_bg: gpui::Hsla,
+    raised: gpui::Hsla,
+    secondary: gpui::Hsla,
+    border: gpui::Hsla,
+    accent: gpui::Hsla,
+    error: gpui::Hsla,
+    metrics: crate::density::Metrics,
+    keyboard: bool,
+    focus: gpui::Hsla,
+    site_json: Option<&Path>,
+) -> gpui::Div {
+    let weights: Vec<(usize, f32)> = group
+        .iter()
+        .filter_map(|index| {
+            let span = rows.get(*index)?.card_span.unwrap_or((1, 1));
+            Some((*index, span_weight(span)))
+        })
+        .collect();
+    let used: f32 = weights.iter().map(|(_, weight)| *weight).sum();
+    // A short row keeps each card at its fraction. One 8/24 card stays a third wide.
+    let remain = (1.0 - used).max(0.0);
+    div()
+        .w_full()
+        .flex()
+        .flex_row()
+        .gap(px(metrics.outline_gap))
+        .children(weights.into_iter().map(|(index, weight)| {
+            card_face(
+                cx,
+                rows,
+                index,
+                weight,
+                selected,
+                selected_bg,
+                raised,
+                secondary,
+                border,
+                accent,
+                error,
+                metrics,
+                keyboard,
+                focus,
+                site_json,
+            )
+        }))
+        .when(remain > 0.02, |row| {
+            row.child(div().flex_grow(remain).flex_basis(px(0.0)).min_w(px(0.0)))
+        })
+}
+
+fn span_weight((parts, whole): (u32, u32)) -> f32 {
+    parts as f32 / whole.max(1) as f32
+}
+
+fn card_face(
+    cx: &mut Context<Shell>,
+    rows: &[OutlineRow],
+    index: usize,
+    weight: f32,
+    selected: usize,
+    selected_bg: gpui::Hsla,
+    raised: gpui::Hsla,
+    secondary: gpui::Hsla,
+    border: gpui::Hsla,
+    accent: gpui::Hsla,
+    error: gpui::Hsla,
+    metrics: crate::density::Metrics,
+    keyboard: bool,
+    focus: gpui::Hsla,
+    site_json: Option<&Path>,
+) -> gpui::Stateful<gpui::Div> {
+    let row = &rows[index];
+    let issues = row.issues;
+    let face = face_nodes(
+        &row.face, site_json, secondary, accent, metrics, 112.0, true,
+    );
+    let picked = index == selected;
+    div()
+        .id(("card-face", index))
+        .flex_grow(weight)
+        .flex_basis(px(0.0))
+        .min_w(px(0.0))
+        .overflow_hidden()
+        .p(px(8.0))
+        .flex()
+        .flex_col()
+        .gap(px(4.0))
+        .bg(if picked { selected_bg } else { raised })
+        .rounded(px(6.0))
+        .border_1()
+        .border_color(if picked && !keyboard {
+            accent
+        } else if picked {
+            focus
+        } else {
+            border
+        })
+        .children(face)
+        .when(issues > 0, |card| {
+            card.child(div().text_color(error).child(format!(
+                "{} issue{}",
+                issues,
+                if issues == 1 { "" } else { "s" }
+            )))
+        })
+        .on_click(cx.listener(move |shell, _: &ClickEvent, _, cx| {
+            shell.note_pointer();
+            shell.select_outline(index);
+            cx.notify();
+        }))
+}
+
+fn image_caption(url: &str) -> String {
+    let trimmed = url.trim();
+    let segment = trimmed.rsplit(['/', '\\']).next().unwrap_or(trimmed);
+    if segment.contains('.') {
+        return segment.to_string();
+    }
+    let chars: Vec<char> = trimmed.chars().collect();
+    if chars.len() > 48 {
+        let mut out: String = chars.into_iter().take(45).collect();
+        out.push_str("...");
+        return out;
+    }
+    trimmed.to_string()
+}
+
+fn face_nodes(
+    face: &BlueprintFace,
+    site_json: Option<&Path>,
+    secondary: gpui::Hsla,
+    accent: gpui::Hsla,
+    metrics: crate::density::Metrics,
+    image_h: f32,
+    untitled_when_blank: bool,
+) -> Vec<gpui::AnyElement> {
+    let mut nodes = Vec::new();
+    if !face.image.is_empty() {
+        if let Some(path) = site_json.and_then(|site| blueprint_image_file(site, &face.image)) {
+            nodes.push(
+                gpui::img(path)
+                    .w_full()
+                    .h(px(image_h))
+                    .object_fit(gpui::ObjectFit::Cover)
+                    .rounded(px(4.0))
+                    .with_fallback(|| div().child("Image").into_any_element())
+                    .into_any_element(),
+            );
+        } else {
+            nodes.push(
+                div()
+                    .text_color(secondary)
+                    .whitespace_normal()
+                    .child(image_caption(&face.image))
+                    .into_any_element(),
+            );
+        }
+    }
+    let title = if face.title.is_empty() && untitled_when_blank {
+        "(untitled)".to_string()
+    } else {
+        face.title.clone()
+    };
+    if !title.is_empty() {
+        nodes.push(div().whitespace_normal().child(title).into_any_element());
+    }
+    if !face.subtitle.is_empty() {
+        nodes.push(
+            div()
+                .text_color(secondary)
+                .whitespace_normal()
+                .child(face.subtitle.clone())
+                .into_any_element(),
+        );
+    }
+    if !face.copy.is_empty() {
+        nodes.push(
+            div()
+                .text_color(secondary)
+                .whitespace_normal()
+                .max_h(px(metrics.row * 3.0))
+                .overflow_hidden()
+                .child(face.copy.clone())
+                .into_any_element(),
+        );
+    }
+    if !face.links.is_empty() {
+        nodes.push(
+            div()
+                .text_color(accent)
+                .whitespace_normal()
+                .child(face.links.join(" · "))
+                .into_any_element(),
+        );
+    }
+    nodes
 }
 
 fn column_grid(
@@ -6404,17 +8971,19 @@ fn inspector_view(
     cx: &mut Context<Shell>,
     view: Option<&InspectorView>,
     active: Option<InspTab>,
+    editing: Option<&(String, usize)>,
     panel: gpui::Hsla,
     input: gpui::Hsla,
     secondary: gpui::Hsla,
     placeholder: gpui::Hsla,
     error: gpui::Hsla,
     border: gpui::Hsla,
-    _text: gpui::Hsla,
+    text: gpui::Hsla,
     metrics: crate::density::Metrics,
     keyboard: bool,
     focus: gpui::Hsla,
     family: &gpui::SharedString,
+    enum_open: Option<&str>,
 ) -> gpui::Stateful<gpui::Div> {
     let Some(view) = view else {
         return div().id("inspector-empty").w(px(360.0)).bg(panel);
@@ -6475,6 +9044,7 @@ fn inspector_view(
             )
         })
         .children(view.fields.iter().map(|field| {
+            let caret = editing.and_then(|(id, caret)| (id == &field.id).then_some(*caret));
             field_view(
                 field,
                 input,
@@ -6482,16 +9052,123 @@ fn inspector_view(
                 placeholder,
                 error,
                 border,
+                text,
+                focus,
                 metrics,
                 family,
+                caret,
+                enum_open == Some(field.id.as_str()),
+                cx,
             )
         }))
+}
+
+/// Closed control shows the current value and a chevron. Open, it lists every option.
+fn select_field_view(
+    field: &crate::present::FieldView,
+    input: gpui::Hsla,
+    secondary: gpui::Hsla,
+    error: gpui::Hsla,
+    border: gpui::Hsla,
+    focus: gpui::Hsla,
+    metrics: crate::density::Metrics,
+    family: &gpui::SharedString,
+    menu_open: bool,
+    cx: &mut Context<Shell>,
+) -> gpui::AnyElement {
+    let field_id = field.id.clone();
+    let label_id = field_id.clone();
+    let header_id = field_id.clone();
+    let label = label_line(
+        &field.label,
+        field.required,
+        secondary,
+        error,
+        metrics,
+        family,
+    );
+    let options = field.options.clone();
+    let current = field.value.clone();
+    div()
+        .flex()
+        .flex_col()
+        .gap(px(metrics.label_gap))
+        .child(
+            div()
+                .id(gpui::SharedString::from(format!("label-{}", field.id)))
+                .child(label)
+                .on_click(cx.listener(move |shell, _: &ClickEvent, window, cx| {
+                    shell.focus_field_from_click(&label_id, window, cx);
+                })),
+        )
+        .child(
+            div()
+                .id(gpui::SharedString::from(format!("field-{}", field.id)))
+                .w_full()
+                .h(px(metrics.input))
+                .px(px(8.0))
+                .flex()
+                .items_center()
+                .justify_between()
+                .bg(input)
+                .border_1()
+                .border_color(if menu_open { focus } else { border })
+                .rounded(px(4.0))
+                .child(current.clone())
+                .child(div().text_color(secondary).child("▾"))
+                .on_click(cx.listener(move |shell, _: &ClickEvent, window, cx| {
+                    shell.toggle_enum_menu(&header_id);
+                    shell.focus.focus(window, cx);
+                    cx.notify();
+                })),
+        )
+        .when(menu_open, |col| {
+            col.child(
+                div()
+                    .id(gpui::SharedString::from(format!("enum-list-{}", field.id)))
+                    .w_full()
+                    .max_h(px(metrics.input * 8.0_f32))
+                    .overflow_y_scroll()
+                    .bg(input)
+                    .border_1()
+                    .border_color(border)
+                    .rounded(px(4.0))
+                    .children(options.into_iter().enumerate().map(|(index, option)| {
+                        let field_id = field_id.clone();
+                        let chosen = option == current;
+                        let label = option.clone();
+                        div()
+                            .id(gpui::SharedString::from(format!(
+                                "enum-{}-{index}",
+                                field.id
+                            )))
+                            .w_full()
+                            .px(px(8.0))
+                            .py(px(4.0))
+                            .when(chosen, |row| row.border_l_2().border_color(focus))
+                            .child(label.clone())
+                            .on_click(cx.listener(move |shell, _: &ClickEvent, window, cx| {
+                                shell.choose_enum_option(&field_id, &label);
+                                shell.focus.focus(window, cx);
+                                cx.notify();
+                            }))
+                    })),
+            )
+        })
+        .when(field.error.is_some(), |col| {
+            col.child(
+                div()
+                    .text_color(error)
+                    .child(field.error.clone().unwrap_or_default()),
+            )
+        })
+        .into_any_element()
 }
 
 fn single_line_field(chrome: FieldChrome) -> bool {
     matches!(
         chrome,
-        FieldChrome::Text | FieldChrome::Select | FieldChrome::Page
+        FieldChrome::Text | FieldChrome::Select | FieldChrome::Page | FieldChrome::Width
     )
 }
 
@@ -6502,10 +9179,23 @@ fn field_view(
     placeholder: gpui::Hsla,
     error: gpui::Hsla,
     border: gpui::Hsla,
+    text: gpui::Hsla,
+    focus: gpui::Hsla,
     metrics: crate::density::Metrics,
     family: &gpui::SharedString,
+    caret: Option<usize>,
+    menu_open: bool,
+    cx: &mut Context<Shell>,
 ) -> gpui::AnyElement {
-    let value_color = if field.value == "Empty" {
+    if field.chrome == FieldChrome::Select {
+        return select_field_view(
+            field, input, secondary, error, border, focus, metrics, family, menu_open, cx,
+        );
+    }
+    let focused = caret.is_some();
+    let value_color = if focused {
+        text
+    } else if field.placeholder || field.value == "Empty" {
         placeholder
     } else {
         secondary
@@ -6519,27 +9209,67 @@ fn field_view(
         family,
     );
     if field.chrome == FieldChrome::Toggle {
+        let field_id = field.id.clone();
         return div()
+            .id(gpui::SharedString::from(format!("field-{}", field.id)))
             .flex()
             .items_center()
             .gap(px(12.0))
+            .px(px(4.0))
+            .border_1()
+            .border_color(if focused { focus } else { border })
+            .rounded(px(4.0))
             .child(label.flex_1().min_w(px(0.0)))
             .child(div().flex_shrink_0().child(field.value.clone()))
+            .on_click(cx.listener(move |shell, _: &ClickEvent, window, cx| {
+                shell.focus_field_from_click(&field_id, window, cx);
+            }))
             .into_any_element();
     }
+    if field.chrome == FieldChrome::Collection {
+        return collection_field_view(field, input, secondary, error, border, metrics, family, cx);
+    }
+    let field_id = field.id.clone();
+    let label = div()
+        .id(gpui::SharedString::from(format!("label-{}", field.id)))
+        .child(label)
+        .on_click(cx.listener(move |shell, _: &ClickEvent, window, cx| {
+            shell.focus_field_from_click(&field_id, window, cx);
+        }));
     let image = field.chrome == FieldChrome::Image;
     let single = single_line_field(field.chrome);
+    let show_caret = caret.filter(|_| {
+        matches!(
+            field.chrome,
+            FieldChrome::Text | FieldChrome::Page | FieldChrome::Width | FieldChrome::Markdown
+        )
+    });
     let value_layout = crate::overflow::field_value_layout(&field.value, metrics);
-    let shown = if single {
-        value_layout.clip.shown.clone()
+    let source = if focused && field.placeholder {
+        String::new()
     } else {
         field.value.clone()
     };
-    let tip = if single {
+    let shown = if single && show_caret.is_none() {
+        value_layout.clip.shown.clone()
+    } else if let Some(caret) = show_caret.filter(|_| !single) {
+        with_caret_mark(&source, caret)
+    } else if show_caret.is_some() {
+        String::new()
+    } else {
+        field.value.clone()
+    };
+    let tip = if single && show_caret.is_none() {
         value_layout.clip.tooltip.clone()
+    } else if !single && source.lines().count() > 4 {
+        Some(source.clone())
     } else {
         None
     };
+    let max_chars = (crate::overflow::value_available(metrics) / crate::overflow::CHAR_PX)
+        .floor()
+        .max(1.0) as usize;
+    let value_id = field.id.clone();
     div()
         .flex()
         .flex_col()
@@ -6549,40 +9279,160 @@ fn field_view(
             div()
                 .id(gpui::SharedString::from(format!("field-{}", field.id)))
                 .w_full()
+                .min_w(px(0.0))
                 .when(!single, |row| row.p(px(8.0)))
                 .when(single, |row| {
                     row.px(px(crate::overflow::VALUE_PAD_X))
                         .h(px(value_layout.clip.height))
                         .flex()
                         .items_center()
-                        .truncate()
                 })
-                .when(!single && !image, |row| row.h(px(metrics.input)))
+                .when(single && show_caret.is_none(), |row| row.truncate())
+                .when(single && show_caret.is_some(), |row| {
+                    row.overflow_hidden().whitespace_nowrap()
+                })
+                .when(!single && !image, |row| {
+                    // A fixed one-line height let the copy paint over the rows below.
+                    row.min_h(px(metrics.input))
+                        .max_h(px(metrics.input * 4.0))
+                        .overflow_hidden()
+                        .overflow_y_scroll()
+                        .whitespace_normal()
+                })
                 .bg(input)
                 .border_1()
-                .border_color(border)
+                .border_color(if focused { focus } else { border })
                 .rounded(px(4.0))
                 .text_color(value_color)
-                .child(shown)
+                .when_some(show_caret.filter(|_| single), |row, caret| {
+                    let (before, after) = split_at_caret(&source, caret, max_chars);
+                    row.child(
+                        div()
+                            .flex()
+                            .flex_1()
+                            .min_w(px(0.0))
+                            .items_center()
+                            .overflow_hidden()
+                            .child(before)
+                            .child(div().w(px(1.0)).h(px(14.0)).flex_shrink_0().bg(focus))
+                            .child(after),
+                    )
+                })
+                .when(show_caret.is_none() || !single, |row| row.child(shown))
                 .when_some(tip, |row, tip| {
                     row.tooltip(move |window, cx| {
                         gpui_component::tooltip::Tooltip::new(tip.clone()).build(window, cx)
                     })
-                }),
+                })
+                .on_click(cx.listener(move |shell, _: &ClickEvent, window, cx| {
+                    shell.focus_field_from_click(&value_id, window, cx);
+                })),
         )
         .when(field.toolbar, |col| {
             // S7: insert buttons only. The preview eye is not drawn.
+            let field_id = field.id.clone();
             col.child(
-                div()
-                    .flex()
-                    .gap(px(4.0))
-                    .child("H2")
-                    .child("B")
-                    .child("I")
-                    .child("Link")
-                    .child("List"),
+                div().flex().gap(px(8.0)).children(
+                    MarkdownInsert::BUTTONS
+                        .iter()
+                        .copied()
+                        .enumerate()
+                        .map(|(index, insert)| {
+                            let field_id = field_id.clone();
+                            let label = insert.label().to_string();
+                            div()
+                                .id(gpui::SharedString::from(format!("md-{}-{index}", field.id)))
+                                .px(px(4.0))
+                                .child(label)
+                                .on_click(cx.listener(move |shell, _: &ClickEvent, window, cx| {
+                                    shell.apply_markdown_button(&field_id, insert);
+                                    shell.focus.focus(window, cx);
+                                    cx.notify();
+                                }))
+                        }),
+                ),
             )
         })
+        .when(field.meta.is_some(), |col| {
+            col.child(
+                div()
+                    .text_color(secondary)
+                    .child(field.meta.clone().unwrap_or_default()),
+            )
+        })
+        .when(field.error.is_some(), |col| {
+            col.child(
+                div()
+                    .text_color(error)
+                    .child(field.error.clone().unwrap_or_default()),
+            )
+        })
+        .into_any_element()
+}
+
+/// Each card entry is its own row. A click opens that entry.
+fn collection_field_view(
+    field: &crate::present::FieldView,
+    input: gpui::Hsla,
+    secondary: gpui::Hsla,
+    error: gpui::Hsla,
+    border: gpui::Hsla,
+    metrics: crate::density::Metrics,
+    family: &gpui::SharedString,
+    cx: &mut Context<Shell>,
+) -> gpui::AnyElement {
+    let field_id = field.id.clone();
+    let label_id = field_id.clone();
+    let label = label_line(
+        &field.label,
+        field.required,
+        secondary,
+        error,
+        metrics,
+        family,
+    );
+    let rows: Vec<String> = if field.value.trim().is_empty() {
+        vec!["(no items; press A to add)".to_string()]
+    } else {
+        field.value.lines().map(str::to_string).collect()
+    };
+    let empty = rows.len() == 1 && rows[0].starts_with("(no items");
+    div()
+        .flex()
+        .flex_col()
+        .gap(px(metrics.label_gap))
+        .child(
+            div()
+                .id(gpui::SharedString::from(format!("label-{}", field.id)))
+                .child(label)
+                .on_click(cx.listener(move |shell, _: &ClickEvent, window, cx| {
+                    shell.focus_field_from_click(&label_id, window, cx);
+                })),
+        )
+        .children(rows.into_iter().enumerate().map(|(index, line)| {
+            let field_id = field.id.clone();
+            div()
+                .id(gpui::SharedString::from(format!(
+                    "collection-{}-{index}",
+                    field.id
+                )))
+                .w_full()
+                .p(px(8.0))
+                .bg(input)
+                .border_1()
+                .border_color(border)
+                .rounded(px(4.0))
+                .child(line)
+                .on_click(cx.listener(move |shell, _: &ClickEvent, window, cx| {
+                    if empty {
+                        shell.focus_field_from_click(&field_id, window, cx);
+                    } else {
+                        shell.edit_collection_item(&field_id, index);
+                        shell.focus.focus(window, cx);
+                        cx.notify();
+                    }
+                }))
+        }))
         .when(field.meta.is_some(), |col| {
             col.child(
                 div()
@@ -6676,10 +9526,7 @@ fn status_bar(
                 .child(preview.to_string())
                 .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
                     shell.open_preview();
-                    if shell.open_companion {
-                        shell.open_companion = false;
-                        shell.open_preview_window(cx);
-                    }
+                    shell.settle_companion(cx);
                     cx.notify();
                 })),
         )
@@ -7007,6 +9854,97 @@ fn is_text(key: &str) -> bool {
     key.chars().count() == 1 && !key.chars().any(|ch| ch.is_control())
 }
 
+/// Character a chord should insert. Live key events prefer `key_char`; this
+/// covers the chord form (`space`, `shift-a`) used by tests and by keys that
+/// arrive without a character.
+fn typed_char(key: &str) -> Option<char> {
+    if key == "space" {
+        return Some(' ');
+    }
+    if let Some(rest) = key.strip_prefix("shift-") {
+        return shifted_char(rest);
+    }
+    if is_text(key) {
+        return key.chars().next();
+    }
+    None
+}
+
+fn shifted_char(key: &str) -> Option<char> {
+    let mut chars = key.chars();
+    let ch = chars.next()?;
+    if chars.next().is_some() {
+        return None;
+    }
+    Some(match ch {
+        'a'..='z' => ch.to_ascii_uppercase(),
+        '1' => '!',
+        '2' => '@',
+        '3' => '#',
+        '4' => '$',
+        '5' => '%',
+        '6' => '^',
+        '7' => '&',
+        '8' => '*',
+        '9' => '(',
+        '0' => ')',
+        '-' => '_',
+        '=' => '+',
+        '[' => '{',
+        ']' => '}',
+        '\\' => '|',
+        ';' => ':',
+        '\'' => '"',
+        ',' => '<',
+        '.' => '>',
+        '/' => '?',
+        '`' => '~',
+        _ => return None,
+    })
+}
+
+fn split_at_caret(value: &str, caret: usize, max_chars: usize) -> (String, String) {
+    let chars: Vec<char> = value.chars().collect();
+    let caret = caret.min(chars.len());
+    if max_chars == 0 || chars.len() <= max_chars {
+        return (
+            chars[..caret].iter().collect(),
+            chars[caret..].iter().collect(),
+        );
+    }
+    let mut start = caret.saturating_sub(max_chars / 2);
+    let mut end = (start + max_chars).min(chars.len());
+    if end.saturating_sub(start) < max_chars {
+        start = end.saturating_sub(max_chars);
+    }
+    if caret < start {
+        start = caret;
+        end = (start + max_chars).min(chars.len());
+    }
+    if caret > end {
+        end = caret;
+        start = end.saturating_sub(max_chars);
+    }
+    let mut before: String = chars[start..caret].iter().collect();
+    let mut after: String = chars[caret..end].iter().collect();
+    if start > 0 {
+        before.insert(0, '…');
+    }
+    if end < chars.len() {
+        after.push('…');
+    }
+    (before, after)
+}
+
+fn with_caret_mark(value: &str, caret: usize) -> String {
+    let chars: Vec<char> = value.chars().collect();
+    let caret = caret.min(chars.len());
+    let mut out: String = chars[..caret].iter().collect();
+    out.push('▏');
+    out.extend(chars[caret..].iter().copied());
+    out
+}
+
 fn region_name(region: &SideTarget) -> &'static str {
     match region {
         SideTarget::Header => "header",
@@ -7071,6 +10009,12 @@ fn current_cursor(region: &SideTarget, page: usize, target: &Target) -> Option<C
             node,
             column,
             component,
+        }
+        | Target::CardItem {
+            node,
+            column,
+            component,
+            ..
         } => Some(Cursor::PageComponent {
             page,
             node: *node,

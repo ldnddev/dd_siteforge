@@ -211,21 +211,26 @@ const COMMANDS: &[CommandSpec] = &[
     },
     CommandSpec {
         command: Command::Help,
-        title: "Help",
-        detail: "Shortcut sheet",
+        title: "Settings",
+        detail: "Themes, shortcuts, density, and Vim keys",
         kbd: "F1",
-        chords: &[Chord::plain("f1"), Chord::ctrl("/")],
+        chords: &[
+            Chord::plain("f1"),
+            Chord::ctrl("/"),
+            Chord::plain("f2"),
+            Chord::ctrl(","),
+        ],
         in_palette: true,
         tui_palette: true,
     },
     CommandSpec {
         command: Command::Theme,
         title: "Theme",
-        detail: "Settings › Appearance",
-        kbd: "F2",
-        chords: &[Chord::plain("f2"), Chord::ctrl(",")],
-        in_palette: true,
-        tui_palette: true,
+        detail: "Settings",
+        kbd: "",
+        chords: &[],
+        in_palette: false,
+        tui_palette: false,
     },
     CommandSpec {
         command: Command::Find,
@@ -700,8 +705,8 @@ const BINDINGS: &[Binding] = &[
         .alias("Save is now Ctrl+S"),
     Binding::on(Command::Help, Chord::plain("f1")),
     Binding::on(Command::Help, Chord::ctrl("/")),
-    Binding::on(Command::Theme, Chord::plain("f2")),
-    Binding::on(Command::Theme, Chord::ctrl(",")),
+    Binding::on(Command::Help, Chord::plain("f2")),
+    Binding::on(Command::Help, Chord::ctrl(",")),
     Binding::on(Command::Find, Chord::ctrl("f")),
     Binding::on(Command::Find, Chord::plain("?"))
         .tui_only()
@@ -865,15 +870,9 @@ pub fn shortcut_sheet() -> &'static [SheetRow] {
 const SHEET: &[SheetRow] = &[
     SheetRow {
         section: "Global",
-        action: "Help",
+        action: "Settings",
         gui: "F1",
         tui: "F1",
-    },
-    SheetRow {
-        section: "Global",
-        action: "Theme",
-        gui: "F2",
-        tui: "F2",
     },
     SheetRow {
         section: "Global",
@@ -1075,8 +1074,8 @@ mod tests {
     const GUI_BINDINGS: &[(&str, Command)] = &[
         ("ctrl-\\", Command::ToggleSidebar),
         ("ctrl-alt-\\", Command::ToggleInspector),
-        ("f2", Command::Theme),
-        ("ctrl-,", Command::Theme),
+        ("f2", Command::Help),
+        ("ctrl-,", Command::Help),
         ("ctrl-n", Command::AddPage),
         ("ctrl-shift-n", Command::NewSite),
         ("ctrl-r", Command::Redo),
@@ -1197,7 +1196,7 @@ mod tests {
     fn kitty_legacy_and_tmux_cover_every_fallback() {
         for mode in [InputMode::Kitty, InputMode::Legacy, InputMode::Tmux] {
             assert_eq!(command_of(cmd("f1", mode)), Command::Help);
-            assert_eq!(command_of(cmd("f2", mode)), Command::Theme);
+            assert_eq!(command_of(cmd("f2", mode)), Command::Help);
             assert_eq!(command_of(cmd("f3", mode)), Command::Validate);
             assert_eq!(command_of(cmd("f4", mode)), Command::PageHealth);
             assert_eq!(command_of(cmd("f5", mode)), Command::RefreshPreview);
@@ -1402,7 +1401,8 @@ mod tests {
             .join("\n");
         assert!(text.contains("Add page · Ctrl N · Ctrl N"));
         assert!(text.contains("New site · Ctrl Shift N · Ctrl Shift N"));
-        assert!(text.contains("Theme · F2 · F2"));
+        assert!(text.contains("Settings · F1 · F1"));
+        assert!(!text.contains("Theme · F2 · F2"));
         assert!(text.contains("Redo · Ctrl R · Ctrl R"));
         assert!(text.contains("Refresh preview · F5 · F5"));
         assert!(text.contains("Undo · Ctrl Z · Ctrl Z"));

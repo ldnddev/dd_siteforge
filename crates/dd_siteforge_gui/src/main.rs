@@ -5,6 +5,7 @@ mod commands;
 mod density;
 mod document;
 mod find_site;
+#[cfg(test)]
 mod focus;
 mod images;
 mod keys;
@@ -19,6 +20,7 @@ mod publish;
 mod settings;
 mod shell;
 mod shortcuts;
+#[cfg(test)]
 mod states;
 mod theme_load;
 mod windows;

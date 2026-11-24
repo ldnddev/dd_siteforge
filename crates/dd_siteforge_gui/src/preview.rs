@@ -9,6 +9,7 @@ use std::io;
 use std::process::{Command, Stdio};
 
 /// Chosen preview engine. `"browser"` is the default-browser fallback.
+#[cfg(test)]
 pub const PREVIEW_ENGINE: &str = "browser";
 
 pub fn open_in_browser(target: &str) -> io::Result<()> {

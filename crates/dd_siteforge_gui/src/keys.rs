@@ -12,9 +12,13 @@ pub const SIDEBAR_KBD: &str = "Ctrl \\";
 pub const INSPECTOR_KBD: &str = "Ctrl Alt \\";
 
 pub const NEW_SITE_KEY: &str = "ctrl-shift-n";
+#[cfg(test)]
 pub const ADD_PAGE_KEY: &str = "ctrl-n";
+/// F2 opens the same Settings panel as F1.
+#[cfg(test)]
 pub const THEME_KEY: &str = "f2";
 pub const REDO_KEY: &str = "ctrl-r";
+#[cfg(test)]
 pub const QUIT_KEY: &str = "ctrl-q";
 pub const OPEN_KEY: &str = "ctrl-o";
 

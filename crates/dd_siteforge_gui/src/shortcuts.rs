@@ -31,7 +31,8 @@ mod tests {
         let text = lines().join("\n");
         assert!(text.contains("Add page · Ctrl N · Ctrl N"));
         assert!(text.contains("New site · Ctrl Shift N · Ctrl Shift N"));
-        assert!(text.contains("Theme · F2 · F2"));
+        assert!(text.contains("Settings · F1 · F1"));
+        assert!(!text.contains("Theme · F2 · F2"));
         assert!(text.contains("Redo · Ctrl R · Ctrl R"));
         assert!(text.contains("Refresh preview · F5 · F5"));
         assert!(text.contains("Find in site · Ctrl F"));

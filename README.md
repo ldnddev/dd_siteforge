@@ -14,22 +14,29 @@ Picks the Linux or macOS binary for this machine (x86_64 or aarch64) from GitHub
 curl -fsSL https://raw.githubusercontent.com/ldnddev/dd_siteforge/master/install.sh | bash
 ```
 
-Installs `$HOME/.local/bin/dd_siteforge` and writes the default theme to `$HOME/.config/ldnddev/dd_siteforge_theme.yml` only when that file is missing. On Linux it also writes `${XDG_DATA_HOME:-$HOME/.local/share}/applications/dd_siteforge.desktop` (`Terminal=true`) so the TUI shows in the application menu, and copies the icon when the package includes `source/favicon/web-app-manifest-512x512.png`. A prefix outside `$HOME` uses `$PREFIX/share/applications`. Pin a version with `--version`, or override `PREFIX` / `BIN_DIR` / `CONFIG_DIR` / `XDG_DATA_HOME`.
-
-`./install.sh uninstall` removes the binary, the theme file, the desktop launcher, and the installed icon. It leaves `~/.config/ldnddev/dd_siteforge/` (session and scaffold) in place. Use the same `PREFIX`, `BIN_DIR`, `CONFIG_DIR`, and `XDG_DATA_HOME` as the install.
+With a terminal to answer, the script asks whether to install the terminal app, the desktop window, or both. With no terminal, it installs the terminal app. That writes `$HOME/.local/bin/dd_siteforge` and the default theme at `$HOME/.config/ldnddev/dd_siteforge_theme.yml` only when that file is missing. On Linux it also writes `${XDG_DATA_HOME:-$HOME/.local/share}/applications/dd_siteforge.desktop` (`Terminal=true`) so the TUI shows in the application menu, and copies the icon when the package includes `source/favicon/web-app-manifest-512x512.png`. A prefix outside `$HOME` uses `$PREFIX/share/applications`. Pin a version with `--version`, or override `PREFIX` / `BIN_DIR` / `CONFIG_DIR` / `XDG_DATA_HOME`.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ldnddev/dd_siteforge/master/install.sh | bash -s -- --version v1.31.2
-curl -fsSL https://raw.githubusercontent.com/ldnddev/dd_siteforge/master/install.sh | bash -s -- uninstall
+./install.sh --tui          # terminal app
+./install.sh --gui          # desktop window only
+./install.sh --both         # both binaries and both launchers
+./install.sh --uninstall    # asks the same question; no terminal removes both
+```
+
+`./install.sh --uninstall` removes the chosen binaries and their launchers. It leaves the theme, the icon, and `~/.config/ldnddev/dd_siteforge/` (session and scaffold) in place. Use the same `PREFIX`, `BIN_DIR`, `CONFIG_DIR`, and `XDG_DATA_HOME` as the install. `INSTALL_GUI=1` is the same as `--both`.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ldnddev/dd_siteforge/master/install.sh | bash -s -- --version v1.32.0
+curl -fsSL https://raw.githubusercontent.com/ldnddev/dd_siteforge/master/install.sh | bash -s -- --uninstall --tui
 ```
 
 From a clone, `./install.sh` builds with cargo. Use `--from-release` to download a binary instead.
 
 ```bash
-./install.sh                      # cargo build --release
-./install.sh --from-release       # same as the curl one-liner
+./install.sh --tui                # cargo build --release
+./install.sh --from-release --tui # same as the curl one-liner
 cargo install --path .            # ~/.cargo/bin
-./install.sh uninstall
+./install.sh --uninstall --tui
 ```
 
 For the desktop editor, see [GUI](#gui).
@@ -78,17 +85,17 @@ From a clone, build and install with:
 ./install.sh --gui
 ```
 
-That runs `cargo build --release -p dd_siteforge_gui`, installs `~/.local/bin/dd_siteforge-gui`, and on Linux writes the application-menu launcher `~/.local/share/applications/dd_siteforge-gui.desktop` (`Terminal=false`). You can run the same Cargo command yourself if you only need the binary in `target/release/`.
+That runs `cargo build --release -p dd_siteforge_gui`, installs `~/.local/bin/dd_siteforge-gui`, and on Linux writes the application-menu launcher `~/.local/share/applications/dd_siteforge-gui.desktop` (`Terminal=false`, `StartupWMClass=dev.ldnddev.dd_siteforge`). It does not replace the terminal app. `./install.sh --both` installs both binaries and both launchers. You can run the same Cargo command yourself if you only need the binary in `target/release/`.
 
-`./install.sh --from-release --gui` downloads a prebuilt glibc GUI binary when a release includes one. Those assets are Linux only (`x86_64-unknown-linux-gnu` and `aarch64-unknown-linux-gnu`). There is no macOS GUI release, and the GUI is not tested in CI on macOS, so build it on Linux. The current release, v1.31.2, has no GUI asset, so use `./install.sh --gui` from a clone until one does.
+`./install.sh --from-release --gui` downloads a prebuilt glibc GUI binary when a release includes one. Those assets are Linux only (`x86_64-unknown-linux-gnu` and `aarch64-unknown-linux-gnu`). `--both` downloads the musl TUI and the glibc GUI as two archives. There is no macOS GUI release, and the GUI is not tested in CI on macOS, so build it on Linux. Tags before v1.32.0 have no GUI asset. For those, use `./install.sh --gui` from a clone.
 
 Remove the GUI binary and its launcher with:
 
 ```bash
-./install.sh uninstall --gui
+./install.sh --uninstall --gui
 ```
 
-That leaves `gui.json` and the rest of `~/.config/ldnddev/dd_siteforge/` in place.
+That leaves `gui.json`, the theme, and the rest of `~/.config/ldnddev/dd_siteforge/` in place.
 
 ### Launch
 
@@ -100,17 +107,17 @@ dd_siteforge-gui [site path]
 
 ### Keys
 
-Press `F1` or `Ctrl+/` to open the shortcut sheet. The GUI and the TUI share the same keymap.
+`F1` opens Settings, a panel on the right half of the window. Theme, density, and Vim keys are at the top. Keyboard shortcuts are the section below them, in the same scroll. `F2`, `Ctrl+/`, and `Ctrl+,` open that same panel. `F1` again, or Escape, closes it. The GUI and the TUI share this panel and the same keymap.
 
 A few of the keys:
 
-- `F2` opens Settings › Appearance (theme, density, and the Vim keys toggle)
+- `F1` opens Settings
 - `Ctrl+P` preview
 - `F5` refresh preview
-- `Ctrl+K` command palette
+- `Ctrl+K` command palette (also the Search field in the title bar)
 - `Ctrl+Q` quit
 
-Vim keys are on by default. In the outline, sidebar, lists, and pickers, `j` `k` move, `g` `G` go to first or last, and `h` `l` collapse or expand. Turn them off in Settings › Appearance. They are never active inside text fields.
+Vim keys are on by default. In the outline, sidebar, lists, and pickers, `j` `k` move, `g` `G` go to first or last, and `h` `l` collapse or expand. Turn them off in Settings. They are never active inside text fields.
 
 ### Preferences (`gui.json`)
 
@@ -122,7 +129,7 @@ GUI-only preferences live in `$XDG_CONFIG_HOME/ldnddev/dd_siteforge/gui.json` (d
 | `vim_keys` | boolean | `true` | Vim movement keys in lists and trees |
 | `reduced_motion` | boolean | `false` | Less UI motion |
 
-`reduced_motion` has no control in Settings › Appearance yet. Edit `gui.json` to change it.
+`reduced_motion` has no control in Settings yet. Edit `gui.json` to change it.
 
 ### Hyprland / Omarchy
 
@@ -151,7 +158,7 @@ dd_siteforge
 
 `dd_siteforge` in a folder with `site.json` opens the TUI. `dd_siteforge site.json` and `dd_siteforge tui site.json` still work. Recents and the last page/tree row live in `~/.config/ldnddev/dd_siteforge/session.json`.
 
-In the TUI: `F1` help, `?` find, `:` command palette, `Shift+E` export, `Shift+P` preview, `Shift+B` build CSS/JS, `Ctrl+Q` quit. Put images in `./source/images/`.
+In the TUI: `F1` opens Settings (theme on top, shortcuts below, on the right half). `F2` opens the same sheet. `?` find, `:` command palette, `Shift+E` export, `Shift+P` preview, `Shift+B` build CSS/JS, `Ctrl+Q` quit. Put images in `./source/images/`. The footer starts with `F1:Settings`.
 
 `Shift+B` runs `lando grunt build` when `.lando.yml` is present, otherwise `npx grunt build`. Preview binds `127.0.0.1` and re-exports into the same local server on the next save.
 
@@ -274,7 +281,7 @@ flowchart TD
   npxcmd --> webassets
   webassets --> assets
 
-  tuiapp --> theme["F2 theme"]
+  tuiapp --> theme["F1 Settings"]
   theme --> themecrate["ldnddev_theme + dd_siteforge_theme.yml"]
 ```
 

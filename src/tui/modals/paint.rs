@@ -137,7 +137,8 @@ impl App {
             return;
         }
 
-        let area = centered_rect(70, 80, frame.area());
+        // 80% keeps `Left/Right: choices` and `* required` on one help row at 120 columns.
+        let area = centered_rect(80, 80, frame.area());
         frame.render_widget(Clear, area);
 
         // Outer border + title with solid modal background.
@@ -159,12 +160,18 @@ impl App {
 
         // Help row at the very top of the content area.
         let help_rect = Rect::new(inner.x, inner.y, inner.width, 1);
-        let focused_is_textarea = matches!(
-            state.form.fields.get(state.focused_field).map(|f| &f.kind),
-            Some(editform::FieldKind::Textarea { .. })
-        );
+        let focused_kind = state
+            .form
+            .fields
+            .get(state.focused_field)
+            .map(|field| &field.kind);
+        let focused_is_textarea =
+            matches!(focused_kind, Some(editform::FieldKind::Textarea { .. }));
+        let focused_is_enum = matches!(focused_kind, Some(editform::FieldKind::Enum { .. }));
         let help_text = if focused_is_textarea {
             "Tab: fields | Ctrl+E: expand | Ctrl+S: save | Ctrl+Z: undo | Esc: cancel"
+        } else if focused_is_enum {
+            "Tab: fields | Left/Right: choices | Ctrl+S: save | Ctrl+Z: undo | Esc: cancel"
         } else {
             "Tab: fields | Ctrl+S: save | Ctrl+Z: undo | Esc: cancel"
         };

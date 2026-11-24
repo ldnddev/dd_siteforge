@@ -42,26 +42,11 @@ pub fn settings_path() -> PathBuf {
     dd_siteforge_core::scaffold::config_scaffold_dir().join("gui.json")
 }
 
-pub fn load() -> GuiSettings {
-    let path = settings_path();
-    if path.is_file() {
-        load_from(&path)
-    } else {
-        let settings = GuiSettings::default();
-        let _ = save(&settings);
-        settings
-    }
-}
-
 pub fn load_from(path: &Path) -> GuiSettings {
     let Ok(bytes) = fs::read(path) else {
         return GuiSettings::default();
     };
     serde_json::from_slice(&bytes).unwrap_or_default()
-}
-
-pub fn save(settings: &GuiSettings) -> std::io::Result<()> {
-    save_to(&settings_path(), settings)
 }
 
 pub fn save_to(path: &Path, settings: &GuiSettings) -> std::io::Result<()> {

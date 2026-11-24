@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use dd_siteforge_core::model::{Page, PageTemplate, Site};
+use dd_siteforge_core::model::{Page, PageNode, PageTemplate, SectionComponent, Site};
 use dd_siteforge_core::session::{self, RecentSite, Session};
 use dd_siteforge_core::storage::save_site;
 use gpui::{AppContext, TestAppContext};
@@ -495,6 +495,7 @@ fn palette_holds_init_and_f2_opens_appearance(cx: &mut TestAppContext) {
     shell.update(cx, |shell, _| {
         let text = shell.visible_text();
         assert!(text.contains("title-actions:Export,Preview"), "{text}");
+        assert!(text.contains("title-search:240"), "{text}");
         assert!(!text.contains("Init site kit"), "{text}");
         shell.handle_key("ctrl-k");
         let text = shell.visible_text();
@@ -506,21 +507,66 @@ fn palette_holds_init_and_f2_opens_appearance(cx: &mut TestAppContext) {
         assert!(shell.visible_text().contains("Command palette cancelled."));
         shell.handle_key("f2");
         let text = shell.visible_text();
-        assert!(text.contains("Settings › Appearance"), "{text}");
-        assert!(text.contains("Vim keys on"), "{text}");
+        assert!(text.contains("settings-panel:right:70"), "{text}");
+        assert!(text.contains("settings-nav:Themes,Window,Help"), "{text}");
+        assert!(text.contains("settings-page:Themes"), "{text}");
+        assert!(text.contains("theme-list:flow"), "{text}");
+        assert!(text.contains("screen:editor"), "{text}");
+        assert!(text.contains("Settings"), "{text}");
+        assert!(text.contains("> Themes"), "{text}");
+        assert!(!text.contains("Shortcut sheet"), "{text}");
+        assert!(!text.contains("Density Comfortable"), "{text}");
+        assert!(!text.contains("Theme · F2 · F2"), "{text}");
+        shell.handle_key("tab");
+        let text = shell.visible_text();
+        assert!(text.contains("settings-page:Window"), "{text}");
         assert!(text.contains("Density Comfortable"), "{text}");
-        assert!(!text.contains("Theme · "), "{text}");
+        assert!(text.contains("Vim keys on"), "{text}");
         shell.set_density(crate::settings::Density::Compact);
         shell.set_vim_keys(false);
         let text = shell.visible_text();
         assert!(text.contains("Density Compact"), "{text}");
         assert!(text.contains("Vim keys off"), "{text}");
+        shell.handle_key("tab");
+        let text = shell.visible_text();
+        assert!(text.contains("settings-page:Help"), "{text}");
+        assert!(text.contains("Shortcut sheet"), "{text}");
+        assert!(text.contains("Settings · F1 · F1"), "{text}");
+        assert!(text.contains("Refresh preview · F5 · F5"), "{text}");
         shell.handle_key("escape");
+        assert!(!shell.visible_text().contains("settings-panel:right:70"));
         shell.handle_key("f1");
         let text = shell.visible_text();
-        assert!(text.contains("Shortcut sheet"), "{text}");
-        assert!(text.contains("Add page · Ctrl N · Ctrl N"), "{text}");
-        assert!(text.contains("Refresh preview · F5 · F5"), "{text}");
+        assert!(text.contains("settings-panel:right:70"), "{text}");
+        assert!(text.contains("settings-page:Themes"), "{text}");
+        shell.handle_key("tab");
+        let text = shell.visible_text();
+        assert!(text.contains("settings-page:Window"), "{text}");
+        assert!(text.contains("Density Compact"), "{text}");
+        shell.handle_key("f1");
+        assert!(!shell.visible_text().contains("settings-panel:right:70"));
+        shell.handle_key("f3");
+        let text = shell.visible_text();
+        assert!(text.contains("issues-height:"), "{text}");
+        assert!(text.contains("Validation "), "{text}");
+        assert!(!text.contains("settings-panel:right:70"), "{text}");
+        shell.handle_key("f1");
+        let text = shell.visible_text();
+        assert!(text.contains("screen:editor"), "{text}");
+        assert!(text.contains("outline:0:HEAD"), "{text}");
+        assert!(text.contains("settings-panel:right:70"), "{text}");
+        assert!(text.contains("settings-page:Themes"), "{text}");
+        assert!(text.contains("issues-height:"), "{text}");
+        shell.handle_key("escape");
+        shell.handle_key("f4");
+        shell.handle_key("f2");
+        let text = shell.visible_text();
+        assert!(text.contains("screen:editor"), "{text}");
+        assert!(text.contains("outline:0:HEAD"), "{text}");
+        assert!(text.contains("settings-panel:right:70"), "{text}");
+        assert!(text.contains("settings-page:Themes"), "{text}");
+        assert!(text.contains("Page health"), "{text}");
+        assert!(text.contains("issues-height:"), "{text}");
     });
 }
 
@@ -1017,6 +1063,21 @@ fn followup_export_progress_is_the_toast_stack_card(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn preview_companion_opens_after_the_shell_update(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    let mut options = opts(dir.path(), None);
+    options.quit_runtime = true;
+    let shell = mount(cx, options);
+    shell.update(cx, |shell, cx| {
+        shell.testing_open_companion(cx);
+    });
+    let open = cx.read(|app| app.windows().len());
+    let text = cx.read(|app| shell.read(app).visible_text());
+    assert_eq!(open, 1, "{text}");
+    assert!(!text.contains("Couldn't open the preview window"), "{text}");
+}
+
+#[gpui::test]
 fn followup_preview_not_built_status_names_ctrl_p(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path().join("site");
@@ -1158,5 +1219,441 @@ fn reduced_motion_skips_sidebar_title_scroll(cx: &mut TestAppContext) {
         let value = report_line(&report, "value:meta_description|");
         assert!(value.contains("scroll:no"), "{value}");
         assert!(value.contains(&format!("tip:{LONG_META}")), "{value}");
+    });
+}
+
+#[gpui::test]
+fn clicking_an_inspector_field_edits_it(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("site.json");
+    save_site(&path, &Site::starter()).unwrap();
+    let shell = mount(cx, opts(dir.path(), Some(path)));
+    shell.update(cx, |shell, _| {
+        shell.select_outline_label("dd-hero");
+        let before = shell.visible_text();
+        assert!(before.contains("Build with dd-framework"), "{before}");
+        assert!(!before.contains("editing parent_title"), "{before}");
+        shell.handle_key("z");
+        assert!(
+            !shell.visible_text().contains("Build with dd-frameworkz"),
+            "outline keys must not type into a field that was only selected"
+        );
+
+        shell.focus_inspector_field("parent_title");
+        let focused = shell.visible_text();
+        assert!(focused.contains("editing parent_title"), "{focused}");
+        assert!(focused.contains("Build with dd-framework"), "{focused}");
+        shell.handle_key("left");
+        shell.handle_key("left");
+        shell.handle_key("x");
+        let edited = shell.visible_text();
+        assert!(edited.contains("Build with dd-framewoxrk"), "{edited}");
+
+        shell.focus_inspector_field("parent_subtitle");
+        shell.handle_key("space");
+        shell.handle_key("shift-z");
+        let subtitle = shell.visible_text();
+        assert!(
+            subtitle.contains("Framework-native static page builder Z"),
+            "{subtitle}"
+        );
+
+        shell.apply_markdown_button(
+            "parent_copy",
+            dd_siteforge_core::controls::MarkdownInsert::Bold,
+        );
+        let copy = shell.visible_text();
+        assert!(
+            copy.contains("**Compose pages with typed component schemas.**"),
+            "{copy}"
+        );
+        assert!(copy.contains("editing parent_copy"), "{copy}");
+
+        shell.focus_inspector_field("parent_class");
+        let once = shell.visible_text();
+        assert!(once.contains("editing parent_class"), "{once}");
+        assert!(once.contains("dropdown:parent_class:11"), "{once}");
+        assert!(once.contains("option:> -full-full"), "{once}");
+        assert!(once.contains("option:  -full-contained"), "{once}");
+        assert!(once.contains("dropdown:copy_position:3"), "{once}");
+        assert!(
+            !once.contains("option:  -center"),
+            "a closed enum stays collapsed"
+        );
+        shell.choose_enum_option("parent_class", "-full-contained");
+        let chosen = shell.visible_text();
+        assert!(
+            chosen.lines().any(|line| line == "-full-contained"),
+            "{chosen}"
+        );
+        assert!(
+            chosen.lines().all(|line| !line.starts_with("option:")),
+            "{chosen}"
+        );
+        assert!(chosen.contains("dropdown:parent_class:11"), "{chosen}");
+
+        shell.focus_inspector_field("sal");
+        let sal = shell.visible_text();
+        assert!(sal.contains("dropdown:sal:12"), "{sal}");
+        assert!(sal.contains("option:> fade"), "{sal}");
+        assert!(sal.contains("option:  slide-up"), "{sal}");
+        shell.handle_key("down");
+        let moved = shell.visible_text();
+        assert!(moved.contains("option:> slide-up"), "{moved}");
+        shell.handle_key("escape");
+        let closed = shell.visible_text();
+        assert!(closed.lines().any(|line| line == "slide-up"), "{closed}");
+        assert!(
+            closed.lines().all(|line| !line.starts_with("option:")),
+            "{closed}"
+        );
+        assert!(closed.contains("editing sal"), "{closed}");
+        assert!(closed.contains("dd-hero"), "{closed}");
+
+        shell.focus_inspector_field("media_kind");
+        let media = shell.visible_text();
+        assert!(media.contains("dropdown:media_kind:4"), "{media}");
+        assert!(media.contains("option:> image"), "{media}");
+        assert!(media.contains("option:  none"), "{media}");
+        assert!(media.contains("option:  oembed"), "{media}");
+        assert!(media.contains("option:  local-video"), "{media}");
+        assert!(media.contains("dropdown:parent_image_class:11"), "{media}");
+        assert!(
+            !media.contains("option:  -contained"),
+            "only the open enum lists its choices"
+        );
+
+        shell.handle_key("left");
+        let cycled = shell.visible_text();
+        assert!(cycled.contains("option:> none"), "{cycled}");
+
+        shell.choose_enum_option("media_kind", "local-video");
+        shell.focus_inspector_field("media_loop");
+        let toggle = shell.visible_text();
+        assert!(toggle.lines().any(|line| line == "true"), "{toggle}");
+        assert!(!toggle.contains("dropdown:media_loop"), "{toggle}");
+        assert!(
+            toggle.lines().all(|line| !line.starts_with("option:")),
+            "{toggle}"
+        );
+    });
+}
+
+fn titled_page(title: &str, slug: &str) -> Page {
+    let mut page = Page::from_template(title, PageTemplate::Blank);
+    page.slug = slug.to_string();
+    page.id = format!("page-{}", slug.replace('/', "-"));
+    page
+}
+
+#[gpui::test]
+fn page_tree_nests_under_the_parent_and_starts_collapsed(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("site.json");
+    let mut site = Site::starter();
+    site.pages.push(titled_page("Blog", "blog"));
+    site.pages.push(titled_page("Hello", "blog/hello"));
+    site.pages.push(titled_page("World", "blog/world"));
+    site.pages.push(titled_page("About", "about"));
+    save_site(&path, &site).unwrap();
+    let shell = mount(cx, opts(dir.path(), Some(path)));
+    shell.update(cx, |shell, _| {
+        let text = shell.visible_text();
+        assert!(text.contains("tree:closed:depth:0:Blog"), "{text}");
+        assert!(!text.contains("Hello"), "{text}");
+        assert!(!text.contains("World"), "{text}");
+        assert!(text.lines().all(|line| line != "blog"), "{text}");
+        shell.select_sidebar_label("Blog");
+        shell.handle_key("l");
+        let text = shell.visible_text();
+        assert!(text.contains("tree:open:depth:0:Blog"), "{text}");
+        assert!(text.contains("tree:leaf:depth:1:Hello"), "{text}");
+        assert!(text.contains("tree:leaf:depth:1:World"), "{text}");
+        assert!(text.contains("tree:leaf:depth:0:About"), "{text}");
+        shell.handle_key("h");
+        assert!(
+            !shell.visible_text().contains("Hello"),
+            "h collapses the page"
+        );
+        shell.handle_key("right");
+        assert!(shell.visible_text().contains("tree:leaf:depth:1:Hello"));
+        shell.handle_key("left");
+        assert!(!shell.visible_text().contains("Hello"));
+        shell.handle_key("space");
+        assert!(shell.visible_text().contains("Hello"));
+        shell.handle_key("space");
+        assert!(!shell.visible_text().contains("Hello"));
+        shell.set_vim_keys(false);
+        for key in ["h", "e", "l", "l", "o"] {
+            shell.handle_key(key);
+        }
+        let text = shell.visible_text();
+        assert!(text.contains("tree:open:depth:0:Blog"), "{text}");
+        assert!(text.contains("tree:leaf:depth:1:Hello"), "{text}");
+        assert!(!text.contains("tree:leaf:depth:1:World"), "{text}");
+        assert!(!text.contains("tree:leaf:depth:0:About"), "{text}");
+    });
+}
+
+#[gpui::test]
+fn opening_a_child_page_expands_only_its_ancestors(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("site.json");
+    let mut site = Site::starter();
+    site.pages.push(titled_page("Blog", "blog"));
+    site.pages.push(titled_page("Hello", "blog/hello"));
+    site.pages.push(titled_page("World", "blog/world"));
+    site.pages.push(titled_page("Services", "services"));
+    site.pages.push(titled_page("Offer", "services/offer"));
+    save_site(&path, &site).unwrap();
+    let hello = site
+        .pages
+        .iter()
+        .position(|page| page.slug == "blog/hello")
+        .unwrap();
+    session::save_to(
+        &dir.path().join("session.json"),
+        &Session {
+            recents: vec![RecentSite {
+                path: path.clone(),
+                page: hello,
+                tree_row: 0,
+                region: "page".to_string(),
+            }],
+        },
+    )
+    .unwrap();
+    let shell = mount(cx, opts(dir.path(), Some(path)));
+    shell.update(cx, |shell, _| {
+        let text = shell.visible_text();
+        assert!(text.contains("tree:open:depth:0:Blog"), "{text}");
+        assert!(text.contains("tree:leaf:depth:1:Hello"), "{text}");
+        assert!(text.contains("tree:leaf:depth:1:World"), "{text}");
+        assert!(text.contains("tree:closed:depth:0:Services"), "{text}");
+        assert!(!text.contains("Offer"), "{text}");
+        assert!(
+            text.lines()
+                .all(|line| line != "blog" && line != "services"),
+            "{text}"
+        );
+    });
+}
+
+#[gpui::test]
+fn card_items_are_separate_rows_and_open_for_edit(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("site.json");
+    let mut site = Site::starter();
+    dd_siteforge_core::edits::insert_page_component(
+        &mut site,
+        0,
+        1,
+        0,
+        0,
+        dd_siteforge_core::component_kind::ComponentKind::Card,
+    )
+    .unwrap();
+    let PageNode::Section(section) = &mut site.pages[0].nodes[1] else {
+        panic!("section");
+    };
+    let SectionComponent::Card(card) = &mut section.columns[0].components[0] else {
+        panic!("card");
+    };
+    card.items[0].child_title = "Alpha".to_string();
+    card.items.push(card.items[0].clone());
+    card.items.push(card.items[0].clone());
+    card.items.push(card.items[0].clone());
+    card.items[1].child_title = "Beta".to_string();
+    card.items[2].child_title = "Gamma".to_string();
+    card.items[3].child_title = "Delta".to_string();
+    save_site(&path, &site).unwrap();
+
+    let shell = mount(cx, opts(dir.path(), Some(path)));
+    shell.update(cx, |shell, _| {
+        let text = shell.visible_text();
+        assert!(text.contains("outline:2:dd-card"), "{text}");
+        assert!(text.contains("outline:3:- 1: Alpha"), "{text}");
+        assert!(text.contains("outline:3:- 2: Beta"), "{text}");
+        assert!(text.contains("frame:open:DD-SECTION · SECTION-1"), "{text}");
+        assert!(text.contains("section-columns:1"), "{text}");
+        assert!(text.contains("1 column"), "{text}");
+        assert!(text.contains("card-row:8/24:3"), "{text}");
+        assert!(text.contains("card-row:8/24:1"), "{text}");
+        assert!(text.contains("face:title:Alpha"), "{text}");
+        assert!(text.contains("face:subtitle:Subtitle"), "{text}");
+        assert!(text.contains("face:copy:Copy"), "{text}");
+        assert!(text.contains("face:link:Learn More"), "{text}");
+        assert!(
+            text.contains("face:image:https://dummyimage.com/720x720/000/fff"),
+            "{text}"
+        );
+        assert!(
+            text.contains("face:title:Build with dd-framework"),
+            "{text}"
+        );
+        assert!(
+            text.contains("face:subtitle:Framework-native static page builder"),
+            "{text}"
+        );
+        assert!(
+            text.contains("face:copy:Compose pages with typed component schemas."),
+            "{text}"
+        );
+        assert!(text.contains("face:link:Get Started"), "{text}");
+        assert!(text.contains("face:image:assets/images/hero.jpg"), "{text}");
+
+        shell.select_outline_label("- 1: Alpha");
+        let selected = shell.visible_text();
+        assert!(
+            selected.contains("index › section-1 › dd-card › 1: Alpha"),
+            "{selected}"
+        );
+        assert!(selected.contains("Title *"), "{selected}");
+        assert!(selected.contains("Alpha"), "{selected}");
+
+        shell.focus_inspector_field("child_title");
+        let editing = shell.visible_text();
+        assert!(editing.contains("editing child_title"), "{editing}");
+        assert!(editing.contains("‹ Items"), "{editing}");
+        assert!(shell.set_field_value("child_title", "Alpha Edited"));
+
+        shell.select_outline_label("dd-hero");
+        let saved = shell.visible_text();
+        assert!(saved.contains("outline:3:- 1: Alpha Edited"), "{saved}");
+        assert!(saved.contains("Item saved."), "{saved}");
+        let stored = shell.testing_site().expect("site");
+        let PageNode::Section(section) = &stored.pages[0].nodes[1] else {
+            panic!("section");
+        };
+        let SectionComponent::Card(card) = &section.columns[0].components[0] else {
+            panic!("card");
+        };
+        assert_eq!(card.items[0].child_title, "Alpha Edited");
+        assert_eq!(card.items[1].child_title, "Beta");
+
+        shell.select_outline_label("dd-card");
+        shell.edit_collection_item("items", 1);
+        let item = shell.visible_text();
+        assert!(item.contains("Beta"), "{item}");
+        assert!(item.contains("‹ Items"), "{item}");
+        assert!(
+            item.contains("editing child_title") || item.contains("Title *"),
+            "{item}"
+        );
+
+        shell.select_outline_label("DD-SECTION · SECTION-1");
+        shell.handle_key("h");
+        let collapsed = shell.visible_text();
+        assert!(
+            collapsed.contains("frame:closed:DD-SECTION · SECTION-1"),
+            "{collapsed}"
+        );
+        assert!(!collapsed.contains("- 1: Alpha Edited"), "{collapsed}");
+        assert!(!collapsed.contains("- 2: Beta"), "{collapsed}");
+        shell.handle_key("l");
+        let open = shell.visible_text();
+        assert!(open.contains("frame:open:DD-SECTION · SECTION-1"), "{open}");
+        assert!(open.contains("outline:3:- 1: Alpha Edited"), "{open}");
+        assert!(open.contains("outline:3:- 2: Beta"), "{open}");
+        assert!(open.contains("face:title:Alpha Edited"), "{open}");
+
+        shell.select_outline_label("- 1: Alpha Edited");
+        shell.toggle_section(1);
+        let toggled = shell.visible_text();
+        assert!(
+            toggled.contains("frame:closed:DD-SECTION · SECTION-1"),
+            "{toggled}"
+        );
+        assert!(!toggled.contains("- 1: Alpha Edited"), "{toggled}");
+        shell.toggle_section(1);
+        let restored = shell.visible_text();
+        assert!(
+            restored.contains("frame:open:DD-SECTION · SECTION-1"),
+            "{restored}"
+        );
+        assert!(
+            restored.contains("outline:3:- 1: Alpha Edited"),
+            "{restored}"
+        );
+    });
+}
+
+#[gpui::test]
+fn blueprint_packs_half_width_cards_and_resolves_a_local_image(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("site.json");
+    let images = dir.path().join("source").join("images");
+    std::fs::create_dir_all(&images).unwrap();
+    let png = images.join("alpha.png");
+    image::RgbImage::from_pixel(1, 1, image::Rgb([12, 80, 120]))
+        .save(&png)
+        .unwrap();
+
+    let mut site = Site::starter();
+    dd_siteforge_core::edits::insert_page_component(
+        &mut site,
+        0,
+        1,
+        0,
+        0,
+        dd_siteforge_core::component_kind::ComponentKind::Card,
+    )
+    .unwrap();
+    let PageNode::Section(section) = &mut site.pages[0].nodes[1] else {
+        panic!("section");
+    };
+    let SectionComponent::Card(card) = &mut section.columns[0].components[0] else {
+        panic!("card");
+    };
+    card.parent_width = "dd-u-1-2".to_string();
+    card.items[0].child_title = "Alpha".to_string();
+    card.items[0].child_image_url = "assets/images/alpha.png".to_string();
+    card.items[0].child_subtitle = "Lead card".to_string();
+    card.items[0].child_copy = "Local art".to_string();
+    card.items[0].child_link_label = Some("Open".to_string());
+    for (index, title) in ["Beta", "Gamma", "Delta"].into_iter().enumerate() {
+        card.items.push(card.items[0].clone());
+        let item = &mut card.items[index + 1];
+        item.child_title = title.to_string();
+        item.child_image_url.clear();
+        item.child_subtitle.clear();
+        item.child_copy.clear();
+        item.child_link_label = None;
+        item.child_link_url = None;
+    }
+    save_site(&path, &site).unwrap();
+
+    let resolved = crate::present::blueprint_image_file(&path, "assets/images/alpha.png");
+    assert_eq!(resolved.as_deref(), Some(png.as_path()));
+    assert!(crate::present::blueprint_image_file(&path, "assets/images/hero.jpg").is_none());
+    assert!(
+        crate::present::blueprint_image_file(&path, "https://dummyimage.com/720x720/000/fff")
+            .is_none()
+    );
+
+    let shell = mount(cx, opts(dir.path(), Some(path.clone())));
+    shell.update(cx, |shell, _| {
+        let text = shell.visible_text();
+        assert_eq!(text.matches("card-row:1/2:2").count(), 2, "{text}");
+        assert!(text.contains("outline:3:- 1: Alpha"), "{text}");
+        assert!(
+            text.contains("face:image:assets/images/alpha.png"),
+            "{text}"
+        );
+        assert!(text.contains("face:title:Alpha"), "{text}");
+        assert!(text.contains("face:subtitle:Lead card"), "{text}");
+        assert!(text.contains("face:copy:Local art"), "{text}");
+        assert!(text.contains("face:link:Open"), "{text}");
+        assert!(
+            !text.contains("face:image:https://dummyimage.com"),
+            "{text}"
+        );
+
+        shell.select_outline_label("- 1: Alpha");
+        let selected = shell.visible_text();
+        assert!(
+            selected.contains("index › section-1 › dd-card › 1: Alpha"),
+            "{selected}"
+        );
     });
 }

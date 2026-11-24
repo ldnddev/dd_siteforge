@@ -1963,6 +1963,31 @@ impl Site {
     }
 }
 
+/// Longest existing slug prefix of `pages[idx]`.
+/// `blog/entry` nests under `blog`. `blog/2024/entry` nests under `blog/2024`
+/// when that page exists, otherwise under `blog`. The home slug `index` is a root.
+pub fn page_parent_index(pages: &[Page], idx: usize) -> Option<usize> {
+    let slug = pages.get(idx)?.slug.as_str();
+    if slug == "index" {
+        return None;
+    }
+    let mut prefix = slug;
+    while let Some(slash) = prefix.rfind('/') {
+        prefix = &prefix[..slash];
+        if prefix.is_empty() {
+            break;
+        }
+        if let Some((parent, _)) = pages
+            .iter()
+            .enumerate()
+            .find(|(i, page)| *i != idx && page.slug == prefix)
+        {
+            return Some(parent);
+        }
+    }
+    None
+}
+
 /// Starter content to seed a new page with.
 #[derive(Debug, Clone, Copy)]
 pub enum PageTemplate {

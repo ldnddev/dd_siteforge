@@ -1,6 +1,6 @@
 //! Frame layout: header, sidebar, details, footer, overlays.
 use super::*;
-use ratatui::text::Line;
+use ratatui::text::{Line, Span};
 
 /// Sidebar block title. Compact when pane width (incl. borders) is under 22:
 /// 25% of an 80-col frame is 20, which still fits `[1]` / `[2]` / `[3]`.
@@ -41,6 +41,52 @@ pub(super) fn sidebar_pane_title(
         }
         SidebarSection::Details => String::new(),
     }
+}
+
+/// Right half of the frame, between the header and the footer.
+fn settings_sheet_area(frame_area: Rect) -> Rect {
+    let y = frame_area.y.saturating_add(3);
+    let height = frame_area.height.saturating_sub(4);
+    let width = (frame_area.width / 2).max(1).min(frame_area.width);
+    Rect {
+        x: frame_area.x + frame_area.width.saturating_sub(width),
+        y,
+        width,
+        height,
+    }
+}
+
+fn settings_top(title: &str, width: usize, edge: Style, title_style: Style) -> Line<'static> {
+    let width = width.max(2);
+    let inner = width - 2;
+    let mut label = format!(" {title} ");
+    if label.chars().count() > inner {
+        label = label.chars().take(inner).collect();
+    }
+    let pad = inner - label.chars().count();
+    Line::from(vec![
+        Span::styled("┌", edge),
+        Span::styled(label, title_style),
+        Span::styled(format!("{}┐", "─".repeat(pad)), edge),
+    ])
+}
+
+fn settings_bottom(width: usize, edge: Style) -> Line<'static> {
+    let width = width.max(2);
+    Line::from(Span::styled(format!("└{}┘", "─".repeat(width - 2)), edge))
+}
+
+fn settings_row(body: &str, width: usize, edge: Style, fill: Style) -> Line<'static> {
+    let width = width.max(2);
+    let inner = width - 2;
+    let mut text: String = body.chars().take(inner).collect();
+    let pad = inner - text.chars().count();
+    text.push_str(&" ".repeat(pad));
+    Line::from(vec![
+        Span::styled("│", edge),
+        Span::styled(text, fill),
+        Span::styled("│", edge),
+    ])
 }
 
 impl App {
@@ -469,182 +515,14 @@ impl App {
         // Render unified modal if open (handles all modal types)
         self.render_modal(frame);
 
-        // Overlay paints after modal so Help/Theme sit above FormEdit /
-        // ImagePicker. Tracks stay on App so drag can key off overlay.
-        match &mut self.overlay {
-            Some(Overlay::Help { scroll }) => {
-                let area = centered_rect(80, 80, frame.area());
-                frame.render_widget(Clear, area);
-                let block = Block::default()
-                    .title("Key & Mouse bindings (F1 / Esc to close, j/k or arrows to scroll)")
-                    .borders(Borders::ALL)
-                    .style(
-                        Style::default()
-                            .fg(self.theme.text_primary)
-                            .bg(self.theme.modal_background),
-                    )
-                    .border_style(Style::default().fg(self.theme.border_active))
-                    .title_style(
-                        Style::default()
-                            .fg(self.theme.modal_header)
-                            .add_modifier(Modifier::BOLD),
-                    );
-                let inner = block.inner(area);
-                frame.render_widget(block, area);
-
-                // Reserve a 1-col gutter on the right for the scrollbar so the
-                // body wraps before reaching the modal border.
-                let scrollbar_width: u16 = 1;
-                let body_w = inner.width.saturating_sub(scrollbar_width + 1);
-                let body_area = Rect {
-                    x: inner.x,
-                    y: inner.y,
-                    width: body_w,
-                    height: inner.height,
-                };
-
-                // Build rich help (section headers in modal_header, 2-col key/action with
-                // wrapping that preserves columns, icons, internal padding + dividers).
-                let help = build_help_text(&self.theme, body_w as usize, self.in_tmux);
-                let wrapped_total = count_lines(&help, body_w as usize);
-                let visible = inner.height as usize;
-                let max_scroll = wrapped_total.saturating_sub(visible) as u16;
-                self.overlay_scroll_max = max_scroll;
-                if *scroll > max_scroll {
-                    *scroll = max_scroll;
-                }
-                let scroll = *scroll;
-
-                let body = Paragraph::new(help)
-                    .style(
-                        Style::default()
-                            .fg(self.theme.text_primary)
-                            .bg(self.theme.modal_background),
-                    )
-                    .wrap(Wrap { trim: false })
-                    .scroll((scroll, 0));
-                frame.render_widget(body, body_area);
-
-                self.help_scrollbar_track = ScrollbarTrack::default();
-                self.theme_scrollbar_track = ScrollbarTrack::default();
-                if wrapped_total > visible && inner.height > 0 {
-                    let track = Rect {
-                        x: inner.x + inner.width.saturating_sub(1),
-                        y: inner.y,
-                        width: 1,
-                        height: inner.height,
-                    };
-                    self.help_scrollbar_track = ScrollbarTrack {
-                        rect: track,
-                        total: wrapped_total,
-                        visible,
-                    };
-                    paint_scrollbar(
-                        frame,
-                        track,
-                        scroll as usize,
-                        wrapped_total,
-                        visible,
-                        self.theme.scrollbar,
-                        self.theme.scrollbar_hover,
-                        self.theme.modal_background,
-                    );
-                }
-            }
-            Some(Overlay::Theme { .. }) if self.theme_editor.is_some() => {
-                if let Some(editor) = &self.theme_editor {
-                    self.render_theme_editor(frame, editor);
-                }
-            }
-            Some(Overlay::Theme { .. }) if self.theme_picker.is_some() => {
-                if let Some(picker) = &self.theme_picker {
-                    self.render_theme_picker(frame, picker);
-                }
-            }
-            Some(Overlay::Theme { scroll }) => {
-                let area = centered_rect(80, 80, frame.area());
-                frame.render_widget(Clear, area);
-                let block = Block::default()
-                    .title("Theme (F2 / Esc to close, j/k or arrows to scroll)")
-                    .borders(Borders::ALL)
-                    .style(
-                        Style::default()
-                            .fg(self.theme.text_primary)
-                            .bg(self.theme.modal_background),
-                    )
-                    .border_style(Style::default().fg(self.theme.border_active))
-                    .title_style(
-                        Style::default()
-                            .fg(self.theme.modal_header)
-                            .add_modifier(Modifier::BOLD),
-                    );
-                let inner = block.inner(area);
-                frame.render_widget(block, area);
-
-                let scrollbar_width: u16 = 1;
-                let body_w = inner.width.saturating_sub(scrollbar_width + 1);
-                let body_area = Rect {
-                    x: inner.x,
-                    y: inner.y,
-                    width: body_w,
-                    height: inner.height,
-                };
-
-                let help = build_theme_text(
-                    &self.theme,
-                    &self.theme_source,
-                    &self.theme_status,
-                    body_w as usize,
-                );
-                let wrapped_total = count_lines(&help, body_w as usize);
-                let visible = inner.height as usize;
-                let max_scroll = wrapped_total.saturating_sub(visible) as u16;
-                self.overlay_scroll_max = max_scroll;
-                if *scroll > max_scroll {
-                    *scroll = max_scroll;
-                }
-                let scroll = *scroll;
-
-                let body = Paragraph::new(help)
-                    .style(
-                        Style::default()
-                            .fg(self.theme.text_primary)
-                            .bg(self.theme.modal_background),
-                    )
-                    .wrap(Wrap { trim: false })
-                    .scroll((scroll, 0));
-                frame.render_widget(body, body_area);
-
-                self.help_scrollbar_track = ScrollbarTrack::default();
-                self.theme_scrollbar_track = ScrollbarTrack::default();
-                if wrapped_total > visible && inner.height > 0 {
-                    let track = Rect {
-                        x: inner.x + inner.width.saturating_sub(1),
-                        y: inner.y,
-                        width: 1,
-                        height: inner.height,
-                    };
-                    self.theme_scrollbar_track = ScrollbarTrack {
-                        rect: track,
-                        total: wrapped_total,
-                        visible,
-                    };
-                    paint_scrollbar(
-                        frame,
-                        track,
-                        scroll as usize,
-                        wrapped_total,
-                        visible,
-                        self.theme.scrollbar,
-                        self.theme.scrollbar_hover,
-                        self.theme.modal_background,
-                    );
-                }
-            }
-            None => {
-                self.help_scrollbar_track = ScrollbarTrack::default();
-                self.theme_scrollbar_track = ScrollbarTrack::default();
-            }
+        // Settings sits above FormEdit. The sheet is the right half of the
+        // body: a section list on the left, one page on the right.
+        if self.overlay.is_some() {
+            self.paint_settings(frame);
+        } else {
+            self.help_scrollbar_track = ScrollbarTrack::default();
+            self.theme_scrollbar_track = ScrollbarTrack::default();
+            self.settings_nav_area = Rect::default();
         }
 
         // Toasts paint last so they float above everything except the
@@ -670,112 +548,369 @@ impl App {
         }
     }
 
-    fn render_theme_picker(&self, frame: &mut ratatui::Frame, picker: &ldnddev_theme::ThemePicker) {
-        use ldnddev_theme::PickerRow;
-        let area = centered_rect(70, 80, frame.area());
+    fn paint_settings(&mut self, frame: &mut ratatui::Frame) {
+        let area = settings_sheet_area(frame.area());
+        if area.width == 0 || area.height == 0 {
+            return;
+        }
         frame.render_widget(Clear, area);
-        let mut lines = vec![
-            Line::from(format!(
-                "Save: {} (Tab)    Enter apply    e edit colors    s save    Esc revert",
-                picker.save_target.label()
-            )),
-            Line::from(""),
-        ];
-        let view_h = area.height.saturating_sub(5) as usize;
-        for (idx, row) in picker
-            .rows
-            .iter()
-            .enumerate()
-            .skip(picker.scroll)
-            .take(view_h.max(1))
-        {
-            let (label, detail) = match row {
-                PickerRow::Follow { name } => ("Follow desktop".to_string(), name.clone()),
-                PickerRow::Theme(theme) => (theme.name.clone(), theme.mode.label().to_string()),
-                PickerRow::Custom => ("Custom".to_string(), "built-in".to_string()),
-            };
-            let cursor = if idx == picker.selected { ">" } else { " " };
-            lines.push(Line::from(format!("{cursor} {label:<22} {detail}")));
+        let block = Block::default()
+            .title(" Settings ")
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(self.theme.border_active))
+            .title_style(
+                Style::default()
+                    .fg(self.theme.modal_header)
+                    .add_modifier(Modifier::BOLD),
+            )
+            .style(
+                Style::default()
+                    .bg(self.theme.modal_background)
+                    .fg(self.theme.modal_text),
+            );
+        let inner = block.inner(area);
+        frame.render_widget(block, area);
+        if inner.width == 0 || inner.height == 0 {
+            return;
+        }
+        if self.settings_nav as usize >= super::settings::NAV.len() {
+            self.settings_nav = 0;
+        }
+        let nav_w = {
+            let spare = inner.width.saturating_sub(8);
+            if spare == 0 {
+                1.min(inner.width)
+            } else {
+                14.min(spare).max(1)
+            }
+        };
+        let cols = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Length(nav_w), Constraint::Min(1)])
+            .split(inner);
+        let nav = cols[0];
+        let page = cols[1];
+        self.settings_nav_area = nav;
+        self.paint_settings_nav(frame, nav);
+        let section = super::settings::NAV
+            .get(self.settings_nav as usize)
+            .copied()
+            .unwrap_or("Themes");
+        let title_h = u16::from(page.height > 0);
+        if title_h > 0 {
+            let shown: String = section.chars().take(page.width as usize).collect();
+            frame.render_widget(
+                Paragraph::new(Line::from(Span::styled(
+                    shown,
+                    Style::default()
+                        .fg(self.theme.modal_header)
+                        .add_modifier(Modifier::BOLD),
+                )))
+                .style(
+                    Style::default()
+                        .bg(self.theme.modal_background)
+                        .fg(self.theme.modal_header),
+                ),
+                Rect {
+                    x: page.x,
+                    y: page.y,
+                    width: page.width,
+                    height: title_h,
+                },
+            );
+        }
+        let content = Rect {
+            x: page.x,
+            y: page.y.saturating_add(title_h),
+            width: page.width,
+            height: page.height.saturating_sub(title_h),
+        };
+        if self.settings_nav == super::settings::HELP {
+            self.paint_settings_help(frame, content);
+            return;
+        }
+        if self.settings_nav == super::settings::WINDOW {
+            self.paint_settings_window(frame, content);
+            return;
+        }
+        self.paint_settings_themes(frame, content);
+    }
+
+    fn paint_settings_nav(&self, frame: &mut ratatui::Frame, nav: Rect) {
+        let block = Block::default()
+            .borders(Borders::RIGHT)
+            .border_style(Style::default().fg(self.theme.border))
+            .style(
+                Style::default()
+                    .bg(self.theme.body_background)
+                    .fg(self.theme.modal_text),
+            );
+        let inner = block.inner(nav);
+        frame.render_widget(block, nav);
+        if inner.width == 0 || inner.height == 0 {
+            return;
+        }
+        let selected_style = Style::default()
+            .fg(self.theme.text_active_focus)
+            .bg(self.theme.selected_background);
+        let idle = Style::default()
+            .fg(self.theme.modal_text)
+            .bg(self.theme.body_background);
+        let width = inner.width as usize;
+        let mut lines = Vec::new();
+        for (index, label) in super::settings::NAV.iter().enumerate() {
+            let on = self.settings_nav == index as u8;
+            let marker = if on { ">" } else { " " };
+            let text: String = format!("{marker} {label}").chars().take(width).collect();
+            let style = if on { selected_style } else { idle };
+            lines.push(Line::from(Span::styled(text, style)));
         }
         frame.render_widget(
-            Paragraph::new(lines).block(
-                Block::default()
-                    .title("F2 Themes")
-                    .borders(Borders::ALL)
-                    .border_style(Style::default().fg(self.theme.border_active))
-                    .style(
-                        Style::default()
-                            .bg(self.theme.modal_background)
-                            .fg(self.theme.modal_text),
-                    ),
+            Paragraph::new(lines).style(
+                Style::default()
+                    .bg(self.theme.body_background)
+                    .fg(self.theme.modal_text),
             ),
-            area,
+            inner,
         );
     }
 
-    fn render_theme_editor(&self, frame: &mut ratatui::Frame, editor: &ldnddev_theme::ThemeEditor) {
-        use ldnddev_theme::{ThemeEditorRow, theme_editor_rows};
-        let area = centered_rect(80, 80, frame.area());
-        frame.render_widget(Clear, area);
-        let rows = theme_editor_rows(&editor.fields);
-        let channel = ["R", "G", "B"][editor.channel.min(2)];
-        let target = editor.save_target.label().to_uppercase();
-        let esc = if self.theme_picker.is_some() {
-            "Esc back"
-        } else {
-            "Esc revert"
+    fn paint_settings_help(&mut self, frame: &mut ratatui::Frame, area: Rect) {
+        self.theme_scrollbar_track = ScrollbarTrack::default();
+        if area.width == 0 || area.height == 0 {
+            self.help_scrollbar_track = ScrollbarTrack::default();
+            self.overlay_scroll_max = 0;
+            return;
+        }
+        let body_w = area.width.saturating_sub(2);
+        let body = Rect {
+            width: body_w,
+            ..area
         };
-        let mut lines = vec![
-            Line::from(format!(
-                "Save: {target} (Tab)   Channel: {channel} ([/])   Y save   R reset   {esc}"
-            )),
-            Line::from(if editor.editing_hex {
+        let help = build_help_text(&self.theme, body_w as usize, self.in_tmux);
+        let total = help.lines.len();
+        self.paint_scrolled_lines(frame, body, help.lines, None, self.theme.scrollbar);
+        if total > area.height as usize && area.height > 0 {
+            let track = Rect {
+                x: area.x + area.width.saturating_sub(1),
+                y: area.y,
+                width: 1,
+                height: area.height,
+            };
+            let scroll = match self.overlay {
+                Some(Overlay::Theme { scroll }) => scroll as usize,
+                None => 0,
+            };
+            self.help_scrollbar_track = ScrollbarTrack {
+                rect: track,
+                total,
+                visible: area.height as usize,
+            };
+            paint_scrollbar(
+                frame,
+                track,
+                scroll,
+                total,
+                area.height as usize,
+                self.theme.scrollbar,
+                self.theme.scrollbar_hover,
+                self.theme.modal_background,
+            );
+        } else {
+            self.help_scrollbar_track = ScrollbarTrack::default();
+        }
+    }
+
+    fn paint_settings_window(&mut self, frame: &mut ratatui::Frame, area: Rect) {
+        let selected_style = Style::default()
+            .fg(self.theme.text_active_focus)
+            .bg(self.theme.selected_background);
+        let idle = Style::default().fg(self.theme.modal_text);
+        let mut lines = vec![Line::from(Span::styled(
+            "Tab section   j/k move   Enter   Esc close",
+            Style::default().fg(self.theme.text_secondary),
+        ))];
+        let mut selected_line = None;
+        for (index, row) in super::settings::window_items().iter().enumerate() {
+            if index == self.settings_row {
+                selected_line = Some(lines.len());
+            }
+            let value = super::settings::value(self, row.id);
+            let marker = if index == self.settings_row { ">" } else { " " };
+            let style = if index == self.settings_row {
+                selected_style
+            } else {
+                idle
+            };
+            lines.push(Line::from(Span::styled(
+                format!("{marker} {}  {value}", row.title),
+                style,
+            )));
+        }
+        self.help_scrollbar_track = ScrollbarTrack::default();
+        self.paint_scrolled_lines(frame, area, lines, selected_line, self.theme.modal_text);
+    }
+
+    fn paint_settings_themes(&mut self, frame: &mut ratatui::Frame, content: Rect) {
+        use ldnddev_theme::{PickerRow, ThemeEditorRow, theme_editor_rows};
+        let editor = self.theme_editor.clone();
+        let picker = self.theme_picker.clone();
+        let box_w = (content.width as usize).max(2);
+        let mut lines: Vec<Line<'static>> = Vec::new();
+        let mut selected_line = None;
+        let rule = Style::default().fg(self.theme.border);
+        let header = Style::default()
+            .fg(self.theme.modal_header)
+            .add_modifier(Modifier::BOLD);
+        let hint = if editor.is_some() {
+            let target = editor
+                .as_ref()
+                .map(|editor| editor.save_target.label())
+                .unwrap_or("");
+            let back = if picker.is_some() {
+                "Esc back"
+            } else {
+                "Esc revert"
+            };
+            format!("Tab section   j/k move   t target   y save {target}   R reset   {back}")
+        } else {
+            "Tab section   j/k move   Enter apply   e colors   y save   t target   Esc revert"
+                .to_string()
+        };
+        lines.push(Line::from(Span::styled(
+            hint,
+            Style::default().fg(self.theme.text_secondary),
+        )));
+        let selected_style = Style::default()
+            .fg(self.theme.text_active_focus)
+            .bg(self.theme.selected_background);
+        let idle = Style::default().fg(self.theme.modal_text);
+        if let Some(editor) = &editor {
+            lines.push(Line::from(if editor.editing_hex {
                 format!("Hex: {}█", editor.hex_draft)
             } else {
-                format!("Hex: {}   Enter / +/-", editor.hex_draft)
-            }),
-            Line::from(""),
-        ];
-        let view_h = area.height.saturating_sub(6) as usize;
-        let start = rows
-            .iter()
-            .position(|row| match row {
-                ThemeEditorRow::Color(idx) => *idx >= editor.scroll,
-                ThemeEditorRow::Header(_) => false,
-            })
-            .unwrap_or(0);
-        let start = if start > 0 && matches!(rows[start - 1], ThemeEditorRow::Header(_)) {
-            start - 1
-        } else {
-            start
-        };
-        for row in rows.iter().skip(start).take(view_h.max(1)) {
-            match row {
-                ThemeEditorRow::Header(name) => lines.push(Line::from(*name)),
-                ThemeEditorRow::Color(idx) => {
-                    let field = editor.fields[*idx];
-                    let hex = editor
-                        .palette
-                        .get(field.key)
-                        .map(|c| c.to_hex())
-                        .unwrap_or_else(|| "#000000".into());
-                    let cursor = if *idx == editor.selected { ">" } else { " " };
-                    lines.push(Line::from(format!("{cursor} {:<22} {hex}", field.key)));
+                format!("Hex: {}   Enter edit", editor.hex_draft)
+            }));
+            let mut open = false;
+            for row in theme_editor_rows(&editor.fields) {
+                match row {
+                    ThemeEditorRow::Header(name) => {
+                        if open {
+                            lines.push(settings_bottom(box_w, rule));
+                        }
+                        lines.push(Line::from(""));
+                        lines.push(settings_top(name, box_w, rule, header));
+                        open = true;
+                    }
+                    ThemeEditorRow::Color(idx) => {
+                        if idx == editor.selected {
+                            selected_line = Some(lines.len());
+                        }
+                        let field = editor.fields[idx];
+                        let hex = editor
+                            .palette
+                            .get(field.key)
+                            .map(|color| color.to_hex())
+                            .unwrap_or_else(|| "#000000".into());
+                        let cursor = if idx == editor.selected { ">" } else { " " };
+                        let style = if idx == editor.selected {
+                            selected_style
+                        } else {
+                            idle
+                        };
+                        lines.push(settings_row(
+                            &format!("{cursor} {:<22} {hex}", field.key),
+                            box_w,
+                            rule,
+                            style,
+                        ));
+                    }
                 }
             }
+            if open {
+                lines.push(settings_bottom(box_w, rule));
+            }
+        } else if let Some(picker) = &picker {
+            lines.push(Line::from(""));
+            lines.push(settings_top("Themes", box_w, rule, header));
+            for (idx, row) in picker.rows.iter().enumerate() {
+                if idx == picker.selected {
+                    selected_line = Some(lines.len());
+                }
+                let (label, detail) = match row {
+                    PickerRow::Follow { name } => ("Follow desktop".to_string(), name.clone()),
+                    PickerRow::Theme(theme) => (theme.name.clone(), theme.mode.label().to_string()),
+                    PickerRow::Custom => ("Custom".to_string(), "built-in".to_string()),
+                };
+                let cursor = if idx == picker.selected { ">" } else { " " };
+                let style = if idx == picker.selected {
+                    selected_style
+                } else {
+                    idle
+                };
+                lines.push(settings_row(
+                    &format!("{cursor} {label:<22} {detail}"),
+                    box_w,
+                    rule,
+                    style,
+                ));
+            }
+            lines.push(settings_bottom(box_w, rule));
         }
+        self.help_scrollbar_track = ScrollbarTrack::default();
+        self.paint_scrolled_lines(frame, content, lines, selected_line, self.theme.modal_text);
+    }
+
+    fn paint_scrolled_lines(
+        &mut self,
+        frame: &mut ratatui::Frame,
+        area: Rect,
+        lines: Vec<Line<'static>>,
+        selected_line: Option<usize>,
+        _thumb: ratatui::style::Color,
+    ) {
+        if area.width == 0 || area.height == 0 {
+            self.overlay_scroll_max = 0;
+            return;
+        }
+        let view_h = area.height as usize;
+        let max_scroll = lines.len().saturating_sub(view_h) as u16;
+        self.overlay_scroll_max = max_scroll;
+        if self.settings_follow {
+            if let Some(sel) = selected_line {
+                let top = match self.overlay {
+                    Some(Overlay::Theme { scroll }) => scroll as usize,
+                    None => 0,
+                };
+                if sel < top {
+                    if let Some(Overlay::Theme { scroll }) = &mut self.overlay {
+                        *scroll = sel as u16;
+                    }
+                } else if sel >= top + view_h {
+                    if let Some(Overlay::Theme { scroll }) = &mut self.overlay {
+                        *scroll = (sel + 1 - view_h) as u16;
+                    }
+                }
+            }
+            self.settings_follow = false;
+        }
+        if let Some(Overlay::Theme { scroll }) = &mut self.overlay {
+            if *scroll > max_scroll {
+                *scroll = max_scroll;
+            }
+        }
+        let scroll = match self.overlay {
+            Some(Overlay::Theme { scroll }) => scroll,
+            None => 0,
+        };
         frame.render_widget(
-            Paragraph::new(lines).block(
-                Block::default()
-                    .title("F2 Theme editor")
-                    .borders(Borders::ALL)
-                    .border_style(Style::default().fg(self.theme.border_active))
-                    .style(
-                        Style::default()
-                            .bg(self.theme.modal_background)
-                            .fg(self.theme.modal_text),
-                    ),
-            ),
+            Paragraph::new(lines)
+                .style(
+                    Style::default()
+                        .fg(self.theme.modal_text)
+                        .bg(self.theme.modal_background),
+                )
+                .scroll((scroll, 0)),
             area,
         );
     }

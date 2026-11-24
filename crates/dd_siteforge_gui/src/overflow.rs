@@ -7,8 +7,7 @@
 //! and never truncate it, so the row grows. Hover-scroll of a truncated
 //! sidebar page title is Jared's addition: it is not in either spec.
 
-use crate::density::{Metrics, metrics};
-use crate::settings::Density;
+use crate::density::Metrics;
 
 /// Advance used to decide truncation and wrapping without a font rasterizer.
 ///
@@ -93,19 +92,33 @@ pub fn label_line_px() -> f32 {
     ldnddev_theme::TypeScale::SIZES.line_height(ldnddev_theme::TypeScale::SIZES.sm)
 }
 
-pub fn sidebar_title_available(metrics: Metrics, depth: u32, badges: &[&str]) -> f32 {
+pub fn sidebar_title_available(
+    metrics: Metrics,
+    depth: u32,
+    badges: &[&str],
+    disclosure: bool,
+) -> f32 {
     let mut width =
         metrics.sidebar_width - ROW_PAD_LEFT - metrics.tree_indent * depth as f32 - ROW_PAD_RIGHT;
+    if disclosure {
+        width -= metrics.tree_indent;
+    }
     for badge in badges {
         width -= BADGE_GAP + BADGE_PAD_X + text_width(badge);
     }
     width.max(0.0)
 }
 
-pub fn sidebar_row_layout(label: &str, depth: u32, badges: &[&str], metrics: Metrics) -> Clip {
+pub fn sidebar_row_layout(
+    label: &str,
+    depth: u32,
+    badges: &[&str],
+    disclosure: bool,
+    metrics: Metrics,
+) -> Clip {
     clip_line(
         label,
-        sidebar_title_available(metrics, depth, badges),
+        sidebar_title_available(metrics, depth, badges, disclosure),
         metrics.row,
     )
 }
@@ -275,6 +288,8 @@ fn place_in_cycle(elapsed_in_cycle_ms: u64, travel_px: f32) -> ScrollPhase {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::density::metrics;
+    use crate::settings::Density;
 
     const LONG_TITLE: &str = "Building Better Workflows: From Why Tools to Custom Frameworks";
     const LONG_VALUE: &str = "A description that is much longer than the inspector field and used to overlap the Canonical URL row.";
@@ -287,7 +302,7 @@ mod tests {
     #[test]
     fn long_sidebar_title_truncates_on_one_fixed_height_row() {
         let metrics = comfortable();
-        let clip = sidebar_row_layout(LONG_TITLE, 0, &[], metrics);
+        let clip = sidebar_row_layout(LONG_TITLE, 0, &[], false, metrics);
         assert_eq!(clip.height, metrics.row, "tree row stays 28 px");
         assert!(clip.truncated, "the ticket title is wider than the sidebar");
         assert!(clip.shown.ends_with('…'), "shown = {}", clip.shown);
@@ -299,14 +314,14 @@ mod tests {
         );
         assert_eq!(clip.tooltip.as_deref(), Some(LONG_TITLE));
         assert!(clip.travel_px > 0.0);
-        assert!(text_width(&clip.shown) <= sidebar_title_available(metrics, 0, &[]));
+        assert!(text_width(&clip.shown) <= sidebar_title_available(metrics, 0, &[], false));
         assert!(sidebar_scrolls(true, clip.truncated, false));
     }
 
     #[test]
     fn short_sidebar_title_is_not_truncated_and_does_not_scroll() {
         let metrics = comfortable();
-        let clip = sidebar_row_layout("Home", 0, &[], metrics);
+        let clip = sidebar_row_layout("Home", 0, &[], false, metrics);
         assert_eq!(clip.height, metrics.row);
         assert!(!clip.truncated);
         assert_eq!(clip.shown, "Home");
@@ -368,7 +383,7 @@ mod tests {
         assert_eq!(short.text, "Title");
 
         let compact = metrics(Density::Compact);
-        let compact_title = sidebar_row_layout(LONG_TITLE, 0, &[], compact);
+        let compact_title = sidebar_row_layout(LONG_TITLE, 0, &[], false, compact);
         let compact_value = field_value_layout(LONG_VALUE, compact);
         assert_eq!(compact_title.height, compact.row);
         assert_eq!(compact_value.clip.height, compact.input);
@@ -378,7 +393,7 @@ mod tests {
 
     #[test]
     fn hover_scroll_waits_pauses_at_each_end_and_snaps_back() {
-        let clip = sidebar_row_layout(LONG_TITLE, 0, &[], comfortable());
+        let clip = sidebar_row_layout(LONG_TITLE, 0, &[], false, comfortable());
         let travel = clip.travel_px;
         assert!(travel > 1.0);
         let move_ms = travel_ms(travel);
@@ -430,7 +445,7 @@ mod tests {
 
     #[test]
     fn reduced_motion_skips_the_scroll_and_keeps_the_tooltip() {
-        let clip = sidebar_row_layout(LONG_TITLE, 0, &[], comfortable());
+        let clip = sidebar_row_layout(LONG_TITLE, 0, &[], false, comfortable());
         assert!(clip.truncated);
         assert_eq!(clip.tooltip.as_deref(), Some(LONG_TITLE));
         assert!(!sidebar_scrolls(true, true, true));

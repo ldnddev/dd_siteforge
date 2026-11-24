@@ -508,6 +508,7 @@ pub(crate) fn parse_hex_color(raw: &str) -> anyhow::Result<Color> {
     Ok(Color::Rgb(r, g, b))
 }
 
+#[cfg(test)]
 pub(crate) fn color_to_hex(c: Color) -> String {
     if let Color::Rgb(r, g, b) = c {
         format!("#{:02x}{:02x}{:02x}", r, g, b)

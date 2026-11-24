@@ -14,31 +14,11 @@ pub(super) struct PageTreeRow {
 }
 
 /// Longest existing slug prefix of `pages[idx]`, if any.
-/// `blog/entry` nests under `blog`; `blog/2024/entry` nests under `blog/2024`
-/// when that page exists, else under `blog`.
 pub(super) fn page_parent_idx(
     pages: &[dd_siteforge_core::model::Page],
     idx: usize,
 ) -> Option<usize> {
-    let slug = pages.get(idx)?.slug.as_str();
-    if slug == "index" {
-        return None;
-    }
-    let mut prefix = slug;
-    while let Some(slash) = prefix.rfind('/') {
-        prefix = &prefix[..slash];
-        if prefix.is_empty() {
-            break;
-        }
-        if let Some((parent, _)) = pages
-            .iter()
-            .enumerate()
-            .find(|(i, p)| *i != idx && p.slug == prefix)
-        {
-            return Some(parent);
-        }
-    }
-    None
+    dd_siteforge_core::model::page_parent_index(pages, idx)
 }
 
 fn page_forest(pages: &[dd_siteforge_core::model::Page]) -> (Vec<usize>, Vec<Vec<usize>>) {
@@ -76,9 +56,9 @@ impl App {
             return;
         };
         if expanded {
-            self.collapsed_page_ids.remove(&id);
+            self.expanded_page_ids.insert(id);
         } else {
-            self.collapsed_page_ids.insert(id);
+            self.expanded_page_ids.remove(&id);
             if self.page_is_descendant_of(self.selected_page, page_idx) {
                 self.focus_page(page_idx);
             }
@@ -136,11 +116,11 @@ impl App {
             pages: &[dd_siteforge_core::model::Page],
             children: &[Vec<usize>],
             ords: &[usize],
-            collapsed: &HashSet<String>,
+            expanded_ids: &HashSet<String>,
             rows: &mut Vec<PageTreeRow>,
         ) {
             let has_children = !children[idx].is_empty();
-            let expanded = has_children && !collapsed.contains(&pages[idx].id);
+            let expanded = has_children && expanded_ids.contains(&pages[idx].id);
             rows.push(PageTreeRow {
                 page_idx: idx,
                 depth,
@@ -150,7 +130,7 @@ impl App {
             });
             if expanded {
                 for &child in &children[idx] {
-                    walk(child, depth + 1, pages, children, ords, collapsed, rows);
+                    walk(child, depth + 1, pages, children, ords, expanded_ids, rows);
                 }
             }
         }
@@ -161,7 +141,7 @@ impl App {
                 pages,
                 &children,
                 &ords,
-                &self.collapsed_page_ids,
+                &self.expanded_page_ids,
                 &mut rows,
             );
         }

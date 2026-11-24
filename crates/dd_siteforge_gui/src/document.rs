@@ -132,6 +132,7 @@ impl Document {
         self.dirty = true;
         self.saving = false;
     }
+    #[cfg(test)]
     pub fn show_phase(&mut self, phase: SavePhase) {
         match phase {
             SavePhase::Saved => {
@@ -285,6 +286,7 @@ impl Document {
     }
 
     /// Banner Retry. Clears the backoff and writes now.
+    #[cfg(test)]
     pub fn retry_save(&mut self) -> bool {
         self.retry_after = None;
         self.dirty_since = Some(Instant::now() - AUTOSAVE_AFTER);
@@ -295,6 +297,7 @@ impl Document {
     }
 
     /// Ctrl+S. The first press while the file is in conflict keeps ours.
+    #[cfg(test)]
     pub fn checkpoint(&mut self) -> bool {
         if self.conflict {
             return self.keep_mine();
@@ -315,6 +318,7 @@ impl Document {
         Ok(())
     }
 
+    #[cfg(test)]
     pub fn keep_mine(&mut self) -> bool {
         let job = self.prepare_job(SaveKind::Overwrite);
         let result = run_job(&job);

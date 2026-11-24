@@ -1,7 +1,7 @@
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 
-use super::theme::{AppTheme, color_to_hex};
+use super::theme::AppTheme;
 
 fn wrap_to_lines(text: &str, width: usize) -> Vec<String> {
     let w = width.max(1);
@@ -186,106 +186,6 @@ pub(crate) fn build_help_text(theme: &AppTheme, width: usize, in_tmux: bool) -> 
     );
 
     Text::from(lines)
-}
-
-pub(crate) fn build_theme_text(
-    theme: &AppTheme,
-    source: &str,
-    status: &Option<String>,
-    width: usize,
-) -> Text<'static> {
-    let h_style = Style::default()
-        .fg(theme.modal_header)
-        .add_modifier(Modifier::BOLD);
-    let k_style = Style::default().fg(theme.text_active_focus);
-    let div_style = Style::default().fg(theme.text_secondary);
-
-    let mut lines: Vec<Line<'static>> = Vec::new();
-
-    // Theme section
-    lines.push(Line::from(Span::styled("Theme", h_style)));
-    lines.push(Line::from(""));
-    lines.push(Line::from(vec![
-        Span::styled("  App: ", k_style),
-        Span::raw(format!("dd_siteforge v{}", env!("CARGO_PKG_VERSION"))),
-    ]));
-    lines.push(Line::from(vec![
-        Span::styled("  Source: ", k_style),
-        Span::raw(format!(
-            "{}   (./dd_siteforge_theme.yml or equivalent)",
-            source
-        )),
-    ]));
-    let status_str = status.as_deref().unwrap_or("OK (loaded cleanly)");
-    lines.push(Line::from(vec![
-        Span::styled("  Status: ", k_style),
-        Span::raw(status_str.to_string()),
-    ]));
-    lines.push(Line::from(""));
-
-    // divider
-    let rule_len = width.saturating_sub(4).clamp(12, 50);
-    let rule = "─".repeat(rule_len);
-    lines.push(Line::from(Span::styled(format!("  {}", rule), div_style)));
-    lines.push(Line::from(""));
-
-    // Color tokens section
-    lines.push(Line::from(Span::styled(
-        "Loaded color tokens (sampled)",
-        h_style,
-    )));
-    lines.push(Line::from(""));
-
-    let tokens: Vec<(&str, Color, &str)> = vec![
-        ("base_background", theme.base_background, "app_shell base"),
-        ("body_background", theme.body_background, "content panes"),
-        (
-            "modal_background",
-            theme.modal_background,
-            "modals & popups",
-        ),
-        ("text_primary", theme.text_primary, "primary text"),
-        ("modal_header", theme.modal_header, "section titles bold"),
-        ("text_labels", theme.text_labels, "labels default"),
-        ("text_active_focus", theme.text_active_focus, "focus + keys"),
-        (
-            "input_border_focus",
-            theme.input_border_focus,
-            "focused inputs",
-        ),
-        ("cursor", theme.cursor, "caret overlay"),
-        ("selection", theme.selection, "text field highlight"),
-        ("success", theme.success, "success toasts"),
-        ("warning", theme.warning, "warning toasts"),
-        ("error", theme.error, "error toasts"),
-        ("info", theme.info, "info toasts"),
-        ("folders", theme.folders, "image picker folders"),
-        ("files", theme.files, "image picker files"),
-        ("links", theme.links, "image picker links"),
-        ("scrollbar", theme.scrollbar, "scrollbars"),
-        ("scrollbar_hover", theme.scrollbar_hover, "scrollbar thumb"),
-    ];
-
-    for (name, color, role) in tokens {
-        let hex = color_to_hex(color);
-        let line = format!("  {:<18} {}   ({})", name, hex, role);
-        lines.push(Line::from(Span::raw(line)));
-    }
-
-    lines.push(Line::from(""));
-
-    // final divider
-    lines.push(Line::from(Span::styled(format!("  {}", rule), div_style)));
-    lines.push(Line::from(""));
-    lines.push(Line::from(Span::raw(
-        "  (All colors from self.theme.*. No hardcodes.)",
-    )));
-
-    Text::from(lines)
-}
-
-pub(crate) fn count_lines(text: &Text, _width: usize) -> usize {
-    text.lines.len()
 }
 
 #[cfg(test)]

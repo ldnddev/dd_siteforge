@@ -17,8 +17,10 @@ pub struct Command {
 }
 
 /// Title-bar buttons. Init site kit and Init templates are not here (J17).
+#[cfg(test)]
 pub const TITLE_BAR_ACTIONS: &[&str] = &["Export", "Preview"];
 
+#[cfg(test)]
 pub fn registry() -> impl Iterator<Item = Command> {
     core::registry()
         .iter()
@@ -35,11 +37,13 @@ fn view(spec: &core::CommandSpec) -> Command {
     }
 }
 
+#[cfg(test)]
 pub fn command(id: CommandId) -> Command {
     view(core::spec(id))
 }
 
 /// Map a shell key token onto the core chord table.
+#[cfg(test)]
 pub fn command_for_key(key: &str) -> Option<CommandId> {
     let chord = Chord::parse(key.trim())?;
     core::command_for_chord(chord)
@@ -96,7 +100,6 @@ pub enum Motion {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Verb {
-    Insert,
     Repeat,
     Copy,
     Paste,
@@ -238,7 +241,7 @@ mod tests {
             command_for_key(keys::TOGGLE_INSPECTOR_KEY),
             Some(CommandId::ToggleInspector)
         );
-        assert_eq!(command_for_key(keys::THEME_KEY), Some(CommandId::Theme));
+        assert_eq!(command_for_key(keys::THEME_KEY), Some(CommandId::Help));
         assert_eq!(
             command_for_key(keys::ADD_PAGE_KEY),
             Some(CommandId::AddPage)
@@ -271,7 +274,7 @@ mod tests {
             command_for_key("ctrl-alt-\\"),
             Some(CommandId::ToggleInspector)
         );
-        assert_eq!(command_for_key("f2"), Some(CommandId::Theme));
+        assert_eq!(command_for_key("f2"), Some(CommandId::Help));
         assert_eq!(command_for_key("ctrl-n"), Some(CommandId::AddPage));
         assert_eq!(command_for_key("ctrl-shift-n"), Some(CommandId::NewSite));
         assert_eq!(command_for_key("ctrl-r"), Some(CommandId::Redo));

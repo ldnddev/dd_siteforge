@@ -22,6 +22,7 @@ impl App {
         tree_row: usize,
         region: SelectedRegion,
     ) {
+        self.expanded_page_ids.clear();
         if !self.site.pages.is_empty() {
             self.selected_page = page.min(self.site.pages.len() - 1);
             self.reveal_selected_page();

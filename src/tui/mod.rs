@@ -42,6 +42,7 @@ mod open_site;
 mod pages;
 mod palette;
 mod scrollbar;
+mod settings;
 mod terminal;
 #[cfg(test)]
 mod tests;
@@ -119,18 +120,26 @@ fn detect_tmux() -> bool {
     dd_siteforge_core::commands::tmux_var_is_set(std::env::var("TMUX").ok().as_deref())
 }
 
-fn load_vim_keys() -> bool {
+fn load_gui_window() -> (bool, bool) {
     if cfg!(test) {
-        return true;
+        return (true, false);
     }
     let path = dd_siteforge_core::scaffold::config_scaffold_dir().join("gui.json");
     let Ok(text) = std::fs::read_to_string(path) else {
-        return true;
+        return (true, false);
     };
-    serde_json::from_str::<serde_json::Value>(&text)
-        .ok()
-        .and_then(|value| value.get("vim_keys").and_then(|flag| flag.as_bool()))
-        .unwrap_or(true)
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return (true, false);
+    };
+    let vim = value
+        .get("vim_keys")
+        .and_then(|flag| flag.as_bool())
+        .unwrap_or(true);
+    let compact = value
+        .get("density")
+        .and_then(|density| density.as_str())
+        .is_some_and(|density| density.eq_ignore_ascii_case("compact"));
+    (vim, compact)
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -149,11 +158,11 @@ pub(super) enum SelectedRegion {
     Footer,
 }
 
-/// F1 Help / F2 Theme. Lives beside `modal`, never inside it, so Esc
-/// cannot drop ImagePicker or a paused FormEdit.
+/// F1 Settings. Theme and shortcuts share one sheet. F2 opens the same
+/// sheet. It lives beside `modal`, never inside it, so Esc cannot drop
+/// ImagePicker or a paused FormEdit.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(super) enum Overlay {
-    Help { scroll: u16 },
     Theme { scroll: u16 },
 }
 
@@ -237,6 +246,12 @@ pub(super) struct App {
     modal: Option<Modal>,
     component_kind: ComponentKind,
     overlay: Option<Overlay>,
+    /// Settings page. 0 is Themes, 1 is Window, 2 is Help.
+    settings_nav: u8,
+    settings_row: usize,
+    /// The next paint scrolls the highlighted settings row into view.
+    settings_follow: bool,
+    settings_nav_area: Rect,
     theme_editor: Option<ldnddev_theme::ThemeEditor>,
     theme_picker: Option<ldnddev_theme::ThemePicker>,
     /// Host Omarchy theme directories. Tests point this at a missing root.
@@ -287,14 +302,16 @@ pub(super) struct App {
     expanded_timeline_items: HashSet<(usize, usize, usize, usize)>,
     expanded_data_table_rows: HashSet<(usize, usize, usize, usize)>,
     header_column_expanded: bool,
-    /// Page ids whose children are hidden in `[2] Pages`. Default expanded.
-    collapsed_page_ids: HashSet<String>,
+    /// Page ids whose children are shown in `[2] Pages`. Empty starts every branch collapsed.
+    expanded_page_ids: HashSet<String>,
     /// Kitty, legacy, or tmux. Tests stay on legacy unless they set this.
     input_mode: dd_siteforge_core::commands::InputMode,
     /// `TMUX` is set and non-empty. Tests set this instead of the environment.
     in_tmux: bool,
     /// Shared with the GUI `gui.json` `vim_keys` flag. On by default.
     vim_keys: bool,
+    /// Shared with the GUI `gui.json` `density` flag. Comfortable is the default.
+    density_compact: bool,
     regions_open: bool,
     details_open: bool,
     /// One-time alias hint currently sitting in the status line.
@@ -334,6 +351,7 @@ impl App {
         let disk_hash = path
             .as_ref()
             .and_then(|p| dd_siteforge_core::storage::file_hash(p).ok().flatten());
+        let (vim_keys, density_compact) = load_gui_window();
         let mut app = Self {
             site,
             theme,
@@ -382,6 +400,10 @@ impl App {
             modal: None,
             component_kind: ComponentKind::Banner,
             overlay: None,
+            settings_nav: 0,
+            settings_row: 0,
+            settings_follow: false,
+            settings_nav_area: Rect::default(),
             theme_editor: None,
             theme_picker: None,
             omarchy_paths,
@@ -411,10 +433,11 @@ impl App {
             expanded_timeline_items: HashSet::new(),
             expanded_data_table_rows: HashSet::new(),
             header_column_expanded: true,
-            collapsed_page_ids: HashSet::new(),
+            expanded_page_ids: HashSet::new(),
             input_mode: dd_siteforge_core::commands::InputMode::Legacy,
             in_tmux: detect_tmux(),
-            vim_keys: load_vim_keys(),
+            vim_keys,
+            density_compact,
             regions_open: true,
             details_open: true,
             alias_hint: None,

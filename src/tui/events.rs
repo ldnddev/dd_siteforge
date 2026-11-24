@@ -170,11 +170,7 @@ impl App {
                 self.begin_save_prompt();
                 false
             }
-            Command::Help => {
-                self.overlay = Some(Overlay::Help { scroll: 0 });
-                false
-            }
-            Command::Theme => {
+            Command::Help | Command::Theme => {
                 self.open_theme_ui();
                 false
             }
@@ -403,121 +399,126 @@ impl App {
             return Ok(false);
         }
 
-        // Overlay sits above modal + paused FormEdit. F1/F2 close it.
-        // Theme Esc stays inside the picker or editor so the list can remain.
+        // A confirm stays above the sheet, so Esc answers the prompt.
+        if matches!(self.modal, Some(Modal::ConfirmPrompt { .. })) {
+            if let Some(modal_result) = self.handle_modal_event(evt.clone()) {
+                let mutated = matches!(modal_result, ModalResult::CloseSuccess);
+                return Ok(mutated);
+            }
+        }
+
+        // Overlay sits above the other modals. F1 and F2 close it.
+        // Tab and brackets change the page. Esc on Themes stays in the editor.
         if self.overlay.is_some() {
-            if let Event::Key(k) = &evt {
-                match k.code {
-                    KeyCode::F(1) => {
-                        if matches!(self.overlay, Some(Overlay::Theme { .. })) {
-                            self.close_theme(true);
-                        } else {
-                            self.overlay = None;
-                        }
-                        return Ok(false);
-                    }
-                    KeyCode::F(2) => {
-                        if matches!(self.overlay, Some(Overlay::Theme { .. })) {
-                            self.open_theme_ui();
-                        } else {
-                            self.overlay = None;
-                        }
-                        return Ok(false);
-                    }
-                    KeyCode::Esc
-                        if matches!(self.overlay, Some(Overlay::Theme { .. }))
-                            && self.theme_editor.is_none()
-                            && self.theme_picker.is_none() =>
-                    {
+            match evt {
+                Event::Key(k) => {
+                    if matches!(k.code, KeyCode::F(1) | KeyCode::F(2)) {
                         self.close_theme(true);
                         return Ok(false);
                     }
-                    KeyCode::Esc if !matches!(self.overlay, Some(Overlay::Theme { .. })) => {
-                        self.overlay = None;
-                        return Ok(false);
-                    }
-                    _ => {}
-                }
-            }
-
-            if matches!(self.overlay, Some(Overlay::Theme { .. }))
-                && (self.theme_editor.is_some() || self.theme_picker.is_some())
-            {
-                match &evt {
-                    Event::Key(k) => {
-                        if let Some(ek) = map_siteforge_editor_key(k) {
-                            let shift = k.modifiers.contains(KeyModifiers::SHIFT);
-                            if self.theme_editor.is_some() {
-                                self.dispatch_theme_editor(ek, shift);
+                    if k.code == KeyCode::PageDown {
+                        self.scroll_overlay(10);
+                        self.settings_follow = false;
+                    } else if k.code == KeyCode::PageUp {
+                        self.scroll_overlay(-10);
+                        self.settings_follow = false;
+                    } else if !settings_section_key(self, &k) {
+                        if self.settings_nav == super::settings::HELP {
+                            if k.code == KeyCode::Esc {
+                                self.close_theme(true);
                             } else {
-                                self.dispatch_theme_picker(ek);
+                                let max = self.overlay_scroll_max;
+                                if let Some(Overlay::Theme { scroll }) = &mut self.overlay {
+                                    match k.code {
+                                        KeyCode::Down | KeyCode::Char('j') => {
+                                            *scroll = scroll.saturating_add(1).min(max);
+                                        }
+                                        KeyCode::Up | KeyCode::Char('k') => {
+                                            *scroll = scroll.saturating_sub(1);
+                                        }
+                                        KeyCode::Home | KeyCode::Char('g') => *scroll = 0,
+                                        KeyCode::End | KeyCode::Char('G') => *scroll = max,
+                                        _ => {}
+                                    }
+                                }
+                            }
+                        } else if self.settings_nav == 0 {
+                            if save_target_key(self, &k) {
+                                toggle_save_target(self);
+                            } else if let Some(ek) = map_siteforge_editor_key(&k) {
+                                let shift = k.modifiers.contains(KeyModifiers::SHIFT);
+                                if self.theme_editor.is_some() {
+                                    self.dispatch_theme_editor(ek, shift);
+                                    self.settings_follow = true;
+                                } else {
+                                    self.dispatch_theme_picker(ek);
+                                }
+                            }
+                        } else {
+                            match k.code {
+                                KeyCode::Esc => self.close_theme(true),
+                                KeyCode::Down | KeyCode::Char('j') => {
+                                    super::settings::move_row(self, 1);
+                                }
+                                KeyCode::Up | KeyCode::Char('k') => {
+                                    super::settings::move_row(self, -1);
+                                }
+                                KeyCode::Home | KeyCode::Char('g') => {
+                                    super::settings::move_row(self, isize::MIN);
+                                }
+                                KeyCode::End | KeyCode::Char('G') => {
+                                    super::settings::move_row(self, isize::MAX);
+                                }
+                                KeyCode::Enter => super::settings::activate(self),
+                                _ => {}
                             }
                         }
                     }
-                    Event::Mouse(m) => match m.kind {
-                        MouseEventKind::ScrollUp => self.scroll_theme(-1),
-                        MouseEventKind::ScrollDown => self.scroll_theme(1),
-                        _ => {}
-                    },
-                    _ => {}
                 }
-                return Ok(false);
-            }
-
-            let (track, drag_kind) = match &self.overlay {
-                Some(Overlay::Help { .. }) => (self.help_scrollbar_track, ScrollbarDrag::Help),
-                Some(Overlay::Theme { .. }) => (self.theme_scrollbar_track, ScrollbarDrag::Theme),
-                None => unreachable!(),
-            };
-            let max = self.overlay_scroll_max;
-            if let Some(Overlay::Help { scroll } | Overlay::Theme { scroll }) = &mut self.overlay {
-                match evt {
-                    Event::Key(k) => match k.code {
-                        KeyCode::Down | KeyCode::Char('j') => {
-                            *scroll = scroll.saturating_add(1).min(max);
+                Event::Mouse(m) => match m.kind {
+                    MouseEventKind::ScrollUp => {
+                        self.scroll_overlay(-3);
+                        self.settings_follow = false;
+                    }
+                    MouseEventKind::ScrollDown => {
+                        self.scroll_overlay(3);
+                        self.settings_follow = false;
+                    }
+                    MouseEventKind::Down(MouseButton::Left)
+                        if !settings_nav_click(self, m.column, m.row) =>
+                    {
+                        let track = if self.settings_nav == super::settings::HELP {
+                            self.help_scrollbar_track
+                        } else {
+                            self.theme_scrollbar_track
+                        };
+                        if track.rect.height > 0 && contains(track.rect, m.column, m.row) {
+                            let max = self.overlay_scroll_max;
+                            self.set_overlay_scroll((track.offset_at(m.row) as u16).min(max));
+                            self.scrollbar_drag =
+                                Some(if self.settings_nav == super::settings::HELP {
+                                    ScrollbarDrag::Help
+                                } else {
+                                    ScrollbarDrag::Theme
+                                });
+                            self.settings_follow = false;
                         }
-                        KeyCode::Up | KeyCode::Char('k') => {
-                            *scroll = scroll.saturating_sub(1);
+                    }
+                    MouseEventKind::Drag(MouseButton::Left) => {
+                        let track = match self.scrollbar_drag {
+                            Some(ScrollbarDrag::Help) => self.help_scrollbar_track,
+                            Some(ScrollbarDrag::Theme) => self.theme_scrollbar_track,
+                            _ => ScrollbarTrack::default(),
+                        };
+                        if track.rect.height > 0 {
+                            let max = self.overlay_scroll_max;
+                            self.set_overlay_scroll((track.offset_at(m.row) as u16).min(max));
                         }
-                        KeyCode::PageDown => {
-                            *scroll = scroll.saturating_add(10).min(max);
-                        }
-                        KeyCode::PageUp => {
-                            *scroll = scroll.saturating_sub(10);
-                        }
-                        KeyCode::Home | KeyCode::Char('g') => {
-                            *scroll = 0;
-                        }
-                        KeyCode::End | KeyCode::Char('G') => {
-                            *scroll = max;
-                        }
-                        _ => {}
-                    },
-                    Event::Mouse(m) => match m.kind {
-                        MouseEventKind::ScrollUp => {
-                            *scroll = scroll.saturating_sub(3);
-                        }
-                        MouseEventKind::ScrollDown => {
-                            *scroll = scroll.saturating_add(3).min(max);
-                        }
-                        MouseEventKind::Down(MouseButton::Left) => {
-                            if contains(track.rect, m.column, m.row) {
-                                *scroll = (track.offset_at(m.row) as u16).min(max);
-                                self.scrollbar_drag = Some(drag_kind);
-                            }
-                        }
-                        MouseEventKind::Drag(MouseButton::Left) => {
-                            if self.scrollbar_drag == Some(drag_kind) {
-                                *scroll = (track.offset_at(m.row) as u16).min(max);
-                            }
-                        }
-                        MouseEventKind::Up(_) => {
-                            self.scrollbar_drag = None;
-                        }
-                        _ => {}
-                    },
+                    }
+                    MouseEventKind::Up(_) => self.scrollbar_drag = None,
                     _ => {}
-                }
+                },
+                _ => {}
             }
             return Ok(false);
         }
@@ -848,11 +849,45 @@ impl App {
         true
     }
 
+    pub(in crate::tui) fn save_gui_window(&self) {
+        if cfg!(test) {
+            return;
+        }
+        let path = dd_siteforge_core::scaffold::config_scaffold_dir().join("gui.json");
+        let mut value = std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+            .unwrap_or_else(|| serde_json::json!({}));
+        if let Some(object) = value.as_object_mut() {
+            object.insert(
+                "density".to_string(),
+                serde_json::json!(if self.density_compact {
+                    "compact"
+                } else {
+                    "comfortable"
+                }),
+            );
+            object.insert("vim_keys".to_string(), serde_json::json!(self.vim_keys));
+            object
+                .entry("reduced_motion".to_string())
+                .or_insert(serde_json::json!(false));
+        }
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        if let Ok(text) = serde_json::to_string_pretty(&value) {
+            let _ = std::fs::write(path, text);
+        }
+    }
+
     pub(in crate::tui) fn open_theme_ui(&mut self) {
         if matches!(self.overlay, Some(Overlay::Theme { .. })) {
             self.close_theme(true);
             return;
         }
+        self.settings_nav = 0;
+        self.settings_row = 0;
+        self.settings_follow = true;
         let palette = super::theme::palette_from_theme(&self.theme);
         let picker = ldnddev_theme::ThemePicker::new(
             palette.clone(),
@@ -887,15 +922,17 @@ impl App {
         self.overlay = None;
     }
 
-    fn scroll_theme(&mut self, delta: i32) {
-        if let Some(editor) = self.theme_editor.as_mut() {
-            let next = editor.selected as i32 + delta;
-            editor.select(next.max(0) as usize);
-            return;
+    fn scroll_overlay(&mut self, delta: i32) {
+        let max = self.overlay_scroll_max;
+        if let Some(Overlay::Theme { scroll }) = &mut self.overlay {
+            let next = *scroll as i32 + delta;
+            *scroll = next.clamp(0, i32::from(max)) as u16;
         }
-        if let Some(picker) = self.theme_picker.as_mut() {
-            let next = picker.selected as i32 + delta;
-            picker.select(next.max(0) as usize);
+    }
+
+    fn set_overlay_scroll(&mut self, value: u16) {
+        if let Some(Overlay::Theme { scroll }) = &mut self.overlay {
+            *scroll = value;
         }
     }
 
@@ -936,7 +973,28 @@ impl App {
                 self.push_toast(ToastLevel::Error, msg);
             }
             ldnddev_theme::PickerOutcome::Closed { .. } => self.close_theme(true),
-            ldnddev_theme::PickerOutcome::None => {}
+            ldnddev_theme::PickerOutcome::None => {
+                if theme_motion(ek) {
+                    self.preview_theme_row();
+                    self.settings_follow = true;
+                }
+            }
+        }
+    }
+
+    fn preview_theme_row(&mut self) {
+        let outcome = {
+            let Some(picker) = self.theme_picker.as_mut() else {
+                return;
+            };
+            picker.preview_selected()
+        };
+        if let ldnddev_theme::PickerOutcome::Applied = outcome {
+            if let Some(picker) = &self.theme_picker {
+                super::theme::apply_palette(&mut self.theme, &picker.palette);
+            }
+        } else if let ldnddev_theme::PickerOutcome::Error(msg) = outcome {
+            self.push_toast(ToastLevel::Error, msg);
         }
     }
 
@@ -1028,6 +1086,118 @@ impl App {
             ldnddev_theme::EditorOutcome::None => {}
         }
     }
+}
+
+fn theme_motion(key: ldnddev_theme::EditorKey) -> bool {
+    matches!(
+        key,
+        ldnddev_theme::EditorKey::Down
+            | ldnddev_theme::EditorKey::Up
+            | ldnddev_theme::EditorKey::Char('j')
+            | ldnddev_theme::EditorKey::Char('k')
+            | ldnddev_theme::EditorKey::Char('g')
+            | ldnddev_theme::EditorKey::Char('G')
+    )
+}
+
+fn editing_theme_hex(app: &App) -> bool {
+    app.theme_editor
+        .as_ref()
+        .is_some_and(|editor| editor.editing_hex)
+}
+
+/// Tab, Shift-Tab, `[`, and `]` change the settings page.
+/// A hex field keeps the brackets. Tab still moves the section.
+fn settings_section_key(app: &mut App, k: &crossterm::event::KeyEvent) -> bool {
+    let Some(dir) = settings_section_dir(app, k) else {
+        return false;
+    };
+    let next =
+        (app.settings_nav as isize + dir).clamp(0, crate::tui::settings::LAST as isize) as u8;
+    if next != app.settings_nav {
+        app.settings_nav = next;
+        app.settings_row = 0;
+        app.settings_follow = true;
+        if let Some(Overlay::Theme { scroll }) = &mut app.overlay {
+            *scroll = 0;
+        }
+    }
+    true
+}
+
+fn settings_section_dir(app: &App, k: &crossterm::event::KeyEvent) -> Option<isize> {
+    if k.modifiers.contains(KeyModifiers::CONTROL)
+        && matches!(k.code, KeyCode::Tab | KeyCode::BackTab)
+    {
+        return None;
+    }
+    let tab = matches!(k.code, KeyCode::Tab | KeyCode::BackTab);
+    if !tab && editing_theme_hex(app) {
+        return None;
+    }
+    match k.code {
+        KeyCode::BackTab => Some(-1),
+        KeyCode::Tab => {
+            if k.modifiers.contains(KeyModifiers::SHIFT) {
+                Some(-1)
+            } else {
+                Some(1)
+            }
+        }
+        KeyCode::Char(']') => Some(1),
+        KeyCode::Char('[') => Some(-1),
+        _ => None,
+    }
+}
+
+fn save_target_key(app: &App, k: &crossterm::event::KeyEvent) -> bool {
+    if editing_theme_hex(app) || k.modifiers.contains(KeyModifiers::CONTROL) {
+        return false;
+    }
+    matches!(k.code, KeyCode::Char('t') | KeyCode::Char('T'))
+}
+
+fn toggle_save_target(app: &mut App) {
+    let from_editor = if let Some(editor) = app.theme_editor.as_mut() {
+        editor.save_target = editor.save_target.toggled();
+        Some(editor.save_target)
+    } else {
+        None
+    };
+    if let Some(target) = from_editor {
+        if let Some(picker) = app.theme_picker.as_mut() {
+            picker.save_target = target;
+        }
+        return;
+    }
+    if let Some(picker) = app.theme_picker.as_mut() {
+        picker.save_target = picker.save_target.toggled();
+    }
+}
+
+fn settings_nav_click(app: &mut App, col: u16, row: u16) -> bool {
+    let area = app.settings_nav_area;
+    if area.width == 0 || area.height == 0 {
+        return false;
+    }
+    let inside = col >= area.x
+        && row >= area.y
+        && col < area.x.saturating_add(area.width)
+        && row < area.y.saturating_add(area.height);
+    if !inside {
+        return false;
+    }
+    let rel = usize::from(row.saturating_sub(area.y));
+    if rel >= crate::tui::settings::NAV.len() {
+        return true;
+    }
+    app.settings_nav = rel as u8;
+    app.settings_row = 0;
+    app.settings_follow = true;
+    if let Some(Overlay::Theme { scroll }) = &mut app.overlay {
+        *scroll = 0;
+    }
+    true
 }
 
 fn map_siteforge_editor_key(k: &crossterm::event::KeyEvent) -> Option<ldnddev_theme::EditorKey> {

@@ -11,6 +11,7 @@ use std::process::Command;
 
 use dd_siteforge_core::cursor::require_css_hex;
 use dd_siteforge_core::model::Site;
+#[cfg(test)]
 use dd_siteforge_core::storage::{load_site, save_site};
 use serde::Deserialize;
 
@@ -128,6 +129,7 @@ pub fn gate(colors: &BrandColors, bin: &Path) -> Gate {
 }
 
 /// Write the screened colors when the gate allows it. Invalid hex leaves the file alone.
+#[cfg(test)]
 pub fn commit_brand(path: &Path, colors: &BrandColors, bin: &Path) -> Gate {
     let before = std::fs::read(path).ok();
     let result = gate(colors, bin);

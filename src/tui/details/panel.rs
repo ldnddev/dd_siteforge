@@ -5,7 +5,7 @@ use super::*;
 fn is_footer_chrome(part: &str) -> bool {
     matches!(
         part,
-        "F1:Help" | "F2:Theme" | "Esc:Close" | "Esc:Cancel" | "Ctrl+S:Save" | "Ctrl+Q:Quit"
+        "F1:Settings" | "Esc:Close" | "Esc:Cancel" | "Ctrl+S:Save" | "Ctrl+Q:Quit"
     )
 }
 
@@ -22,7 +22,7 @@ impl App {
         let overlay = self.overlay.is_some() || self.modal.is_some();
         let form_edit =
             self.overlay.is_none() && matches!(self.modal, Some(Modal::FormEdit { .. }));
-        let mut parts: Vec<&str> = vec!["F1:Help", "F2:Theme"];
+        let mut parts: Vec<&str> = vec!["F1:Settings"];
         if form_edit {
             if width < 80 {
                 parts.extend_from_slice(&["Ctrl+S:Save", "Esc:Cancel", "Ctrl+Q:Quit"]);

@@ -682,7 +682,7 @@ fn f1_from_expanded_textarea_keeps_form() {
     focus_rich_text_copy(&mut app);
     send_key(&mut app, KeyCode::Char('e'), KeyModifiers::CONTROL);
     send_key(&mut app, KeyCode::F(1), KeyModifiers::NONE);
-    assert!(matches!(app.overlay, Some(Overlay::Help { scroll: 0 })));
+    assert!(matches!(app.overlay, Some(Overlay::Theme { scroll: 0 })));
     assert!(matches!(app.modal, Some(Modal::FormEdit { .. })));
     assert!(app.form_textarea_expanded);
     send_key(&mut app, KeyCode::Esc, KeyModifiers::NONE);
@@ -2416,7 +2416,7 @@ fn form_edit_cursor_overlay_skips_help_and_display_has_no_block_glyph() {
         "FormEdit text field should return a caret cell"
     );
 
-    app.overlay = Some(Overlay::Help { scroll: 0 });
+    app.overlay = Some(Overlay::Theme { scroll: 0 });
     assert!(
         app.active_input_cursor_cell().is_none(),
         "Help overlay must hide the FormEdit caret"
@@ -3081,6 +3081,15 @@ fn pages_tree_nests_children_under_parent_slug() {
         .iter()
         .map(|r| app.site.pages[r.page_idx].head.title.as_str())
         .collect();
+    assert_eq!(titles, ["Home", "Blog", "About"]);
+    assert!(rows[1].has_children && !rows[1].expanded);
+    assert!(app.page_tree_label(&rows[1]).contains("[+]"));
+    app.set_page_expanded(rows[1].page_idx, true);
+    let rows = app.build_pages_panel_rows();
+    let titles: Vec<&str> = rows
+        .iter()
+        .map(|r| app.site.pages[r.page_idx].head.title.as_str())
+        .collect();
     assert_eq!(titles, ["Home", "Blog", "Hello", "World", "About"]);
     assert_eq!(rows[1].depth, 0);
     assert!(rows[1].has_children && rows[1].expanded);
@@ -3120,6 +3129,7 @@ fn pages_tree_deep_nests_under_longest_existing_parent() {
     app.site
         .pages
         .push(blank_page("January", "blog/2024/january"));
+    app.set_page_expanded(1, true);
     let rows = app.build_pages_panel_rows();
     let jan = rows
         .iter()
@@ -3146,7 +3156,6 @@ fn pages_tree_space_collapses_and_hides_children() {
     app.site.pages.push(blank_page("Blog", "blog"));
     app.site.pages.push(blank_page("Hello", "blog/hello"));
     app.selected_page = 1;
-    send_key(&mut app, KeyCode::Char(' '), KeyModifiers::NONE);
     let rows = app.build_pages_panel_rows();
     let titles: Vec<&str> = rows
         .iter()
@@ -3158,6 +3167,14 @@ fn pages_tree_space_collapses_and_hides_children() {
     let rows = app.build_pages_panel_rows();
     assert_eq!(rows.len(), 3);
     assert!(rows[1].expanded);
+    send_key(&mut app, KeyCode::Char(' '), KeyModifiers::NONE);
+    let rows = app.build_pages_panel_rows();
+    let titles: Vec<&str> = rows
+        .iter()
+        .map(|r| app.site.pages[r.page_idx].head.title.as_str())
+        .collect();
+    assert_eq!(titles, ["Home", "Blog"]);
+    assert!(app.page_tree_label(&rows[1]).contains("[+]"));
 }
 
 #[test]
@@ -3173,8 +3190,6 @@ fn pages_tree_jk_skips_collapsed_children() {
     app.site.pages.push(blank_page("Blog", "blog"));
     app.site.pages.push(blank_page("Hello", "blog/hello"));
     app.site.pages.push(blank_page("About", "about"));
-    app.selected_page = 1;
-    send_key(&mut app, KeyCode::Char(' '), KeyModifiers::NONE);
     app.selected_page = 1;
     send_key(&mut app, KeyCode::Char('j'), KeyModifiers::NONE);
     assert_eq!(app.site.pages[app.selected_page].head.title, "About");
@@ -3249,6 +3264,38 @@ fn pages_tree_click_uses_visible_rows() {
     // visible: Home (row 0), Blog (row 1), About (row 2)
     app.handle_click(10, 4);
     assert_eq!(app.site.pages[app.selected_page].slug, "about");
+}
+
+#[test]
+fn pages_tree_restore_expands_only_ancestors() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    app.site.pages.push(blank_page("Blog", "blog"));
+    app.site.pages.push(blank_page("Hello", "blog/hello"));
+    app.site.pages.push(blank_page("World", "blog/world"));
+    app.site.pages.push(blank_page("Services", "services"));
+    app.site.pages.push(blank_page("Offer", "services/offer"));
+    app.set_page_expanded(1, true);
+    app.set_page_expanded(4, true);
+    app.restore_selection(2, 0, SelectedRegion::Page);
+    let titles: Vec<&str> = app
+        .build_pages_panel_rows()
+        .iter()
+        .map(|r| app.site.pages[r.page_idx].head.title.as_str())
+        .collect();
+    assert_eq!(titles, ["Home", "Blog", "Hello", "World", "Services"]);
+    app.restore_selection(1, 0, SelectedRegion::Page);
+    let titles: Vec<&str> = app
+        .build_pages_panel_rows()
+        .iter()
+        .map(|r| app.site.pages[r.page_idx].head.title.as_str())
+        .collect();
+    assert_eq!(titles, ["Home", "Blog", "Services"]);
 }
 
 #[test]
@@ -5438,7 +5485,7 @@ fn f1_opens_help_while_form_edit_is_open() {
         scroll_offset: 0,
     });
     send_key(&mut app, KeyCode::F(1), KeyModifiers::NONE);
-    assert!(matches!(app.overlay, Some(Overlay::Help { scroll: 0 })));
+    assert!(matches!(app.overlay, Some(Overlay::Theme { scroll: 0 })));
     assert!(matches!(app.modal, Some(Modal::FormEdit { .. })));
     assert!(app.paused_form_edit_modal.is_none());
 }
@@ -5485,7 +5532,7 @@ fn form_edit_image_picker_f1_esc_esc_restores_same_field() {
     }
 
     send_key(&mut app, KeyCode::F(1), KeyModifiers::NONE);
-    assert!(matches!(app.overlay, Some(Overlay::Help { scroll: 0 })));
+    assert!(matches!(app.overlay, Some(Overlay::Theme { scroll: 0 })));
     assert!(matches!(app.modal, Some(Modal::ImagePicker { .. })));
     assert!(matches!(
         app.paused_form_edit_modal,
@@ -5564,8 +5611,7 @@ fn form_edit_browse_click_opens_image_picker() {
 
 const FOOTER_TOKEN_ALLOWLIST: &[&str] = &[
     "*",
-    "F1:Help",
-    "F2:Theme",
+    "F1:Settings",
     "Esc:Close",
     "Ctrl+Q:Quit",
     "r:Rename",
@@ -5596,7 +5642,7 @@ const FOOTER_TOKEN_ALLOWLIST: &[&str] = &[
 
 fn assert_footer_hint_shape(hint: &str, width: u16) {
     assert!(
-        hint.starts_with("F1:Help  F2:Theme") || hint.starts_with("*  F1:Help  F2:Theme"),
+        hint.starts_with("F1:Settings") || hint.starts_with("*  F1:Settings"),
         "{hint}"
     );
     assert!(hint.chars().count() <= width as usize, "{hint}");
@@ -5624,7 +5670,8 @@ fn footer_hint_pages_includes_f1_f2_and_keeps_whole_tokens() {
     for width in [60_u16, 80, 110] {
         assert_footer_hint_shape(&app.footer_hint(width), width);
     }
-    let pages_medium = "F1:Help  F2:Theme  Ctrl+N:Add  Shift+X:Del  u:Undo-page  r:Rename  Shift+J/K:Move  Ctrl+Q:Quit";
+    let pages_medium =
+        "F1:Settings  Ctrl+N:Add  Shift+X:Del  u:Undo-page  r:Rename  Shift+J/K:Move  Ctrl+Q:Quit";
     let at_80 = app.footer_hint(80);
     if pages_medium.chars().count() <= 80 {
         assert!(at_80.contains("Shift+J/K:Move"), "{at_80}");
@@ -5649,7 +5696,7 @@ fn footer_hint_layouts_includes_f2() {
     for width in [60_u16, 80, 110] {
         assert_footer_hint_shape(&app.footer_hint(width), width);
     }
-    let layouts_scoped = "F1:Help  F2:Theme  /:Insert  Enter:Edit  d:Del  y:Copy  p:Paste  u:Undo-tree  r:Col-id  J/K:Move  Ctrl+P:Preview  Ctrl+Q:Quit";
+    let layouts_scoped = "F1:Settings  /:Insert  Enter:Edit  d:Del  y:Copy  p:Paste  u:Undo-tree  r:Col-id  J/K:Move  Ctrl+P:Preview  Ctrl+Q:Quit";
     let at_110 = app.footer_hint(110);
     assert!(at_110.contains("y:Copy"), "{at_110}");
     assert!(at_110.contains("p:Paste"), "{at_110}");
@@ -5671,9 +5718,9 @@ fn footer_hint_overlay_includes_f2_and_esc_close() {
         "default".to_string(),
         None,
     );
-    app.overlay = Some(Overlay::Help { scroll: 0 });
+    app.overlay = Some(Overlay::Theme { scroll: 0 });
     let hint = app.footer_hint(80);
-    assert!(hint.starts_with("F1:Help  F2:Theme"), "{hint}");
+    assert!(hint.starts_with("F1:Settings"), "{hint}");
     assert!(hint.contains("Esc:Close"), "{hint}");
     assert_footer_hint_shape(&hint, 80);
 }
@@ -5689,7 +5736,7 @@ fn footer_hint_dirty_prefix_at_120() {
     );
     app.dirty = true;
     let dirty = app.footer_hint(120);
-    assert!(dirty.starts_with("*  F1:Help  F2:Theme"), "{dirty}");
+    assert!(dirty.starts_with("*  F1:Settings"), "{dirty}");
 }
 
 #[test]
@@ -7155,12 +7202,12 @@ fn ctrl_f_opens_find_and_colon_opens_palette() {
     send_key(&mut app, KeyCode::Esc, KeyModifiers::NONE);
     send_key(&mut app, KeyCode::Char(':'), KeyModifiers::NONE);
     assert!(matches!(app.modal, Some(Modal::Palette { .. })));
-    send_key(&mut app, KeyCode::Char('h'), KeyModifiers::NONE);
+    send_key(&mut app, KeyCode::Char('s'), KeyModifiers::NONE);
     send_key(&mut app, KeyCode::Char('e'), KeyModifiers::NONE);
-    send_key(&mut app, KeyCode::Char('l'), KeyModifiers::NONE);
-    send_key(&mut app, KeyCode::Char('p'), KeyModifiers::NONE);
+    send_key(&mut app, KeyCode::Char('t'), KeyModifiers::NONE);
+    send_key(&mut app, KeyCode::Char('t'), KeyModifiers::NONE);
     send_key(&mut app, KeyCode::Enter, KeyModifiers::NONE);
-    assert!(matches!(app.overlay, Some(Overlay::Help { .. })));
+    assert!(matches!(app.overlay, Some(Overlay::Theme { .. })));
 }
 
 #[test]
@@ -7345,12 +7392,43 @@ fn required_form_fields_show_error_colored_asterisk() {
         "help legend: {:?}",
         help.trim()
     );
+    assert!(
+        !help.contains("Left/Right"),
+        "text field help: {:?}",
+        help.trim()
+    );
     let help_y = rows
         .iter()
         .position(|row| row.contains("* required"))
         .unwrap();
     let help_star_x = col_of(&rows[help_y], "* required");
     assert_eq!(buf[(help_star_x, help_y as u16)].fg, app.theme.error);
+
+    let mut enum_state = state;
+    enum_state.focused_field = enum_state
+        .form
+        .fields
+        .iter()
+        .position(|field| field.id == "robots")
+        .expect("robots");
+    terminal
+        .draw(|frame| app.render_form_edit_modal(frame, &enum_state, 0, None, 0))
+        .expect("draw enum form");
+    let enum_rows = buffer_rows(terminal.backend().buffer());
+    let enum_help = enum_rows
+        .iter()
+        .find(|row| row.contains("Ctrl+S"))
+        .expect("enum help row");
+    assert!(
+        enum_help.contains("Left/Right: choices"),
+        "enum help: {:?}",
+        enum_help.trim()
+    );
+    assert!(
+        enum_help.contains("* required"),
+        "enum help keeps the legend: {:?}",
+        enum_help.trim()
+    );
 
     let mut quote = editform::EditFormState::new(&editform::BLOCKQUOTE_FORM);
     quote.focused_field = quote
