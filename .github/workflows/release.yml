@@ -35,9 +35,18 @@ jobs:
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
       - uses: taiki-e/create-gh-release-action@v1
+        continue-on-error: true
         with:
           title: $tag
           ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', github.event.inputs.tag) || github.ref }}
+      # GitHub sometimes creates the release and then returns 500. The next
+      # attempt answers 422 because the tag already has a release, and the
+      # upload jobs never start. Keep going when that release is present.
+      - name: Release must exist
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+        run: gh release view "$TAG" --json tagName --jq .tagName
 
   upload-assets:
     needs: create-release
