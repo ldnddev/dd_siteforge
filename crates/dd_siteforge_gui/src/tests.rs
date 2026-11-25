@@ -517,7 +517,12 @@ fn palette_holds_init_and_f2_opens_appearance(cx: &mut TestAppContext) {
         );
         assert!(text.contains("settings-nav:Themes,Window,Help"), "{text}");
         assert!(text.contains("settings-page:Themes"), "{text}");
-        assert!(text.contains("theme-list:flow"), "{text}");
+        // Omarchy machines list themes. A runner with no theme files opens the
+        // color editor directly. Both match the sheet.
+        assert!(
+            text.contains("theme-list:flow") || text.contains("Theme color editor"),
+            "{text}"
+        );
         assert!(text.contains("screen:editor"), "{text}");
         assert!(text.contains("Settings"), "{text}");
         assert!(text.contains("> Themes"), "{text}");
