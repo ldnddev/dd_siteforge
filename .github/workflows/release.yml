@@ -6,7 +6,9 @@
 #   Actions → Release → Run workflow → tag (e.g. v1.8.0)
 #
 # Linux uses native musl (not cross) so the runner's rustc can compile
-# edition 2024. macOS cross-compiles the other Darwin arch with rustup.
+# edition 2024. One macOS 15 runner cross-compiles both Darwin archives.
+# macos-latest is macOS 26 arm64, and those jobs are often cancelled
+# before a runner starts.
 
 name: Release
 
@@ -31,22 +33,29 @@ jobs:
   create-release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
-      - uses: taiki-e/create-gh-release-action@v1
-        continue-on-error: true
-        with:
-          title: $tag
-          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', github.event.inputs.tag) || github.ref }}
-      # GitHub sometimes creates the release and then returns 500. The next
-      # attempt answers 422 because the tag already has a release, and the
-      # upload jobs never start. Keep going when that release is present.
-      - name: Release must exist
+      - name: Create the GitHub release if it is missing
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
-        run: gh release view "$TAG" --json tagName --jq .tagName
+        run: |
+          set -euo pipefail
+          # Do not delete an existing release. create-gh-release-action does,
+          # and a GitHub 500 during the recreate then fails the run and drops
+          # the assets. "tag_name already exists" means the release is there.
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            if gh release view "$TAG" --json tagName --jq .tagName >/dev/null 2>&1; then
+              echo "Release $TAG already exists"
+              exit 0
+            fi
+            if gh release create "$TAG" --title "$TAG" --verify-tag --generate-notes; then
+              echo "Created $TAG"
+              exit 0
+            fi
+            echo "GitHub API attempt $i failed; retrying"
+            sleep "$i"
+          done
+          echo "::error::Could not create or find release $TAG"
+          exit 1
 
   upload-assets:
     needs: create-release
@@ -58,10 +67,6 @@ jobs:
             os: ubuntu-latest
           - target: aarch64-unknown-linux-musl
             os: ubuntu-24.04-arm
-          - target: x86_64-apple-darwin
-            os: macos-latest
-          - target: aarch64-apple-darwin
-            os: macos-latest
     runs-on: ${{ matrix.os }}
     env:
       CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
@@ -78,6 +83,43 @@ jobs:
           bin: dd_siteforge
           package: dd_siteforge
           target: ${{ matrix.target }}
+          archive: $bin-$target
+          tar: unix
+          zip: none
+          checksum: sha256
+          include: LICENSE,dd_siteforge_theme.yml,source/favicon/web-app-manifest-512x512.png
+          locked: true
+          build-tool: cargo
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', github.event.inputs.tag) || github.ref }}
+
+  # Both Darwin archives on one macos-15 runner. A miss does not fail the
+  # Linux release: macos-latest jobs are often cancelled with no steps.
+  upload-macos:
+    needs: create-release
+    runs-on: macos-15
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
+      - uses: taiki-e/upload-rust-binary-action@v1
+        with:
+          bin: dd_siteforge
+          package: dd_siteforge
+          target: x86_64-apple-darwin
+          archive: $bin-$target
+          tar: unix
+          zip: none
+          checksum: sha256
+          include: LICENSE,dd_siteforge_theme.yml,source/favicon/web-app-manifest-512x512.png
+          locked: true
+          build-tool: cargo
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', github.event.inputs.tag) || github.ref }}
+      - uses: taiki-e/upload-rust-binary-action@v1
+        with:
+          bin: dd_siteforge
+          package: dd_siteforge
+          target: aarch64-apple-darwin
           archive: $bin-$target
           tar: unix
           zip: none
