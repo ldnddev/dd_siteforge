@@ -1,4 +1,4 @@
-use crate::fields::{ColorField, COLOR_FIELDS};
+use crate::fields::{COLOR_FIELDS, ColorField};
 use crate::palette::Palette;
 use crate::rgb::parse_hex_input;
 
@@ -53,6 +53,9 @@ pub enum EditorKey {
     Enter,
     Esc,
     Backspace,
+    Delete,
+    Home,
+    End,
     Char(char),
 }
 
@@ -74,6 +77,8 @@ pub struct ThemeEditor {
     pub scroll: usize,
     pub channel: usize,
     pub hex_draft: String,
+    /// Character index into [`Self::hex_draft`] while the hex field is open.
+    pub hex_cursor: usize,
     pub editing_hex: bool,
     pub save_target: ThemeSaveTarget,
 }
@@ -98,6 +103,7 @@ impl ThemeEditor {
             selected: 0,
             scroll: 0,
             channel: 0,
+            hex_cursor: hex_draft.chars().count(),
             hex_draft,
             editing_hex: false,
             save_target: ThemeSaveTarget::Global,
@@ -149,6 +155,14 @@ impl ThemeEditor {
             .get(self.selected_key())
             .map(|c| c.to_hex())
             .unwrap_or_else(|| "#000000".to_string());
+        self.hex_cursor = self.hex_draft.chars().count();
+    }
+
+    /// Place the caret in the hex field and open it for typing.
+    pub fn place_hex_cursor(&mut self, col: usize) {
+        self.editing_hex = true;
+        let n = self.hex_draft.chars().count();
+        self.hex_cursor = col.min(n);
     }
 
     pub fn handle(&mut self, key: EditorKey, shift: bool) -> EditorOutcome {
@@ -173,6 +187,7 @@ impl ThemeEditor {
             }
             EditorKey::Enter => {
                 self.editing_hex = true;
+                self.hex_cursor = self.hex_draft.chars().count();
                 EditorOutcome::None
             }
             EditorKey::Down | EditorKey::Char('j') => {
@@ -201,6 +216,7 @@ impl ThemeEditor {
             }
             EditorKey::Left | EditorKey::Char('h') => self.nudge(-8),
             EditorKey::Right | EditorKey::Char('l') => self.nudge(8),
+            EditorKey::Home | EditorKey::End | EditorKey::Delete => EditorOutcome::None,
             EditorKey::Char('G') => {
                 self.select(self.fields.len().saturating_sub(1));
                 EditorOutcome::None
@@ -219,6 +235,7 @@ impl ThemeEditor {
         self.palette.set(key, next);
         self.mark_override(key);
         self.hex_draft = next.to_hex();
+        self.hex_cursor = self.hex_draft.chars().count();
         self.editing_hex = false;
         EditorOutcome::PaletteChanged
     }
@@ -236,22 +253,117 @@ impl ThemeEditor {
                     self.palette.set(key, rgb);
                     self.mark_override(key);
                     self.hex_draft = rgb.to_hex();
+                    self.hex_cursor = self.hex_draft.chars().count();
                     self.editing_hex = false;
                     EditorOutcome::PaletteChanged
                 }
                 Err(err) => EditorOutcome::HexError(err.to_string()),
             },
             EditorKey::Backspace => {
-                let _ = self.hex_draft.pop();
+                hex_backspace(&mut self.hex_draft, &mut self.hex_cursor);
+                EditorOutcome::None
+            }
+            EditorKey::Delete => {
+                hex_delete(&mut self.hex_draft, &mut self.hex_cursor);
+                EditorOutcome::None
+            }
+            EditorKey::Left => {
+                self.hex_cursor = self.hex_cursor.saturating_sub(1);
+                EditorOutcome::None
+            }
+            EditorKey::Right => {
+                let n = self.hex_draft.chars().count();
+                if self.hex_cursor < n {
+                    self.hex_cursor += 1;
+                } else {
+                    self.hex_cursor = n;
+                }
+                EditorOutcome::None
+            }
+            EditorKey::Home | EditorKey::Up => {
+                self.hex_cursor = 0;
+                EditorOutcome::None
+            }
+            EditorKey::End | EditorKey::Down => {
+                self.hex_cursor = self.hex_draft.chars().count();
                 EditorOutcome::None
             }
             EditorKey::Char(c) if c.is_ascii_hexdigit() || c == '#' => {
-                if self.hex_draft.len() < 7 {
-                    self.hex_draft.push(c.to_ascii_uppercase());
-                }
+                hex_insert(
+                    &mut self.hex_draft,
+                    &mut self.hex_cursor,
+                    c.to_ascii_uppercase(),
+                );
                 EditorOutcome::None
             }
             _ => EditorOutcome::None,
         }
     }
+
+    /// Insert a pasted hex block at the caret in one assignment. A value that
+    /// contains `#` replaces the draft. Other digits fill until `#` plus six.
+    pub fn paste_hex(&mut self, raw: &str) {
+        let text: String = raw
+            .chars()
+            .filter(|c| c.is_ascii_hexdigit() || *c == '#')
+            .map(|c| c.to_ascii_uppercase())
+            .collect();
+        if text.is_empty() {
+            return;
+        }
+        if text.contains('#') {
+            self.hex_draft = text.chars().take(7).collect();
+            self.hex_cursor = self.hex_draft.chars().count();
+            return;
+        }
+        for ch in text.chars() {
+            hex_insert(&mut self.hex_draft, &mut self.hex_cursor, ch);
+        }
+    }
+}
+
+fn hex_clamp(text: &str, cursor: usize) -> usize {
+    cursor.min(text.chars().count())
+}
+
+fn hex_byte(text: &str, cursor: usize) -> usize {
+    match text.char_indices().nth(cursor) {
+        Some((byte, _)) => byte,
+        None => text.len(),
+    }
+}
+
+fn hex_insert(text: &mut String, cursor: &mut usize, ch: char) {
+    if text.chars().count() >= 7 {
+        return;
+    }
+    let at = hex_clamp(text, *cursor);
+    let byte = hex_byte(text, at);
+    text.insert(byte, ch);
+    *cursor = at + 1;
+}
+
+fn hex_backspace(text: &mut String, cursor: &mut usize) {
+    let at = hex_clamp(text, *cursor);
+    if at == 0 {
+        *cursor = 0;
+        return;
+    }
+    let start = hex_byte(text, at - 1);
+    let end = hex_byte(text, at);
+    text.replace_range(start..end, "");
+    *cursor = at - 1;
+}
+
+fn hex_delete(text: &mut String, cursor: &mut usize) {
+    let at = hex_clamp(text, *cursor);
+    let n = text.chars().count();
+    if at >= n {
+        *cursor = n;
+        return;
+    }
+    let start = hex_byte(text, at);
+    let end = hex_byte(text, at + 1);
+    text.replace_range(start..end, "");
+    *cursor = at;
 }

@@ -49,7 +49,7 @@ impl App {
         }
     }
 
-    fn handle_modal_paste(&mut self, text: &str) -> ModalResult {
+    pub(in crate::tui) fn handle_modal_paste(&mut self, text: &str) -> ModalResult {
         match &self.modal {
             Some(Modal::FormEdit { .. }) => {
                 self.paste_into_form(text);

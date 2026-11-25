@@ -21,6 +21,18 @@ impl App {
         self.build_rx = Some(dd_siteforge_core::asset_build::spawn_asset_build(root));
     }
 
+    pub(in crate::tui) fn is_busy(&self) -> bool {
+        self.build_rx.is_some()
+    }
+
+    pub(in crate::tui) fn busy_status(&self) -> Option<&'static str> {
+        if self.build_rx.is_some() {
+            Some("building")
+        } else {
+            None
+        }
+    }
+
     pub(in crate::tui) fn poll_asset_build(&mut self) -> bool {
         let Some(rx) = self.build_rx.as_ref() else {
             return false;

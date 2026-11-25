@@ -948,6 +948,17 @@ fn textarea_bracketed_paste_inserts_in_one_shot() {
         state.set("parent_copy", "");
         *cursor_pos = 0;
     }
+    send_paste(&mut app, "a\r\nb\u{1b}\tc");
+    assert_eq!(form_value(&app, "parent_copy"), "a\nb\tc");
+    send_key(&mut app, KeyCode::Char('z'), KeyModifiers::CONTROL);
+    assert_eq!(form_value(&app, "parent_copy"), "");
+    if let Some(Modal::FormEdit {
+        state, cursor_pos, ..
+    }) = &mut app.modal
+    {
+        state.set("parent_copy", "");
+        *cursor_pos = 0;
+    }
     send_paste(&mut app, "services—high-impact web");
     assert_eq!(form_value(&app, "parent_copy"), "services—high-impact web");
     assert_eq!(
@@ -956,6 +967,89 @@ fn textarea_bracketed_paste_inserts_in_one_shot() {
     );
     send_key(&mut app, KeyCode::Char('z'), KeyModifiers::CONTROL);
     assert_eq!(form_value(&app, "parent_copy"), "");
+}
+
+#[test]
+fn single_line_paste_collapses_newlines_in_one_undo() {
+    let mut app = app_with_component(ComponentKind::RichText);
+    open_form_edit_on_page_component(&mut app);
+    assert_eq!(form_focused_field_id(&app), Some("parent_class"));
+    if let Some(Modal::FormEdit {
+        state,
+        cursor_pos,
+        selection_anchor,
+        ..
+    }) = &mut app.modal
+    {
+        state.set("parent_class", "old");
+        *cursor_pos = 3;
+        *selection_anchor = None;
+    }
+    send_paste(&mut app, "a\r\nb\u{1b}c");
+    assert_eq!(form_value(&app, "parent_class"), "olda bc");
+    send_key(&mut app, KeyCode::Char('z'), KeyModifiers::CONTROL);
+    assert_eq!(form_value(&app, "parent_class"), "old");
+}
+
+#[test]
+fn theme_hex_paste_inserts_the_block() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    send_key(&mut app, KeyCode::F(2), KeyModifiers::NONE);
+    assert!(app.theme_editor.is_some());
+    send_key(&mut app, KeyCode::Enter, KeyModifiers::NONE);
+    assert!(app.theme_editor.as_ref().unwrap().editing_hex);
+    send_paste(&mut app, "#aa\nbbcc!!\u{1b}");
+    assert_eq!(app.theme_editor.as_ref().unwrap().hex_draft, "#AABBCC");
+    assert_eq!(app.theme_editor.as_ref().unwrap().hex_cursor, 7);
+}
+
+#[test]
+fn theme_hex_click_places_the_caret_after_the_prefix() {
+    let mut app = App::new(
+        Site::starter(),
+        None,
+        AppTheme::default(),
+        "default".to_string(),
+        None,
+    );
+    send_key(&mut app, KeyCode::F(2), KeyModifiers::NONE);
+    send_key(&mut app, KeyCode::Enter, KeyModifiers::NONE);
+    let editor = app.theme_editor.as_ref().unwrap();
+    let end = editor.hex_draft.chars().count();
+    assert_eq!(editor.hex_cursor, end);
+    send_key(&mut app, KeyCode::Left, KeyModifiers::NONE);
+    assert_eq!(app.theme_editor.as_ref().unwrap().hex_cursor, end - 1);
+    send_key(&mut app, KeyCode::Home, KeyModifiers::NONE);
+    assert_eq!(app.theme_editor.as_ref().unwrap().hex_cursor, 0);
+    let original = app.theme_editor.as_ref().unwrap().hex_draft.clone();
+    send_key(&mut app, KeyCode::Delete, KeyModifiers::NONE);
+    assert_ne!(app.theme_editor.as_ref().unwrap().hex_draft, original);
+    app.hex_line = HexLine {
+        area: Rect {
+            x: 10,
+            y: 4,
+            width: 20,
+            height: 1,
+        },
+        prefix: 5,
+    };
+    send_mouse(&mut app, MouseEventKind::Down(MouseButton::Left), 10 + 5, 4);
+    let editor = app.theme_editor.as_ref().unwrap();
+    assert!(editor.editing_hex);
+    assert_eq!(editor.hex_cursor, 0, "click after Hex: lands at the draft");
+    send_mouse(
+        &mut app,
+        MouseEventKind::Down(MouseButton::Left),
+        10 + 5 + 2,
+        4,
+    );
+    assert_eq!(app.theme_editor.as_ref().unwrap().hex_cursor, 2);
 }
 
 #[test]
@@ -1447,7 +1541,7 @@ fn poll_asset_build_is_idle_while_channel_empty() {
     let (_tx, rx) = std::sync::mpsc::channel();
     app.build_rx = Some(rx);
     let timeout = app.next_idle_timeout().expect("build poll wakes the loop");
-    assert!(timeout <= std::time::Duration::from_millis(200));
+    assert_eq!(timeout, std::time::Duration::from_millis(150));
     assert!(!app.poll_asset_build());
     assert!(app.build_rx.is_some());
 }
@@ -5612,8 +5706,11 @@ fn form_edit_browse_click_opens_image_picker() {
 const FOOTER_TOKEN_ALLOWLIST: &[&str] = &[
     "*",
     "F1:Settings",
+    "F1: Settings",
     "Esc:Close",
-    "Ctrl+Q:Quit",
+    "Esc: Close",
+    "^Q:Quit",
+    "Ctrl+Q: Quit",
     "r:Rename",
     "Ctrl+N:Add",
     "Shift+X:Del",
@@ -5641,10 +5738,16 @@ const FOOTER_TOKEN_ALLOWLIST: &[&str] = &[
 ];
 
 fn assert_footer_hint_shape(hint: &str, width: u16) {
+    let (lead, quit) = if width < 80 {
+        ("F1:Settings", "^Q:Quit")
+    } else {
+        ("F1: Settings", "Ctrl+Q: Quit")
+    };
     assert!(
-        hint.starts_with("F1:Settings") || hint.starts_with("*  F1:Settings"),
+        hint.starts_with(lead) || hint.starts_with(&format!("*  {lead}")),
         "{hint}"
     );
+    assert!(hint.split("  ").any(|token| token == quit), "{hint}");
     assert!(hint.chars().count() <= width as usize, "{hint}");
     for token in hint.split("  ") {
         if token.is_empty() {
@@ -5670,8 +5773,7 @@ fn footer_hint_pages_includes_f1_f2_and_keeps_whole_tokens() {
     for width in [60_u16, 80, 110] {
         assert_footer_hint_shape(&app.footer_hint(width), width);
     }
-    let pages_medium =
-        "F1:Settings  Ctrl+N:Add  Shift+X:Del  u:Undo-page  r:Rename  Shift+J/K:Move  Ctrl+Q:Quit";
+    let pages_medium = "F1: Settings  Ctrl+N:Add  Shift+X:Del  u:Undo-page  r:Rename  Shift+J/K:Move  Ctrl+Q: Quit";
     let at_80 = app.footer_hint(80);
     if pages_medium.chars().count() <= 80 {
         assert!(at_80.contains("Shift+J/K:Move"), "{at_80}");
@@ -5696,7 +5798,7 @@ fn footer_hint_layouts_includes_f2() {
     for width in [60_u16, 80, 110] {
         assert_footer_hint_shape(&app.footer_hint(width), width);
     }
-    let layouts_scoped = "F1:Settings  /:Insert  Enter:Edit  d:Del  y:Copy  p:Paste  u:Undo-tree  r:Col-id  J/K:Move  Ctrl+P:Preview  Ctrl+Q:Quit";
+    let layouts_scoped = "F1: Settings  /:Insert  Enter:Edit  d:Del  y:Copy  p:Paste  u:Undo-tree  r:Col-id  J/K:Move  Ctrl+P:Preview  Ctrl+Q: Quit";
     let at_110 = app.footer_hint(110);
     assert!(at_110.contains("y:Copy"), "{at_110}");
     assert!(at_110.contains("p:Paste"), "{at_110}");
@@ -5719,9 +5821,11 @@ fn footer_hint_overlay_includes_f2_and_esc_close() {
         None,
     );
     app.overlay = Some(Overlay::Theme { scroll: 0 });
+    let narrow = app.footer_hint(79);
+    assert_eq!(narrow, "F1:Settings  Esc:Close  ^Q:Quit");
+    assert_footer_hint_shape(&narrow, 79);
     let hint = app.footer_hint(80);
-    assert!(hint.starts_with("F1:Settings"), "{hint}");
-    assert!(hint.contains("Esc:Close"), "{hint}");
+    assert_eq!(hint, "F1: Settings  Esc: Close  Ctrl+Q: Quit");
     assert_footer_hint_shape(&hint, 80);
 }
 
@@ -5736,7 +5840,7 @@ fn footer_hint_dirty_prefix_at_120() {
     );
     app.dirty = true;
     let dirty = app.footer_hint(120);
-    assert!(dirty.starts_with("*  F1:Settings"), "{dirty}");
+    assert!(dirty.starts_with("*  F1: Settings"), "{dirty}");
 }
 
 #[test]
@@ -6020,7 +6124,7 @@ fn footer_hint_details_includes_scroll() {
     }
     let at_80 = app.footer_hint(80);
     assert!(at_80.contains("j/k:Scroll"), "{at_80}");
-    assert!(at_80.contains("Ctrl+Q:Quit"), "{at_80}");
+    assert!(at_80.contains("Ctrl+Q: Quit"), "{at_80}");
 }
 
 fn sidebar_percent_width(term_w: u16) -> u16 {

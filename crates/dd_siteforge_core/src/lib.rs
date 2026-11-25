@@ -22,6 +22,7 @@ pub mod labels;
 pub mod markdown;
 pub mod model;
 pub mod og_image;
+pub mod paste;
 pub mod paths;
 pub mod renderer;
 pub mod scaffold;

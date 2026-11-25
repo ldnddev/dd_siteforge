@@ -12,7 +12,7 @@ resolver = "3"
 
 [package]
 name = "dd_siteforge"
-version = "1.32.0"
+version = "1.33.0"
 edition = "2024"
 license = "MIT"
 
@@ -26,6 +26,7 @@ debug = false
 
 [dependencies]
 anyhow = "1.0"
+arboard = { version = "3", features = ["wayland-data-control"] }
 clap = { version = "4.5", features = ["derive"] }
 crossterm = "0.29"
 ratatui = { version = "0.30", default-features = false, features = ["crossterm", "layout-cache"] }
@@ -35,4 +36,4 @@ serde_json = "1.0"
 # The package rename keeps the serde_yaml import path.
 serde_yaml = { package = "yaml_serde", version = "0.10" }
 ldnddev_theme = { path = "crates/ldnddev_theme", version = "0.1.0" }
-dd_siteforge_core = { path = "crates/dd_siteforge_core", version = "1.32.0" }
+dd_siteforge_core = { path = "crates/dd_siteforge_core", version = "1.33.0" }

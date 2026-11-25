@@ -5,8 +5,23 @@ use super::*;
 fn is_footer_chrome(part: &str) -> bool {
     matches!(
         part,
-        "F1:Settings" | "Esc:Close" | "Esc:Cancel" | "Ctrl+S:Save" | "Ctrl+Q:Quit"
+        "F1:Settings"
+            | "F1: Settings"
+            | "Esc:Close"
+            | "Esc: Close"
+            | "Esc:Cancel"
+            | "Ctrl+S:Save"
+            | "^Q:Quit"
+            | "Ctrl+Q: Quit"
     )
+}
+
+fn footer_lead_quit(width: u16) -> (&'static str, &'static str) {
+    if width < 80 {
+        ("F1:Settings", "^Q:Quit")
+    } else {
+        ("F1: Settings", "Ctrl+Q: Quit")
+    }
 }
 
 const MOUSE_HINT: &str = "(mouse: click/scroll)";
@@ -19,13 +34,14 @@ impl App {
         if let Some(hint) = self.alias_hint {
             return hint.to_string();
         }
+        let (lead, quit) = footer_lead_quit(width);
         let overlay = self.overlay.is_some() || self.modal.is_some();
         let form_edit =
             self.overlay.is_none() && matches!(self.modal, Some(Modal::FormEdit { .. }));
-        let mut parts: Vec<&str> = vec!["F1:Settings"];
+        let mut parts: Vec<&str> = vec![lead];
         if form_edit {
             if width < 80 {
-                parts.extend_from_slice(&["Ctrl+S:Save", "Esc:Cancel", "Ctrl+Q:Quit"]);
+                parts.extend_from_slice(&["Ctrl+S:Save", "Esc:Cancel", quit]);
             } else {
                 parts.extend_from_slice(&[
                     "Ctrl+S:Save",
@@ -35,17 +51,22 @@ impl App {
                     "Ctrl+E:Expand",
                     "Ctrl+Z:Undo",
                     "Esc:Cancel",
-                    "Ctrl+Q:Quit",
+                    quit,
                 ]);
             }
         } else if overlay {
-            parts.push("Esc:Close");
-            parts.push("Ctrl+Q:Quit");
+            let esc = if width < 80 {
+                "Esc:Close"
+            } else {
+                "Esc: Close"
+            };
+            parts.push(esc);
+            parts.push(quit);
         } else {
             match self.selected_sidebar_section {
                 SidebarSection::Pages => {
                     if width < 80 {
-                        parts.push("Ctrl+Q:Quit");
+                        parts.push(quit);
                         parts.push("r:Rename");
                     } else {
                         parts.extend_from_slice(&[
@@ -54,25 +75,21 @@ impl App {
                             "u:Undo-page",
                             "r:Rename",
                             "Shift+J/K:Move",
-                            "Ctrl+Q:Quit",
+                            quit,
                         ]);
                     }
                 }
                 SidebarSection::Regions => {
                     if width < 80 {
-                        parts.push("Ctrl+Q:Quit");
+                        parts.push(quit);
                         parts.push("Enter:Edit");
                     } else {
-                        parts.extend_from_slice(&[
-                            "j/k:Site/Header/Footer",
-                            "Enter:Edit",
-                            "Ctrl+Q:Quit",
-                        ]);
+                        parts.extend_from_slice(&["j/k:Site/Header/Footer", "Enter:Edit", quit]);
                     }
                 }
                 SidebarSection::Layouts => {
                     if width < 80 {
-                        parts.push("Ctrl+Q:Quit");
+                        parts.push(quit);
                         parts.push("Enter:Edit");
                     } else if width < 110 {
                         parts.extend_from_slice(&[
@@ -83,7 +100,7 @@ impl App {
                             "u:Undo-tree",
                             "r:Col-id",
                             "J/K:Move",
-                            "Ctrl+Q:Quit",
+                            quit,
                         ]);
                     } else {
                         parts.extend_from_slice(&[
@@ -96,16 +113,16 @@ impl App {
                             "r:Col-id",
                             "J/K:Move",
                             "Ctrl+P:Preview",
-                            "Ctrl+Q:Quit",
+                            quit,
                         ]);
                     }
                 }
                 SidebarSection::Details => {
                     if width < 80 {
-                        parts.push("Ctrl+Q:Quit");
+                        parts.push(quit);
                         parts.push("j/k:Scroll");
                     } else {
-                        parts.extend_from_slice(&["j/k:Scroll", "Enter:Edit", "Ctrl+Q:Quit"]);
+                        parts.extend_from_slice(&["j/k:Scroll", "Enter:Edit", quit]);
                     }
                 }
             }

@@ -27,6 +27,7 @@ pub(super) struct FormTextUndo {
     pub(super) selection_anchor: Option<usize>,
 }
 
+mod busy;
 mod details;
 mod draw;
 pub use dd_siteforge_core::cursor;
@@ -166,6 +167,13 @@ pub(super) enum Overlay {
     Theme { scroll: u16 },
 }
 
+/// A drawn hex field. `prefix` is the column count of `Hex: ` before the draft.
+#[derive(Clone, Copy, Debug, Default)]
+pub(super) struct HexLine {
+    area: Rect,
+    prefix: u16,
+}
+
 pub(super) struct App {
     site: Site,
     theme: AppTheme,
@@ -252,6 +260,7 @@ pub(super) struct App {
     /// The next paint scrolls the highlighted settings row into view.
     settings_follow: bool,
     settings_nav_area: Rect,
+    hex_line: HexLine,
     theme_editor: Option<ldnddev_theme::ThemeEditor>,
     theme_picker: Option<ldnddev_theme::ThemePicker>,
     /// Host Omarchy theme directories. Tests point this at a missing root.
@@ -404,6 +413,7 @@ impl App {
             settings_row: 0,
             settings_follow: false,
             settings_nav_area: Rect::default(),
+            hex_line: HexLine::default(),
             theme_editor: None,
             theme_picker: None,
             omarchy_paths,
@@ -486,6 +496,8 @@ impl App {
                 Some(timeout) => {
                     if event::poll(timeout)? {
                         redraw |= self.drain_pending_events()?;
+                    } else if self.is_busy() {
+                        redraw = true;
                     }
                 }
                 None => {
@@ -513,7 +525,8 @@ impl App {
         }
     }
 
-    /// Soonest deadline for autosave or toast expiry. `None` means block on the next event.
+    /// Soonest deadline for autosave, toast expiry, or the busy frame.
+    /// `None` means block on the next event.
     pub(super) fn next_idle_timeout(&self) -> Option<Duration> {
         let now = std::time::Instant::now();
         let mut wait: Option<Duration> = None;
@@ -543,8 +556,8 @@ impl App {
                 consider(&mut wait, TOAST_TTL - elapsed);
             }
         }
-        if self.build_rx.is_some() {
-            consider(&mut wait, Duration::from_millis(200));
+        if self.is_busy() {
+            consider(&mut wait, Duration::from_millis(busy::BUSY_FRAME_MS as u64));
         }
         wait
     }

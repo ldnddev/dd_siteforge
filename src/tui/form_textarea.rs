@@ -698,14 +698,9 @@ pub(super) fn begin_shift_selection(anchor: &mut Option<usize>, caret: usize) {
     }
 }
 
-/// Normalize a clipboard dump: CRLF/CR become `\n`. Single-line fields flatten newlines to spaces.
+/// Clipboard or bracketed-paste text. One string, ready to insert in one edit.
 pub(super) fn sanitize_paste(text: &str, multiline: bool) -> String {
-    let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
-    if multiline {
-        normalized
-    } else {
-        normalized.replace('\n', " ")
-    }
+    dd_siteforge_core::paste::sanitize_paste(text, multiline)
 }
 
 impl App {

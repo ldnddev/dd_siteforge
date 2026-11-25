@@ -1,7 +1,7 @@
 use ldnddev_theme::{
-    load_from_file, load_from_str, parse_hex_input, render_yaml, save_theme, EditorKey,
-    EditorOutcome, Palette, ParseMode, ThemeEditor, ThemeSaveTarget, ThemeSource, COLOR_FIELDS,
-    EXTRA_MODAL_HEADER, EXTRA_SELECTION,
+    COLOR_FIELDS, EXTRA_MODAL_HEADER, EXTRA_SELECTION, EditorKey, EditorOutcome, Palette,
+    ParseMode, ThemeEditor, ThemeSaveTarget, ThemeSource, load_from_file, load_from_str,
+    parse_hex_input, render_yaml, save_theme,
 };
 use std::process::Command;
 
@@ -132,10 +132,12 @@ fn save_theme_does_not_follow_symlink() {
         std::fs::read_to_string(&target).expect("target"),
         "ORIGINAL"
     );
-    assert!(std::fs::symlink_metadata(&link)
-        .expect("link")
-        .file_type()
-        .is_symlink());
+    assert!(
+        std::fs::symlink_metadata(&link)
+            .expect("link")
+            .file_type()
+            .is_symlink()
+    );
 }
 
 #[test]
@@ -155,4 +157,43 @@ fn hex_parse_and_commit() {
         editor.palette.get("base_background").unwrap().to_hex(),
         "#112233"
     );
+}
+
+#[test]
+fn hex_paste_inserts_the_block() {
+    let mut editor = ThemeEditor::new(Palette::builtin(), &[]);
+    editor.handle(EditorKey::Enter, false);
+    editor.paste_hex("#aa\nbbcc!!\u{1b}");
+    assert_eq!(editor.hex_draft, "#AABBCC");
+    assert_eq!(editor.hex_cursor, 7);
+    editor.hex_draft = "#11".to_string();
+    editor.paste_hex("22zz33");
+    assert_eq!(editor.hex_draft, "#112233");
+    assert_eq!(editor.hex_cursor, 7);
+}
+
+#[test]
+fn hex_caret_edits_at_the_cursor() {
+    let mut editor = ThemeEditor::new(Palette::builtin(), &[]);
+    assert_eq!(editor.handle(EditorKey::Enter, false), EditorOutcome::None);
+    let end = editor.hex_draft.chars().count();
+    assert_eq!(editor.hex_cursor, end);
+    assert_eq!(editor.handle(EditorKey::Left, false), EditorOutcome::None);
+    assert_eq!(editor.hex_cursor, end - 1);
+    assert_eq!(editor.handle(EditorKey::Home, false), EditorOutcome::None);
+    assert_eq!(editor.hex_cursor, 0);
+    let original = editor.hex_draft.clone();
+    assert_eq!(editor.handle(EditorKey::Delete, false), EditorOutcome::None);
+    assert_ne!(editor.hex_draft, original);
+    assert_eq!(editor.hex_cursor, 0);
+    editor.place_hex_cursor(2);
+    assert!(editor.editing_hex);
+    assert_eq!(editor.hex_cursor, 2);
+    assert_eq!(
+        editor.handle(EditorKey::Backspace, false),
+        EditorOutcome::None
+    );
+    assert_eq!(editor.hex_cursor, 1);
+    editor.place_hex_cursor(99);
+    assert_eq!(editor.hex_cursor, editor.hex_draft.chars().count());
 }

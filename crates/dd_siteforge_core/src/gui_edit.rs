@@ -219,6 +219,20 @@ impl GuiEdit {
     }
 
     pub fn type_char(&mut self, ch: char) -> bool {
+        self.insert_at_caret(&ch.to_string())
+    }
+
+    /// Insert a clipboard or bracketed paste at the caret in one undo step.
+    /// A textarea keeps newlines. A single-line field collapses them.
+    pub fn paste_text(&mut self, raw: &str) -> bool {
+        let text = crate::paste::sanitize_paste(raw, self.focused_is_textarea());
+        if text.is_empty() {
+            return false;
+        }
+        self.insert_at_caret(&text)
+    }
+
+    fn insert_at_caret(&mut self, text: &str) -> bool {
         let Some(id) = self.focused_text_id() else {
             return false;
         };
@@ -227,7 +241,7 @@ impl GuiEdit {
             .map(|draft| draft.state.get(&id).to_string())
             .unwrap_or_default();
         let caret = self.caret();
-        let (next, new_caret) = splice_range(&current, caret, caret, &ch.to_string());
+        let (next, new_caret) = splice_range(&current, caret, caret, text);
         if !self.set_field(&id, next) {
             return false;
         }
@@ -907,6 +921,39 @@ mod tests {
         assert_eq!(edit.active().unwrap().state.get("title"), "Home");
         assert_eq!(site.name, original);
         assert_eq!(edit.undo(&mut site).unwrap_err(), "Nothing to undo.");
+    }
+
+    #[test]
+    fn paste_text_is_one_undo_and_drops_escape() {
+        let mut site = Site::starter();
+        let mut edit = GuiEdit::new();
+        edit.open(
+            "head",
+            Cursor::PageHead { page: 0 },
+            page_head_to_form_state(&site.pages[0]),
+        );
+        edit.set_field("title", "Home");
+        assert!(edit.paste_text("!\r\nmore\u{1b}"));
+        assert_eq!(edit.active().unwrap().state.get("title"), "Home! more");
+        assert_eq!(edit.caret(), "Home! more".chars().count());
+        assert_eq!(edit.undo(&mut site).unwrap(), "Undid last change.");
+        assert_eq!(edit.active().unwrap().state.get("title"), "Home");
+
+        edit.open(
+            "hero",
+            Cursor::PageHero { page: 0, node: 0 },
+            hero_to_form_state(match &site.pages[0].nodes[0] {
+                PageNode::Hero(hero) => hero,
+                _ => panic!("hero"),
+            }),
+        );
+        assert!(edit.focus_field("parent_copy"));
+        edit.set_field("parent_copy", "");
+        assert!(edit.paste_text("a\r\nb\u{1b}\tc"));
+        assert_eq!(edit.active().unwrap().state.get("parent_copy"), "a\nb\tc");
+        assert_eq!(edit.undo(&mut site).unwrap(), "Undid last change.");
+        assert_eq!(edit.active().unwrap().state.get("parent_copy"), "");
+        assert!(!edit.paste_text("\u{1b}"));
     }
 
     #[test]

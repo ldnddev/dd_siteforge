@@ -385,9 +385,39 @@ impl App {
         }
     }
 
+    /// Insert a bracketed paste or a Ctrl+V clipboard block at the focused field.
+    /// One call. The string is sanitized before it lands.
+    fn paste_text(&mut self, raw: &str) {
+        if self.overlay.is_some() {
+            if editing_theme_hex(self) {
+                if let Some(editor) = self.theme_editor.as_mut() {
+                    editor.paste_hex(raw);
+                }
+            }
+            return;
+        }
+        if self.modal.is_some() {
+            let _ = self.handle_modal_paste(raw);
+        }
+    }
+
     pub(super) fn handle_event(&mut self, evt: Event) -> anyhow::Result<bool> {
         if matches!(evt, Event::FocusGained) {
             return Ok(self.refresh_followed_theme());
+        }
+        // Bracketed paste and Ctrl+V share one insert. Return before key
+        // dispatch so the block is not also typed one character at a time.
+        if let Event::Paste(text) = &evt {
+            self.paste_text(text);
+            return Ok(false);
+        }
+        if let Event::Key(k) = &evt {
+            if is_clipboard_paste(k) {
+                if let Some(text) = clipboard_text() {
+                    self.paste_text(&text);
+                }
+                return Ok(false);
+            }
         }
         if App::is_idle_event(&evt) {
             if let Event::Mouse(m) = &evt {
@@ -487,6 +517,10 @@ impl App {
                     MouseEventKind::Down(MouseButton::Left)
                         if !settings_nav_click(self, m.column, m.row) =>
                     {
+                        if place_hex_click(self, m.column, m.row) {
+                            self.settings_follow = false;
+                            return Ok(false);
+                        }
                         let track = if self.settings_nav == super::settings::HELP {
                             self.help_scrollbar_track
                         } else {
@@ -592,7 +626,6 @@ impl App {
                     }
                 }
             }
-            Event::Paste(_) => false,
             Event::Mouse(m) => {
                 match m.kind {
                     MouseEventKind::ScrollUp | MouseEventKind::ScrollDown => {
@@ -1088,6 +1121,20 @@ impl App {
     }
 }
 
+fn is_clipboard_paste(k: &event::KeyEvent) -> bool {
+    k.kind == KeyEventKind::Press
+        && matches!(k.code, KeyCode::Char('v') | KeyCode::Char('V'))
+        && k.modifiers.contains(KeyModifiers::CONTROL)
+        && !k.modifiers.contains(KeyModifiers::ALT)
+        && !k.modifiers.contains(KeyModifiers::SHIFT)
+}
+
+fn clipboard_text() -> Option<String> {
+    let mut clipboard = arboard::Clipboard::new().ok()?;
+    let text = clipboard.get_text().ok()?;
+    if text.is_empty() { None } else { Some(text) }
+}
+
 fn theme_motion(key: ldnddev_theme::EditorKey) -> bool {
     matches!(
         key,
@@ -1175,6 +1222,19 @@ fn toggle_save_target(app: &mut App) {
     }
 }
 
+fn place_hex_click(app: &mut App, col: u16, row: u16) -> bool {
+    let line = app.hex_line;
+    if line.area.width == 0 || !contains(line.area, col, row) {
+        return false;
+    }
+    let Some(editor) = app.theme_editor.as_mut() else {
+        return false;
+    };
+    let local = usize::from(col.saturating_sub(line.area.x).saturating_sub(line.prefix));
+    editor.place_hex_cursor(local);
+    true
+}
+
 fn settings_nav_click(app: &mut App, col: u16, row: u16) -> bool {
     let area = app.settings_nav_area;
     if area.width == 0 || area.height == 0 {
@@ -1210,6 +1270,9 @@ fn map_siteforge_editor_key(k: &crossterm::event::KeyEvent) -> Option<ldnddev_th
         KeyCode::Enter => ldnddev_theme::EditorKey::Enter,
         KeyCode::Esc => ldnddev_theme::EditorKey::Esc,
         KeyCode::Backspace => ldnddev_theme::EditorKey::Backspace,
+        KeyCode::Delete => ldnddev_theme::EditorKey::Delete,
+        KeyCode::Home => ldnddev_theme::EditorKey::Home,
+        KeyCode::End => ldnddev_theme::EditorKey::End,
         KeyCode::Char(c) => ldnddev_theme::EditorKey::Char(c),
         _ => return None,
     })

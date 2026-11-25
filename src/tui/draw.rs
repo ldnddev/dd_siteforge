@@ -1,6 +1,26 @@
 //! Frame layout: header, sidebar, details, footer, overlays.
+use super::busy;
 use super::*;
+use ratatui::layout::Alignment;
 use ratatui::text::{Line, Span};
+
+/// `Hex: ` plus the draft, with the cell under the caret reversed.
+/// The caret at the end is a block so a click past the text still lands.
+fn hex_caret_line(draft: &str, cursor: usize) -> Line<'static> {
+    let chars: Vec<char> = draft.chars().collect();
+    let at = cursor.min(chars.len());
+    let before: String = chars[..at].iter().collect();
+    let (cell, after) = if at < chars.len() {
+        (chars[at].to_string(), chars[at + 1..].iter().collect())
+    } else {
+        ("█".to_string(), String::new())
+    };
+    Line::from(vec![
+        Span::raw(format!("Hex: {before}")),
+        Span::styled(cell, Style::default().add_modifier(Modifier::REVERSED)),
+        Span::raw(after),
+    ])
+}
 
 /// Sidebar block title. Compact when pane width (incl. borders) is under 22:
 /// 25% of an 80-col frame is 20, which still fits `[1]` / `[2]` / `[3]`.
@@ -124,16 +144,22 @@ impl App {
             .split(root[1]);
 
         // === NEW 3-line header (bordered, title=project, content=header_copy) ===
+        let mut title = vec![Span::styled(
+            "dd_siteforge",
+            Style::default()
+                .fg(self.theme.text_labels)
+                .add_modifier(Modifier::BOLD),
+        )];
+        if self.is_busy() {
+            title.push(Span::raw(" "));
+            title.extend(busy::spans(busy::now_ms(), &self.theme));
+            title.push(Span::raw(" "));
+        }
         let header_block = Block::default()
-            .title("dd_siteforge")
+            .title(Line::from(title))
             .borders(Borders::ALL)
             .border_style(self.theme.active_border)
-            .style(self.theme.app_shell)
-            .title_style(
-                Style::default()
-                    .fg(self.theme.text_labels)
-                    .add_modifier(Modifier::BOLD),
-            );
+            .style(self.theme.app_shell);
         frame.render_widget(header_block.clone(), root[0]);
 
         if root[0].height >= 3 {
@@ -511,6 +537,9 @@ impl App {
         let footer_text = self.footer_hint(root[2].width);
         let footer = Paragraph::new(footer_text).style(self.theme.app_shell);
         frame.render_widget(footer, root[2]);
+        if self.is_busy() {
+            self.paint_busy_footer(frame, root[2]);
+        }
 
         // Render unified modal if open (handles all modal types)
         self.render_modal(frame);
@@ -523,6 +552,7 @@ impl App {
             self.help_scrollbar_track = ScrollbarTrack::default();
             self.theme_scrollbar_track = ScrollbarTrack::default();
             self.settings_nav_area = Rect::default();
+            self.hex_line = HexLine::default();
         }
 
         // Toasts paint last so they float above everything except the
@@ -548,7 +578,23 @@ impl App {
         }
     }
 
+    fn paint_busy_footer(&self, frame: &mut ratatui::Frame, area: Rect) {
+        let mut spans = busy::spans(busy::now_ms(), &self.theme);
+        if let Some(kind) = self.busy_status() {
+            spans.push(Span::raw(" "));
+            spans.push(Span::styled(kind, Style::default().fg(self.theme.info)));
+        }
+        spans.push(Span::raw(" "));
+        frame.render_widget(
+            Paragraph::new(Line::from(spans))
+                .alignment(Alignment::Right)
+                .style(Style::default().bg(self.theme.base_background)),
+            area,
+        );
+    }
+
     fn paint_settings(&mut self, frame: &mut ratatui::Frame) {
+        self.hex_line = HexLine::default();
         let area = settings_sheet_area(frame.area());
         if area.width == 0 || area.height == 0 {
             return;
@@ -689,7 +735,7 @@ impl App {
         };
         let help = build_help_text(&self.theme, body_w as usize, self.in_tmux);
         let total = help.lines.len();
-        self.paint_scrolled_lines(frame, body, help.lines, None, self.theme.scrollbar);
+        self.paint_scrolled_lines(frame, body, help.lines, None, self.theme.scrollbar, None);
         if total > area.height as usize && area.height > 0 {
             let track = Rect {
                 x: area.x + area.width.saturating_sub(1),
@@ -748,7 +794,14 @@ impl App {
             )));
         }
         self.help_scrollbar_track = ScrollbarTrack::default();
-        self.paint_scrolled_lines(frame, area, lines, selected_line, self.theme.modal_text);
+        self.paint_scrolled_lines(
+            frame,
+            area,
+            lines,
+            selected_line,
+            self.theme.modal_text,
+            None,
+        );
     }
 
     fn paint_settings_themes(&mut self, frame: &mut ratatui::Frame, content: Rect) {
@@ -758,6 +811,8 @@ impl App {
         let box_w = (content.width as usize).max(2);
         let mut lines: Vec<Line<'static>> = Vec::new();
         let mut selected_line = None;
+        let mut hex_at = None;
+        let mut hex_cols = 0u16;
         let rule = Style::default().fg(self.theme.border);
         let header = Style::default()
             .fg(self.theme.modal_header)
@@ -786,11 +841,13 @@ impl App {
             .bg(self.theme.selected_background);
         let idle = Style::default().fg(self.theme.modal_text);
         if let Some(editor) = &editor {
-            lines.push(Line::from(if editor.editing_hex {
-                format!("Hex: {}█", editor.hex_draft)
+            hex_at = Some(lines.len());
+            hex_cols = (editor.hex_draft.chars().count() as u16).saturating_add(1);
+            lines.push(if editor.editing_hex {
+                hex_caret_line(&editor.hex_draft, editor.hex_cursor)
             } else {
-                format!("Hex: {}   Enter edit", editor.hex_draft)
-            }));
+                Line::from(format!("Hex: {}   Enter edit", editor.hex_draft))
+            });
             let mut open = false;
             for row in theme_editor_rows(&editor.fields) {
                 match row {
@@ -858,7 +915,15 @@ impl App {
             lines.push(settings_bottom(box_w, rule));
         }
         self.help_scrollbar_track = ScrollbarTrack::default();
-        self.paint_scrolled_lines(frame, content, lines, selected_line, self.theme.modal_text);
+        let hex = hex_at.map(|at| (at, hex_cols));
+        self.paint_scrolled_lines(
+            frame,
+            content,
+            lines,
+            selected_line,
+            self.theme.modal_text,
+            hex,
+        );
     }
 
     fn paint_scrolled_lines(
@@ -868,9 +933,11 @@ impl App {
         lines: Vec<Line<'static>>,
         selected_line: Option<usize>,
         _thumb: ratatui::style::Color,
+        hex: Option<(usize, u16)>,
     ) {
         if area.width == 0 || area.height == 0 {
             self.overlay_scroll_max = 0;
+            self.hex_line = HexLine::default();
             return;
         }
         let view_h = area.height as usize;
@@ -903,6 +970,23 @@ impl App {
             Some(Overlay::Theme { scroll }) => scroll,
             None => 0,
         };
+        self.hex_line = hex
+            .and_then(|(at, cols)| {
+                let rel = at as i32 - i32::from(scroll);
+                if rel < 0 || (rel as u16) >= area.height {
+                    return None;
+                }
+                Some(HexLine {
+                    area: Rect {
+                        x: area.x,
+                        y: area.y.saturating_add(rel as u16),
+                        width: 5u16.saturating_add(cols).min(area.width.max(1)),
+                        height: 1,
+                    },
+                    prefix: 5,
+                })
+            })
+            .unwrap_or_default();
         frame.render_widget(
             Paragraph::new(lines)
                 .style(

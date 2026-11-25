@@ -209,7 +209,7 @@ resolve_triple() {
 }
 
 normalize_version() {
-    # Empty → latest. Accept "1.32.0" or "v1.32.0".
+    # Empty → latest. Accept "1.33.0" or "v1.33.0".
     if [ -z "$VERSION" ] || [ "$VERSION" = "latest" ]; then
         VERSION=""
         return 0
@@ -791,7 +791,7 @@ main() {
                 shift
                 ;;
             --version)
-                [ $# -ge 2 ] || { red "--version needs a value (e.g. v1.32.0)"; exit 1; }
+                [ $# -ge 2 ] || { red "--version needs a value (e.g. v1.33.0)"; exit 1; }
                 VERSION="$2"
                 shift 2
                 ;;

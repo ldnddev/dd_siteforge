@@ -120,6 +120,8 @@ struct SettingsThemeRow {
 struct SettingsColors {
     rows: Vec<SettingsColorRow>,
     hex_draft: String,
+    hex_cursor: usize,
+    editing_hex: bool,
     hex_error: Option<String>,
 }
 
@@ -500,7 +502,8 @@ impl Shell {
         let now = Instant::now();
         if now.duration_since(self.last_theme_check) >= std::time::Duration::from_secs(2) {
             self.last_theme_check = now;
-            if self.theme.refresh(&self.paths) {
+            // Skip the re-read while Settings is open so a live preview stays.
+            if self.appearance.is_none() && self.theme.refresh(&self.paths) {
                 // Spec 06 §7: theme apply is instant. No color tween.
                 self.theme_repaint = true;
                 self.play("theme-apply");
@@ -1161,7 +1164,22 @@ impl Shell {
                 self.issues_height.round() as i32
             ));
         }
+        lines.push(format!(
+            "footer:{}",
+            footer_chrome(self.last_width, self.appearance.is_some())
+        ));
+        if let Some(mark) = self.header_busy() {
+            lines.push(format!("busy:{mark}"));
+        }
         lines
+    }
+
+    fn header_busy(&self) -> Option<String> {
+        if self.build_rx.is_some() || self.export_rx.is_some() || self.init_rx.is_some() {
+            Some(busy_label(busy_now_ms()))
+        } else {
+            None
+        }
     }
 
     #[cfg(test)]
@@ -3176,7 +3194,13 @@ impl Shell {
     }
 
     fn on_key_down(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) {
-        if !self.try_type_key(event) {
+        if is_clipboard_paste(event) {
+            if let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) {
+                self.paste_text(&text);
+            }
+        } else if let Some(text) = pasted_block(event) {
+            self.paste_text(text);
+        } else if !self.try_type_key(event) {
             self.handle_key(&chord(event));
         }
         self.settle_companion(cx);
@@ -3189,6 +3213,134 @@ impl Shell {
         if self.awaiting_image.is_some() {
             self.portal_image(cx);
         }
+    }
+
+    #[cfg(test)]
+    pub fn testing_key_down(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) {
+        self.on_key_down(event, cx);
+    }
+
+    #[cfg(test)]
+    pub fn focused_text(&self) -> String {
+        self.edit
+            .active()
+            .and_then(|draft| {
+                draft
+                    .state
+                    .focused()
+                    .map(|field| draft.state.get(field.id).to_string())
+            })
+            .unwrap_or_default()
+    }
+
+    /// Insert clipboard or a multi-character key payload at the focused field.
+    /// One call. The editor stores one undo step for the whole string.
+    fn paste_text(&mut self, raw: &str) {
+        if self.paste_blocked() {
+            return;
+        }
+        if self.appearance.is_some() {
+            self.paste_appearance(raw);
+            return;
+        }
+        if self.palette.is_some() {
+            self.paste_line(raw, |shell, text| {
+                if let Some(palette) = &mut shell.palette {
+                    palette.query.push_str(text);
+                    palette.selected = 0;
+                }
+            });
+            return;
+        }
+        if self.find.is_some() {
+            self.paste_line(raw, |shell, text| {
+                if let Some(find) = &mut shell.find {
+                    find.query.push_str(text);
+                    find.selected = 0;
+                }
+            });
+            return;
+        }
+        if self.new_site.open {
+            self.paste_line(raw, |shell, text| shell.type_new_site(text));
+            return;
+        }
+        if self.path_sheet.is_some() {
+            self.paste_line(raw, |shell, text| {
+                if let Some(sheet) = shell.path_sheet.as_mut() {
+                    sheet.path.push_str(text);
+                    sheet.error = None;
+                }
+            });
+            return;
+        }
+        if self.rename.is_some() {
+            self.paste_line(raw, |shell, text| {
+                if let Some(title) = shell.rename.as_mut() {
+                    title.push_str(text);
+                }
+            });
+            return;
+        }
+        if self.insert_open {
+            self.paste_line(raw, |shell, text| {
+                shell.insert_query.push_str(text);
+                shell.insert_index = 0;
+            });
+            return;
+        }
+        if self.zone == Zone::Inspector {
+            let _ = self.edit.paste_text(raw);
+            return;
+        }
+        self.paste_line(raw, |shell, text| match shell.screen {
+            Screen::Welcome => {
+                shell.welcome_query.push_str(text);
+                shell.welcome_index = 0;
+            }
+            Screen::Editor => {
+                shell.filter.push_str(text);
+                shell.sidebar_index = 0;
+            }
+            _ => {}
+        });
+    }
+
+    fn paste_blocked(&self) -> bool {
+        self.quit_dialog
+            || self.restore_open
+            || self.export_failure.is_some()
+            || self.switcher
+            || self.template_open
+            || self.issues_keys
+            || self.shrink.is_some()
+    }
+
+    fn paste_appearance(&mut self, raw: &str) {
+        if self.settings_query_on {
+            self.paste_line(raw, |shell, text| {
+                shell.settings_query.push_str(text);
+                shell.settings_row = 0;
+            });
+            return;
+        }
+        if self.editing_hex() {
+            if let Some(editor) = self
+                .appearance
+                .as_mut()
+                .and_then(|appearance| appearance.editor.as_mut())
+            {
+                editor.paste_hex(raw);
+            }
+        }
+    }
+
+    fn paste_line(&mut self, raw: &str, apply: impl FnOnce(&mut Self, &str)) {
+        let text = dd_siteforge_core::paste::sanitize_paste(raw, false);
+        if text.is_empty() {
+            return;
+        }
+        apply(self, &text);
     }
 
     fn settle_companion(&mut self, cx: &mut Context<Self>) {
@@ -4502,7 +4654,15 @@ impl Shell {
                         let mark = if index == editor.selected { ">" } else { " " };
                         lines.push(format!("{mark} {} {hex}", field.key));
                     }
-                    lines.push(editor.hex_draft.clone());
+                    lines.push(hex_field_text(
+                        &editor.hex_draft,
+                        editor.hex_cursor,
+                        editor.editing_hex,
+                    ));
+                    lines.push(format!(
+                        "hex-caret:{}",
+                        editor.hex_cursor.min(editor.hex_draft.chars().count())
+                    ));
                     if let Some(err) = &appearance.hex_error {
                         lines.push(err.clone());
                     }
@@ -5062,6 +5222,8 @@ impl Shell {
                 })
                 .collect(),
             hex_draft: editor.hex_draft.clone(),
+            hex_cursor: editor.hex_cursor,
+            editing_hex: editor.editing_hex,
             hex_error: appearance.hex_error.clone(),
         });
         let page = if !self.settings_query.trim().is_empty() {
@@ -5436,6 +5598,16 @@ impl Shell {
         appearance.hex_error = None;
     }
 
+    pub fn place_hex_cursor(&mut self, col: usize) {
+        if let Some(editor) = self
+            .appearance
+            .as_mut()
+            .and_then(|appearance| appearance.editor.as_mut())
+        {
+            editor.place_hex_cursor(col);
+        }
+    }
+
     fn editor_key(&mut self, key: &str) {
         let shift = key.starts_with("shift-");
         let bare = key.strip_prefix("shift-").unwrap_or(key);
@@ -5444,6 +5616,9 @@ impl Shell {
             "escape" => Some(ldnddev_theme::EditorKey::Esc),
             "enter" => Some(ldnddev_theme::EditorKey::Enter),
             "backspace" => Some(ldnddev_theme::EditorKey::Backspace),
+            "delete" => Some(ldnddev_theme::EditorKey::Delete),
+            "home" => Some(ldnddev_theme::EditorKey::Home),
+            "end" => Some(ldnddev_theme::EditorKey::End),
             "tab" => Some(ldnddev_theme::EditorKey::Tab),
             "up" => Some(ldnddev_theme::EditorKey::Up),
             "down" => Some(ldnddev_theme::EditorKey::Down),
@@ -5747,6 +5922,8 @@ impl Render for Shell {
         let new_site_open = self.new_site.open;
         let preview_text = self.preview_status_text();
         let build_text = self.build_status.clone();
+        let busy_bar = self.header_busy().and_then(|label| label.chars().next());
+        let settings_open = self.appearance.is_some();
         let issues_pane = IssuesPane {
             open: self.issues_open,
             health: self.issues_health,
@@ -5879,6 +6056,8 @@ impl Render for Shell {
                 border,
                 selected,
                 input,
+                busy_bar,
+                info,
             ))
             .when(save_error.is_some(), |row| {
                 let err = save_error.clone().unwrap_or_default();
@@ -5985,6 +6164,8 @@ impl Render for Shell {
                 error,
                 border,
                 status_h,
+                settings_open,
+                width,
                 cx,
             ))
             .when(path_sheet.is_some(), |row| {
@@ -6179,6 +6360,8 @@ fn title_bar(
     border: gpui::Hsla,
     selected: gpui::Hsla,
     input: gpui::Hsla,
+    busy: Option<char>,
+    info: gpui::Hsla,
 ) -> gpui::Div {
     let sidebar_tip = if sidebar_on {
         "Hide sidebar".to_string()
@@ -6226,6 +6409,18 @@ fn title_bar(
                         .gap(px(4.0))
                         .when(editor, |row| row.bg(selected))
                         .child(title.to_string())
+                        .when(busy.is_some(), |row| {
+                            let bar = busy.unwrap_or('▃').to_string();
+                            row.child(
+                                div()
+                                    .id("busy-mark")
+                                    .flex()
+                                    .items_center()
+                                    .child(div().text_color(info).child(bar.clone()))
+                                    .child(div().font_weight(FontWeight::BOLD).child(" d_d "))
+                                    .child(div().text_color(info).child(bar)),
+                            )
+                        })
                         .when(editor, |row| row.child("▾"))
                         .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
                             if shell.screen == Screen::Editor {
@@ -6947,6 +7142,64 @@ fn theme_actions(
         .child(appearance_buttons(cx, true, show_fix))
 }
 
+fn hex_field(
+    cx: &mut Context<Shell>,
+    colors: &SettingsColors,
+    text: gpui::Hsla,
+) -> gpui::Stateful<gpui::Div> {
+    let chars: Vec<(usize, char)> = colors.hex_draft.chars().enumerate().collect();
+    let len = chars.len();
+    let cursor = colors.hex_cursor.min(len);
+    let editing = colors.editing_hex;
+    div()
+        .id("settings-hex")
+        .flex()
+        .flex_wrap()
+        .items_center()
+        .text_color(text)
+        .child(
+            div()
+                .id("settings-hex-prefix")
+                .cursor_pointer()
+                .child("Hex: ")
+                .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
+                    shell.place_hex_cursor(0);
+                    cx.stop_propagation();
+                    cx.notify();
+                })),
+        )
+        .children(chars.into_iter().map(|(index, ch)| {
+            let caret = editing && index == cursor;
+            div()
+                .id(("settings-hex-cell", index))
+                .cursor_pointer()
+                .when(caret, |cell| cell.font_weight(FontWeight::BOLD))
+                .child(ch.to_string())
+                .on_click(cx.listener(move |shell, _: &ClickEvent, _, cx| {
+                    shell.place_hex_cursor(index);
+                    cx.stop_propagation();
+                    cx.notify();
+                }))
+        }))
+        .child({
+            let end = if editing && cursor == len {
+                "█".to_string()
+            } else {
+                " ".to_string()
+            };
+            div()
+                .id(("settings-hex-cell", len))
+                .cursor_pointer()
+                .child(end)
+                .on_click(cx.listener(move |shell, _: &ClickEvent, _, cx| {
+                    shell.place_hex_cursor(len);
+                    cx.stop_propagation();
+                    cx.notify();
+                }))
+        })
+        .when(!editing, |row| row.child("  Enter edit"))
+}
+
 fn color_editor(
     cx: &mut Context<Shell>,
     colors: &SettingsColors,
@@ -6967,7 +7220,7 @@ fn color_editor(
                 .child(color_column(cx, &colors.rows[..mid], selected))
                 .child(color_column(cx, &colors.rows[mid..], selected)),
         )
-        .child(settings_line(colors.hex_draft.clone(), text))
+        .child(hex_field(cx, colors, text))
         .when(colors.hex_error.is_some(), |col| {
             col.child(settings_line(
                 colors.hex_error.clone().unwrap_or_default(),
@@ -9492,6 +9745,64 @@ fn label_line(
         .child(gpui::StyledText::new(text).with_runs(runs))
 }
 
+fn footer_narrow(width: f32) -> bool {
+    width < 80.0_f32 * 8.0
+}
+
+fn footer_tokens(
+    width: f32,
+    settings_open: bool,
+) -> (&'static str, Option<&'static str>, &'static str) {
+    if footer_narrow(width) {
+        (
+            "F1:Settings",
+            settings_open.then_some("Esc:Close"),
+            "^Q:Quit",
+        )
+    } else {
+        (
+            "F1: Settings",
+            settings_open.then_some("Esc: Close"),
+            "Ctrl+Q: Quit",
+        )
+    }
+}
+
+#[cfg(test)]
+fn footer_chrome(width: f32, settings_open: bool) -> String {
+    let (lead, close, quit) = footer_tokens(width, settings_open);
+    match close {
+        Some(close) => format!("{lead}  {close}  {quit}"),
+        None => format!("{lead}  {quit}"),
+    }
+}
+
+const BUSY_BARS: [char; 4] = ['▃', '▅', '█', '▅'];
+const BUSY_FRAME_MS: u128 = 150;
+
+fn busy_now_ms() -> u128 {
+    SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_millis())
+        .unwrap_or(0)
+}
+
+fn busy_label(now_ms: u128) -> String {
+    let bar = BUSY_BARS[(now_ms / BUSY_FRAME_MS) as usize % BUSY_BARS.len()];
+    format!("{bar} d_d {bar}")
+}
+
+fn hex_field_text(draft: &str, cursor: usize, editing: bool) -> String {
+    if !editing {
+        return format!("Hex: {draft}   Enter edit");
+    }
+    let chars: Vec<char> = draft.chars().collect();
+    let at = cursor.min(chars.len());
+    let before: String = chars[..at].iter().collect();
+    let after: String = chars[at..].iter().collect();
+    format!("Hex: {before}█{after}")
+}
+
 fn status_bar(
     screen: Screen,
     save: &str,
@@ -9504,6 +9815,8 @@ fn status_bar(
     error: gpui::Hsla,
     border: gpui::Hsla,
     height: f32,
+    settings_open: bool,
+    width: f32,
     cx: &mut Context<Shell>,
 ) -> gpui::Div {
     let preview_color = if screen == Screen::Error || preview.contains("failed") {
@@ -9511,6 +9824,8 @@ fn status_bar(
     } else {
         placeholder
     };
+    let (lead, close, quit) = footer_tokens(width, settings_open);
+    let show_context = !settings_open && !footer_narrow(width);
     div()
         .h(px(height))
         .px(px(12.0))
@@ -9521,17 +9836,25 @@ fn status_bar(
         .border_color(border)
         .child(
             div()
-                .id("preview-status")
-                .text_color(preview_color)
-                .child(preview.to_string())
-                .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
-                    shell.open_preview();
-                    shell.settle_companion(cx);
-                    cx.notify();
-                })),
+                .id("footer-settings")
+                .text_color(secondary)
+                .child(lead),
         )
+        .when(show_context, |row| {
+            row.child(
+                div()
+                    .id("preview-status")
+                    .text_color(preview_color)
+                    .child(preview.to_string())
+                    .on_click(cx.listener(|shell, _: &ClickEvent, _, cx| {
+                        shell.open_preview();
+                        shell.settle_companion(cx);
+                        cx.notify();
+                    })),
+            )
+        })
         .child(div().flex_1())
-        .when(screen == Screen::Editor, |row| {
+        .when(show_context && screen == Screen::Editor, |row| {
             row.child(
                 div()
                     .id("issues-count")
@@ -9554,10 +9877,10 @@ fn status_bar(
                     })),
             )
         })
-        .when(screen == Screen::Error, |row| {
+        .when(show_context && screen == Screen::Error, |row| {
             row.child(div().text_color(secondary).child("Issues 1"))
         })
-        .when(!save.is_empty(), |row| {
+        .when(show_context && !save.is_empty(), |row| {
             row.child(
                 div()
                     .id("save-indicator")
@@ -9565,6 +9888,10 @@ fn status_bar(
                     .child(save.to_string()),
             )
         })
+        .when(close.is_some(), |row| {
+            row.child(div().text_color(secondary).child(close.unwrap_or_default()))
+        })
+        .child(div().id("footer-quit").text_color(secondary).child(quit))
 }
 
 fn new_site_sheet(
@@ -9834,6 +10161,30 @@ fn centered(lines: Vec<String>, secondary: gpui::Hsla) -> gpui::Div {
         }))
 }
 
+fn is_clipboard_paste(event: &KeyDownEvent) -> bool {
+    let mods = event.keystroke.modifiers;
+    (mods.control || mods.platform)
+        && !mods.shift
+        && !mods.alt
+        && event.keystroke.key.eq_ignore_ascii_case("v")
+}
+
+/// A platform that delivers a paste as one `key_char` rather than Ctrl+V.
+/// A single typed character stays on the normal key path.
+fn pasted_block(event: &KeyDownEvent) -> Option<&str> {
+    let mods = event.keystroke.modifiers;
+    if mods.control || mods.platform || mods.alt || mods.function {
+        return None;
+    }
+    let text = event.keystroke.key_char.as_deref()?;
+    let mut chars = text.chars();
+    chars.next()?;
+    if chars.next().is_none() {
+        return None;
+    }
+    Some(text)
+}
+
 pub(crate) fn chord(event: &KeyDownEvent) -> String {
     let mut parts: Vec<String> = Vec::new();
     let mods = event.keystroke.modifiers;
@@ -10074,5 +10425,34 @@ fn dedup_page(pages: &[Page], page: &mut Page) {
             page.slug = format!("{base_slug}-{n}");
             return;
         }
+    }
+}
+
+#[cfg(test)]
+mod chrome_contract {
+    use super::{busy_label, footer_chrome};
+
+    #[test]
+    fn busy_mark_uses_the_four_frames() {
+        assert_eq!(busy_label(0), "▃ d_d ▃");
+        assert_eq!(busy_label(149), "▃ d_d ▃");
+        assert_eq!(busy_label(150), "▅ d_d ▅");
+        assert_eq!(busy_label(300), "█ d_d █");
+        assert_eq!(busy_label(450), "▅ d_d ▅");
+        assert_eq!(busy_label(600), "▃ d_d ▃");
+    }
+
+    #[test]
+    fn footer_names_settings_and_quit() {
+        assert_eq!(footer_chrome(1280.0, false), "F1: Settings  Ctrl+Q: Quit");
+        assert_eq!(footer_chrome(400.0, false), "F1:Settings  ^Q:Quit");
+        assert_eq!(
+            footer_chrome(1280.0, true),
+            "F1: Settings  Esc: Close  Ctrl+Q: Quit"
+        );
+        assert_eq!(
+            footer_chrome(400.0, true),
+            "F1:Settings  Esc:Close  ^Q:Quit"
+        );
     }
 }

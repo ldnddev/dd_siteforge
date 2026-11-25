@@ -26,7 +26,7 @@ With a terminal to answer, the script asks whether to install the terminal app, 
 `./install.sh --uninstall` removes the chosen binaries and their launchers. It leaves the theme, the icon, and `~/.config/ldnddev/dd_siteforge/` (session and scaffold) in place. Use the same `PREFIX`, `BIN_DIR`, `CONFIG_DIR`, and `XDG_DATA_HOME` as the install. `INSTALL_GUI=1` is the same as `--both`.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ldnddev/dd_siteforge/master/install.sh | bash -s -- --version v1.32.0
+curl -fsSL https://raw.githubusercontent.com/ldnddev/dd_siteforge/master/install.sh | bash -s -- --version v1.33.0
 curl -fsSL https://raw.githubusercontent.com/ldnddev/dd_siteforge/master/install.sh | bash -s -- --uninstall --tui
 ```
 
@@ -158,7 +158,7 @@ dd_siteforge
 
 `dd_siteforge` in a folder with `site.json` opens the TUI. `dd_siteforge site.json` and `dd_siteforge tui site.json` still work. Recents and the last page/tree row live in `~/.config/ldnddev/dd_siteforge/session.json`.
 
-In the TUI: `F1` opens Settings (theme on top, shortcuts below, on the right half). `F2` opens the same sheet. `?` find, `:` command palette, `Shift+E` export, `Shift+P` preview, `Shift+B` build CSS/JS, `Ctrl+Q` quit. Put images in `./source/images/`. The footer starts with `F1:Settings`.
+In the TUI: `F1` opens Settings (theme on top, shortcuts below, on the right half). `F2` opens the same sheet. `?` find, `:` command palette, `Shift+E` export, `Shift+P` preview, `Shift+B` build CSS/JS, `Ctrl+Q` quit. Put images in `./source/images/`. The footer starts with `F1: Settings`.
 
 `Shift+B` runs `lando grunt build` when `.lando.yml` is present, otherwise `npx grunt build`. Preview binds `127.0.0.1` and re-exports into the same local server on the next save.
 

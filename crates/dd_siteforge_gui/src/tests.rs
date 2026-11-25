@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use dd_siteforge_core::model::{Page, PageNode, PageTemplate, SectionComponent, Site};
 use dd_siteforge_core::session::{self, RecentSite, Session};
 use dd_siteforge_core::storage::save_site;
-use gpui::{AppContext, TestAppContext};
+use gpui::{AppContext, ClipboardItem, KeyDownEvent, Keystroke, Modifiers, TestAppContext};
 
 use crate::document::SavePhase;
 use crate::keys::{self, INSPECTOR_KBD, SIDEBAR_KBD};
@@ -238,6 +238,8 @@ fn dock_shortcuts_match_the_title_bar_toggles(cx: &mut TestAppContext) {
         assert_eq!(shell.docks_visible(), (true, true));
         let text = shell.visible_text();
         assert!(text.contains("Running `npx grunt build`…"), "{text}");
+        assert!(text.contains("busy:"), "{text}");
+        assert!(text.contains("d_d"), "{text}");
         shell.handle_key("ctrl-b");
         assert!(shell.visible_text().contains("Build already running."));
     });
@@ -496,6 +498,7 @@ fn palette_holds_init_and_f2_opens_appearance(cx: &mut TestAppContext) {
         let text = shell.visible_text();
         assert!(text.contains("title-actions:Export,Preview"), "{text}");
         assert!(text.contains("title-search:240"), "{text}");
+        assert!(text.contains("footer:F1: Settings  Ctrl+Q: Quit"), "{text}");
         assert!(!text.contains("Init site kit"), "{text}");
         shell.handle_key("ctrl-k");
         let text = shell.visible_text();
@@ -508,6 +511,10 @@ fn palette_holds_init_and_f2_opens_appearance(cx: &mut TestAppContext) {
         shell.handle_key("f2");
         let text = shell.visible_text();
         assert!(text.contains("settings-panel:right:70"), "{text}");
+        assert!(
+            text.contains("footer:F1: Settings  Esc: Close  Ctrl+Q: Quit"),
+            "{text}"
+        );
         assert!(text.contains("settings-nav:Themes,Window,Help"), "{text}");
         assert!(text.contains("settings-page:Themes"), "{text}");
         assert!(text.contains("theme-list:flow"), "{text}");
@@ -1655,5 +1662,81 @@ fn blueprint_packs_half_width_cards_and_resolves_a_local_image(cx: &mut TestAppC
             selected.contains("index › section-1 › dd-card › 1: Alpha"),
             "{selected}"
         );
+    });
+}
+
+fn ctrl_v() -> KeyDownEvent {
+    KeyDownEvent {
+        keystroke: Keystroke {
+            modifiers: Modifiers {
+                control: true,
+                ..Modifiers::default()
+            },
+            key: "v".into(),
+            key_char: None,
+        },
+        is_held: false,
+        prefer_character_input: false,
+    }
+}
+
+fn block_key(text: &str) -> KeyDownEvent {
+    KeyDownEvent {
+        keystroke: Keystroke {
+            modifiers: Modifiers::default(),
+            key: "a".into(),
+            key_char: Some(text.to_string()),
+        },
+        is_held: false,
+        prefer_character_input: false,
+    }
+}
+
+#[gpui::test]
+fn paste_inserts_the_whole_block_in_one_undo(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("site.json");
+    save_site(&path, &Site::starter()).unwrap();
+    cx.write_to_clipboard(ClipboardItem::new_string("Hello\r\nthere\u{1b}!".into()));
+    let shell = mount(cx, opts(dir.path(), Some(path)));
+    shell.update(cx, |shell, cx| {
+        shell.select_outline_label("dd-hero");
+        shell.focus_inspector();
+        assert!(shell.focus_field_id("parent_title"));
+        assert!(shell.set_field_value("parent_title", "Keep"));
+        shell.testing_key_down(&ctrl_v(), cx);
+        assert_eq!(shell.focused_text(), "KeepHello there!");
+        shell.handle_key("ctrl-z");
+        assert_eq!(shell.focused_text(), "Keep");
+
+        assert!(shell.focus_field_id("parent_copy"));
+        assert!(shell.set_field_value("parent_copy", ""));
+        shell.testing_key_down(&block_key("a\r\nb\u{1b}\tc"), cx);
+        assert_eq!(shell.focused_text(), "a\nb\tc");
+        shell.handle_key("ctrl-z");
+        assert_eq!(shell.focused_text(), "");
+
+        shell.handle_key("f2");
+        shell.handle_key("e");
+        shell.handle_key("enter");
+        cx.write_to_clipboard(ClipboardItem::new_string("#aa\nbbcc!!".into()));
+        shell.testing_key_down(&ctrl_v(), cx);
+        assert!(
+            shell.visible_text().contains("#AABBCC"),
+            "{}",
+            shell.visible_text()
+        );
+        assert!(
+            shell.visible_text().contains("hex-caret:7"),
+            "{}",
+            shell.visible_text()
+        );
+        shell.handle_key("left");
+        assert!(shell.visible_text().contains("hex-caret:6"));
+        shell.handle_key("home");
+        assert!(shell.visible_text().contains("hex-caret:0"));
+        shell.place_hex_cursor(2);
+        assert!(shell.visible_text().contains("hex-caret:2"));
+        assert!(shell.visible_text().contains("Hex: "));
     });
 }
