@@ -16,6 +16,9 @@ IMG="$ROOT/docs/images"
 BIN="$ROOT/target/release/dd_siteforge"
 WORK="${DD_SITEFORGE_TUTORIAL_SITE:-/tmp/dd_siteforge_tutorial}"
 SITE="$WORK/site.json"
+# Keep the capture off the user's session, theme, and gui.json.
+export XDG_CONFIG_HOME="${DD_SITEFORGE_CAPTURE_CONFIG:-$WORK/config}"
+mkdir -p "$XDG_CONFIG_HOME"
 APP_ID="dd-siteforge-tutorial"
 SLEEP_AFTER_KEY="${SLEEP_AFTER_KEY:-0.5}"
 FOOT_PID=""
@@ -160,17 +163,23 @@ focus_win
 sleep 0.7
 shot 01-shell.png
 
+# F1 opens Settings on Themes. ] steps Themes → Window → Help.
 wtype -k F1
+sleep 0.15
+wtype ']'
+sleep 0.1
+wtype ']'
 shot 02-help.png
-wtype -k Escape
-sleep "$SLEEP_AFTER_KEY"
-
-wtype -k F2
+wtype '['
+sleep 0.1
+wtype '['
 shot 03-theme.png
 wtype -k Escape
 sleep "$SLEEP_AFTER_KEY"
 
 wtype 3
+sleep 0.15
+wtype j
 sleep 0.15
 wtype -k Return
 shot 04-edit-form.png

@@ -141,7 +141,7 @@
 <body>
   <header class="hero">
     <div class="wrap">
-      <div class="kicker">dd_siteforge 1.11</div>
+      <div class="kicker">dd_siteforge 1.33.1</div>
       <h1>Setup, install, and the TUI</h1>
       <p>A terminal CMS for framework-native static pages. One Rust binary: edit a typed site tree, export HTML, host anywhere static.</p>
       <nav class="toc" aria-label="Sections">
@@ -185,20 +185,20 @@ dd_siteforge init-site site.json --name my-site</code></pre>
     <p>Without <code>--name</code> it prompts (or uses the folder name when stdin is not a TTY). Put author images in <code>source/images/</code> (URLs in the TUI look like <code>assets/images/hero.jpg</code>).</p>
 
     <h3>CSS / JS</h3>
-    <p>When the site has <code>.lando.yml</code>, the TUI <kbd>Shift+B</kbd> runs <code>lando grunt build</code> (Lando owns Node). Otherwise it runs <code>npx grunt build</code>. Host Node still works from a shell.</p>
+    <p>When the site has <code>.lando.yml</code>, the TUI <kbd>Ctrl+B</kbd> runs <code>lando grunt build</code> (Lando owns Node). Otherwise it runs <code>npx grunt build</code>. Host Node still works from a shell.</p>
 <pre><code>lando start
 lando npm install
-lando grunt build        # or in the TUI: Shift+B</code></pre>
-    <p>Writes <code>web/assets/{css,js,webfonts}</code>. <code>npx grunt dev</code> rebuilds on change. DDEV remains an optional wrapper: <code>ddev start</code> then <code>ddev npm run build</code>.</p>
+lando grunt build        # or in the TUI: Ctrl+B</code></pre>
+    <p>Writes <code>web/assets/{css,js,fonts}</code>. <code>npx grunt dev</code> rebuilds on change. DDEV remains an optional wrapper: <code>ddev start</code> then <code>ddev npm run build</code>.</p>
 
     <h2 id="tui">The editor</h2>
     <pre><code>dd_siteforge</code></pre>
     <p>In a folder with <code>site.json</code> that opens the TUI. <code>dd_siteforge site.json</code> and <code>dd_siteforge tui site.json</code> still work. With no JSON, a picker lists recents or creates a starter. Last page and tree row restore from <code>~/.config/ldnddev/dd_siteforge/session.json</code>.</p>
-    <p>Autosave rewrites the JSON 2s after a change. Manual <kbd>s</kbd> also writes a <code>site.json.backup</code> checkpoint. <kbd>?</kbd> finds copy in the site, <kbd>:</kbd> opens the command palette, <kbd>F4</kbd> is page health. <kbd>Ctrl+Q</kbd> quits (confirms if dirty).</p>
+    <p>Autosave rewrites the JSON 2s after a change. <kbd>Ctrl+S</kbd> also writes a <code>site.json.backup</code> checkpoint. <kbd>Ctrl+F</kbd> finds copy in the site, <kbd>Ctrl+K</kbd> opens the command palette, <kbd>F4</kbd> is page health. <kbd>Ctrl+Q</kbd> quits (confirms if dirty).</p>
 
     <figure>
-      <img src="images/01-shell.png" width="941" height="1150" alt="dd_siteforge TUI: header, Regions, Pages, Layout tree, Details blueprint, footer with F1 Help and F2 Theme">
-      <figcaption>Main shell after <code>init-site</code>. Header is the product name (version lives in F2). Footer always starts <kbd>F1:Help</kbd> then <kbd>F2:Theme</kbd>. Layout is focused; Details shows the page blueprint.</figcaption>
+      <img src="images/01-shell.png" width="951" height="1190" alt="dd_siteforge TUI: header, Regions, Pages, Layout tree, Details blueprint, footer starting with F1 Settings and ending with Ctrl+Q Quit">
+      <figcaption>Main shell after <code>init-site</code>. The header is the product name. The footer starts with <kbd>F1: Settings</kbd> at 80 columns and wider, and <kbd>F1:Settings</kbd> below that. It ends with <kbd>Ctrl+Q: Quit</kbd>, or <kbd>^Q:Quit</kbd> on a narrow line. Layout is focused; Details shows the page blueprint.</figcaption>
     </figure>
 
     <h3>Panes</h3>
@@ -208,7 +208,7 @@ lando grunt build        # or in the TUI: Shift+B</code></pre>
       </thead>
       <tbody>
         <tr><td><kbd>1</kbd></td><td>Regions</td><td>Site settings, Header, Footer</td></tr>
-        <tr><td><kbd>2</kbd></td><td>Pages</td><td>Sitemap order. <kbd>Shift+A</kbd> add, <kbd>r</kbd> rename</td></tr>
+        <tr><td><kbd>2</kbd></td><td>Pages</td><td>Sitemap order. <kbd>Ctrl+N</kbd> add, <kbd>r</kbd> rename</td></tr>
         <tr><td><kbd>3</kbd></td><td>Layout</td><td>Tree for the current region. <kbd>Enter</kbd> edit, <kbd>/</kbd> insert</td></tr>
         <tr><td><kbd>4</kbd></td><td>Details</td><td>ASCII blueprint. <kbd>j</kbd>/<kbd>k</kbd> scroll; click selects</td></tr>
       </tbody>
@@ -216,42 +216,44 @@ lando grunt build        # or in the TUI: Shift+B</code></pre>
     <p><kbd>Tab</kbd> / <kbd>Shift+Tab</kbd> still move between <em>pages</em>, not panes.</p>
 
     <figure>
-      <img src="images/07-regions.png" width="941" height="1150" alt="Regions pane with Site selected; Details shows name, lang, and CSS colors">
-      <figcaption>Press <kbd>1</kbd> then <kbd>j</kbd> so <strong>Site</strong> is selected. Layout collapses to one “Site settings” row. Details is a read-only summary of name, lang, base URL, export dir, and CSS colors.</figcaption>
+      <img src="images/07-regions.png" width="951" height="1190" alt="Regions pane with Site selected; Details shows name, lang, and CSS colors">
+      <figcaption>Press <kbd>1</kbd> then <kbd>j</kbd> so <strong>Site</strong> is selected. Layout collapses to one “Site settings” row. Details is a read-only summary: name, language, base URL, export dir, pretty URLs, the default social image, and the theme colors.</figcaption>
     </figure>
 
     <figure>
-      <img src="images/08-site-settings.png" width="941" height="1150" alt="Site settings form with name, lang, base URL, export dir, and four CSS color fields">
-      <figcaption><kbd>Enter</kbd> on Site opens the settings form. <kbd>Ctrl+S</kbd> writes existing <code>Site</code> fields (no schema change). Esc cancels.</figcaption>
+      <img src="images/08-site-settings.png" width="951" height="1190" alt="Site settings form with name, language, base URL, export directory, pretty URLs, theme colors, GA4 measurement id, and default social image">
+      <figcaption><kbd>Enter</kbd> on Site opens the form: name, language, base URL, export directory, pretty URLs, theme colors, an optional GA4 measurement id, and the default social image. <kbd>Ctrl+S</kbd> saves. <kbd>Esc</kbd> cancels.</figcaption>
     </figure>
 
     <figure>
-      <img src="images/06-details.png" width="941" height="1150" alt="Details pane focused; footer shows j/k Scroll">
+      <img src="images/06-details.png" width="951" height="1190" alt="Details pane focused; footer shows j/k Scroll">
       <figcaption><kbd>4</kbd> focuses Details (active border). <kbd>j</kbd>/<kbd>k</kbd> and PageUp/PageDown scroll the blueprint. Click a box to select the matching Layout row; double-click edits.</figcaption>
     </figure>
 
     <h3>Edit a component</h3>
     <p>In Layout, <kbd>j</kbd>/<kbd>k</kbd> to a row and press <kbd>Enter</kbd> (or double-click). Tab between fields. Left/Right cycles enums. <kbd>Ctrl+S</kbd> saves; <kbd>Esc</kbd> cancels. In a URL field, <kbd>Ctrl+P</kbd> opens an image picker (<code>source/images/</code>) or a page picker.</p>
     <figure>
-      <img src="images/04-edit-form.png" width="941" height="1150" alt="Edit modal for dd-hero with title, subtitle, copy, class, animation, and image fields">
+      <img src="images/04-edit-form.png" width="951" height="1190" alt="Edit modal for dd-hero with title, subtitle, copy, class, animation, and image fields">
       <figcaption>FormEdit on the starter <code>dd-hero</code>. The modal footer says <kbd>Ctrl+S: save</kbd>. Enter is a newline in textareas, not save.</figcaption>
     </figure>
 
     <h3>Insert a component</h3>
     <p><kbd>/</kbd> opens a fuzzy picker. Allowed kinds follow the focused region: pages can insert hero/section/components; header can insert header-search/menu; footer cannot insert a hero.</p>
     <figure>
-      <img src="images/05-insert.png" width="941" height="1150" alt="Insert component picker listing dd-hero, dd-section, dd-cta, and other page components">
+      <img src="images/05-insert.png" width="951" height="1190" alt="Insert component picker listing dd-hero, dd-section, dd-cta, and other page components">
       <figcaption>Type to filter, <kbd>Enter</kbd> to insert after the current Layout row, <kbd>Esc</kbd> to cancel.</figcaption>
     </figure>
 
-    <h3>Help and theme</h3>
+    <h3>Settings</h3>
+    <p><kbd>F1</kbd>, <kbd>F2</kbd>, <kbd>Ctrl+/</kbd>, and <kbd>Ctrl+,</kbd> toggle one Settings sheet on the right half of the body. It opens on Themes. <kbd>Tab</kbd> and <kbd>Shift+Tab</kbd>, or <kbd>[</kbd> and <kbd>]</kbd>, move Themes, then Window, then Help. Click a name in the sheet list to jump. The sheet sits above an open form and does not drop a paused image picker.</p>
     <figure>
-      <img src="images/02-help.png" width="941" height="1150" alt="F1 help overlay listing global keys, autosave, layout keys, and Pages panel keys">
-      <figcaption><kbd>F1</kbd> — full key and mouse list. Scroll with <kbd>j</kbd>/<kbd>k</kbd> or the wheel. Esc or F1 closes. Help sits above an open form; it will not drop a paused image picker.</figcaption>
+      <img src="images/03-theme.png" width="951" height="1190" alt="Settings sheet on the Themes page, with a theme list on the right half of the TUI">
+      <figcaption>Themes is first. <kbd>j</kbd>/<kbd>k</kbd> move, <kbd>Enter</kbd> applies the highlighted theme, and <kbd>e</kbd> opens colors. <kbd>Esc</kbd> on the list reverts and closes. In the color editor, <kbd>Esc</kbd> returns to the list when a list is open.</figcaption>
     </figure>
+    <p>Window is Density (<code>comfortable</code> or <code>compact</code>) and Vim keys. <kbd>Enter</kbd> toggles the highlighted row. Those prefs are stored in <code>~/.config/ldnddev/dd_siteforge/gui.json</code> (under <code>$XDG_CONFIG_HOME</code> when that variable is set).</p>
     <figure>
-      <img src="images/03-theme.png" width="941" height="1150" alt="F2 theme overlay showing source local, version, and sampled color tokens with hex values">
-      <figcaption><kbd>F2</kbd> — theme source (<code>local</code> / <code>global</code> / <code>default</code>), load status, and canonical tokens. Version is here, not in the header title.</figcaption>
+      <img src="images/02-help.png" width="951" height="1190" alt="Settings sheet on the Help page, listing keyboard shortcuts, autosave, and mouse controls">
+      <figcaption>Help is last. Scroll with <kbd>j</kbd>/<kbd>k</kbd> or the wheel. <kbd>Esc</kbd> or <kbd>F1</kbd> closes the sheet.</figcaption>
     </figure>
 
     <h2 id="export">Validate, export, preview</h2>
@@ -260,8 +262,8 @@ npx grunt build
 dd_siteforge export-html site.json ./web/
 dd_siteforge serve site.json          # export + http://127.0.0.1:8765/
 </code></pre>
-    <p>Inside the TUI: <kbd>F3</kbd> validate, <kbd>Shift+E</kbd> export (prompts for a directory the first time, then remembers <code>export_dir</code>), <kbd>Shift+P</kbd> export + local HTTP + open the current page in a browser.</p>
-    <p>Export copies Grunt <code>web/assets</code> (unless the dest already is that tree), fills missing webfonts/favicon from <code>source/</code>, copies <code>source/images/</code> → <code>web/assets/images/</code>, and writes <code>sitemap.xml</code>, <code>robots.txt</code>, and <code>404.html</code> when you have no author 404 page.</p>
+    <p>Inside the TUI: <kbd>F3</kbd> validate, <kbd>Ctrl+E</kbd> export (prompts for a directory the first time, then remembers <code>export_dir</code>), <kbd>Ctrl+P</kbd> export + local HTTP + open the current page in a browser.</p>
+    <p>Export copies Grunt <code>web/assets</code> (<code>css</code>, <code>js</code>, <code>fonts</code>, <code>favicon</code>, <code>vendors</code>) unless the destination is already that tree. It fills missing fonts from <code>source/fonts</code> and favicons from <code>source/favicon</code>, copies <code>source/images/</code> to <code>web/assets/images/</code>, and writes <code>sitemap.xml</code>, <code>search-index.json</code>, <code>robots.txt</code>, and <code>404.html</code> when you have no author 404 page.</p>
     <div class="callout warn">
       Validation and export refuse to run when slugs collide, required fields are empty, or a local <code>assets/images/…</code> file is missing next to the JSON.
     </div>
@@ -270,7 +272,7 @@ dd_siteforge serve site.json          # export + http://127.0.0.1:8765/
     <p>First file found wins:</p>
     <ol>
       <li><code>./dd_siteforge_theme.yml</code> (project)</li>
-      <li><code>~/.config/ldnddev/dd_siteforge_theme.yml</code> (user)</li>
+      <li><code>$XDG_CONFIG_HOME/ldnddev/dd_siteforge_theme.yml</code> when that variable is set, otherwise <code>~/.config/ldnddev/dd_siteforge_theme.yml</code></li>
       <li>Built-in defaults</li>
     </ol>
     <p>Must declare <code>version: 1</code>. Token names are in <a href="https://github.com/ldnddev/dd_siteforge/blob/master/LDNDDEV_TUI_VISUAL_STANDARD.md">LDNDDEV_TUI_VISUAL_STANDARD.md</a>. Optional <code>header_quotes</code> replaces the rotating header line (picked once per launch).</p>
@@ -279,18 +281,19 @@ dd_siteforge serve site.json          # export + http://127.0.0.1:8765/
     <table>
       <thead><tr><th>Keys</th><th>Action</th></tr></thead>
       <tbody>
-        <tr><td><kbd>F1</kbd> / <kbd>F2</kbd> / <kbd>F3</kbd></td><td>Help / Theme / Validate</td></tr>
-        <tr><td><kbd>Shift+E</kbd> / <kbd>Shift+P</kbd> / <kbd>s</kbd></td><td>Export / Preview / Save (+ backup)</td></tr>
+        <tr><td><kbd>F1</kbd> <kbd>F2</kbd> <kbd>Ctrl+/</kbd> <kbd>Ctrl+,</kbd></td><td>Toggle Settings (Themes, Window, Help)</td></tr>
+        <tr><td><kbd>F3</kbd></td><td>Validate</td></tr>
+        <tr><td><kbd>Ctrl+E</kbd> / <kbd>Ctrl+P</kbd> / <kbd>Ctrl+S</kbd></td><td>Export / Preview / Save (+ backup)</td></tr>
         <tr><td><kbd>/</kbd></td><td>Insert component</td></tr>
         <tr><td><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> <kbd>4</kbd></td><td>Focus Regions / Pages / Layout / Details</td></tr>
         <tr><td><kbd>Tab</kbd></td><td>Next page</td></tr>
         <tr><td><kbd>Ctrl+Q</kbd></td><td>Quit</td></tr>
-        <tr><td><kbd>Shift+A</kbd> <kbd>Shift+X</kbd> <kbd>r</kbd></td><td>Pages: add / delete / rename</td></tr>
+        <tr><td><kbd>Ctrl+N</kbd> <kbd>Shift+X</kbd> <kbd>r</kbd></td><td>Pages: add / delete / rename</td></tr>
         <tr><td><kbd>j</kbd> <kbd>k</kbd> <kbd>Enter</kbd> <kbd>d</kbd> <kbd>y</kbd> <kbd>p</kbd> <kbd>u</kbd></td><td>Layout: move / edit / delete / copy / paste / undo</td></tr>
         <tr><td><kbd>Ctrl+S</kbd> in a form</td><td>Save the form (Esc cancels)</td></tr>
       </tbody>
     </table>
-    <p class="muted">The footer is one adaptive line. Narrow terminals drop trailing hints; F1 is the full list.</p>
+    <p class="muted">The footer is one adaptive line. Below 80 columns it starts with <kbd>F1:Settings</kbd> and ends with <kbd>^Q:Quit</kbd>. At 80 and wider it starts with <kbd>F1: Settings</kbd> and ends with <kbd>Ctrl+Q: Quit</kbd>. Hints in the middle drop until the line fits. Help is the full list.</p>
 
     <h2>Other CLI</h2>
     <p><code>init-templates</code> writes bundled Handlebars into <code>source/templates/</code> in the current directory. Pass a site JSON path only when the site lives elsewhere.</p>
