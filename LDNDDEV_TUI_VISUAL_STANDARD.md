@@ -2,9 +2,9 @@
 
 **Portable contract for look, feel, and structure across every ldnddev terminal app.**
 
-Copy this file into a new repo as the visual contract. Do not fork app-specific layout, key lists, or data models into the standard. The body of the app is yours; the chrome, tokens, and interaction habits are shared.
+The family rule is `dd-tui-template-master.md`, with dd_vault as the tie-break and dd_siteforge filling gaps vault does not specify. Paint tokens stay in `dd-tui-gui-visual-master.md`. This file keeps the older shell notes. Where it still says F1 Help or F2 Theme, follow the family master: F1 toggles one Settings sheet, Themes first and Help last, and F2 is the same toggle when the app binds it.
 
-This document is the single source of truth for theming and shell. There is no separate theme-structure guide.
+Copy this file into a new repo as the visual contract. Do not fork app-specific layout, key lists, or data models into the standard. The body of the app is yours; the chrome, tokens, and interaction habits are shared.
 
 Standard version: **v1**. Bump here and in the theme YAML schema when a change is breaking.
 
@@ -18,7 +18,7 @@ Standard version: **v1**. Bump here and in the theme YAML schema when a change i
 | Canonical color tokens | Tree / file-browser panel |
 | 3-line header + 1-line footer | Two-pane source + secondary list |
 | `app_shell` + `active_border` | Details / inspector pane |
-| F1 Help, F2 Theme | App-specific function keys (F3+) |
+| F1 Settings sheet (Themes first, Help last). F2 is the same toggle when bound | App-specific function keys (F3+) |
 | Toasts, modals, themed inputs | Checkboxes, bulk-select, action modes |
 | Scrollbars + mouse wheel | |
 | Click-to-focus on inputs | |
@@ -29,10 +29,10 @@ Standard version: **v1**. Bump here and in the theme YAML schema when a change i
 
 1. Copy this file and a sample `<app>_theme.yml` into the new repo.
 2. Pick the app name (`dd_ftp`, `dd_siteforge`, …). Use it for the theme filename, header title, and config path.
-3. Implement the shell first: full-screen `app_shell`, fixed 3-line header (app name + random tagline), 1-line adaptive footer starting with `F1:Help`.
+3. Implement the shell first: full-screen `app_shell`, fixed 3-line header (app name + random tagline), 1-line adaptive footer starting with `F1: Settings` (below 80 columns: `F1:Settings`).
 4. Load themes in the lookup order below. Reject files that are not `version: 1`.
 5. Map every painted cell to a canonical token. Do not hard-code colors after load.
-6. Ship F1 Help (full key + mouse list) and F2 Theme (source + status + sampled tokens).
+6. Ship F1 Settings. Themes is the first page, Help is the last. F2, when bound, toggles that same sheet.
 7. Toasts for non-blocking messages; modals for errors and forms.
 8. Test narrow (<80 cols) and wide terminals. No overflow, no clipped chrome.
 9. Body layout is app-defined. See §6. Do not copy another app's panels unless the product actually needs them.
@@ -260,8 +260,8 @@ Decorative only. No mouse or keyboard. Changes only on restart.
 
 ### Rules
 
-- Always start with `F1:Help`
-- Next global keys: `F2:Theme`, then quit, then the app's highest-value actions
+- Always start with `F1:Settings` below 80 columns and `F1: Settings` at 80 and wider
+- End with `^Q:Quit` or `Ctrl+Q: Quit`. App hints sit in the middle and drop until the line fits
 - Narrow terminals: terse abbreviations
 - Wide terminals: slightly longer labels; mouse reminder only on the widest band
 - Full authoritative list lives in F1 Help, not the footer
@@ -270,14 +270,11 @@ Decorative only. No mouse or keyboard. Changes only on restart.
 Example *shape* (keys are illustrative — replace with the app's own):
 
 ```text
-# narrow
-F1:Help  F2:Theme  q:Quit  j/k:Nav
+# below 80
+F1:Settings  j/k:Nav  ^Q:Quit
 
-# medium
-F1: Help   F2: Theme   j/k: Move   Enter: Edit   q: Quit
-
-# wide
-F1: Help   F2: Theme   j/k: Move   Enter: Edit   q: Quit   (mouse: click/scroll)
+# 80 and wider
+F1: Settings  j/k: Move  Enter: Edit  Ctrl+Q: Quit
 ```
 
 ---

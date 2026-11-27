@@ -165,9 +165,9 @@ Bracketed paste is enabled for the session. `Event::Paste` inserts the clipboard
 
 ## Theme + Visual Shell
 
-Theme load is strict (LDNDDEV_TUI_VISUAL_STANDARD.md):
+Theme load is strict (`dd-tui-template-master.md`, with dd_vault as the tie-break):
 1. `./dd_siteforge_theme.yml` (local)
-2. `~/.config/ldnddev/dd_siteforge_theme.yml` (global)
+2. `$XDG_CONFIG_HOME/ldnddev/dd_siteforge_theme.yml` when that variable is set, else `~/.config/ldnddev/dd_siteforge_theme.yml`
 3. Built-in defaults
 
 Every theme file must contain `version: 1` at the top level (validated on load; bad/missing version falls back with a Warning toast).
@@ -175,9 +175,9 @@ Every theme file must contain `version: 1` at the top level (validated on load; 
 `header_quotes` (optional top-level list) overrides the 5 built-in rotating header taglines (chosen once at App::new using time ^ pid).
 
 The TUI now exposes `theme.app_shell` and `theme.active_border` (Style) for the standard header/footer.
-`theme.modal_header` colors inner section headers (e.g. cards in F1 help modal).
-F2 opens the Theme info modal (source, load status, sampled color tokens with hex) using identical chrome and scroll mechanics to the F1 help modal.
-Header title is `dd_siteforge` (product name only). Version lives in F2 Theme. Footer always starts with `F1:Help` then `F2:Theme`.
+`theme.modal_header` colors inner section headers on the Settings sheet.
+F1, F2, Ctrl+/, and Ctrl+, toggle one Settings sheet. Themes is first, Help is last. The sheet is the right half of the body.
+Header title is `dd_siteforge` (product name only). Footer starts with `F1: Settings` at 80 columns and wider, and `F1:Settings` below that. Quit is `Ctrl+Q: Quit` or `^Q:Quit`.
 
 See `src/tui/draw.rs` and `src/tui/theme.rs` (AppTheme::load, choose_header_copy) for the concrete implementation.
 The Details panel title now includes current page context ("Details — 03: Home").

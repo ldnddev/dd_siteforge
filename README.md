@@ -26,7 +26,7 @@ With a terminal to answer, the script asks whether to install the terminal app, 
 `./install.sh --uninstall` removes the chosen binaries and their launchers. It leaves the theme, the icon, and `~/.config/ldnddev/dd_siteforge/` (session and scaffold) in place. Use the same `PREFIX`, `BIN_DIR`, `CONFIG_DIR`, and `XDG_DATA_HOME` as the install. `INSTALL_GUI=1` is the same as `--both`.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ldnddev/dd_siteforge/master/install.sh | bash -s -- --version v1.33.0
+curl -fsSL https://raw.githubusercontent.com/ldnddev/dd_siteforge/master/install.sh | bash -s -- --version v1.33.1
 curl -fsSL https://raw.githubusercontent.com/ldnddev/dd_siteforge/master/install.sh | bash -s -- --uninstall --tui
 ```
 

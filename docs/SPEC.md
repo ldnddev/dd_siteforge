@@ -128,7 +128,7 @@ Always `self.theme.*`. Labels: `text_labels` → `text_active_focus` when focuse
 
 ### UX prefs
 
-- Footer is a 1-line adaptive key bar. Always starts with `F1:Help` then `F2:Theme`. No long status text.
+- Footer is a 1-line adaptive key bar. Below 80 columns it starts with `F1:Settings` and ends with `^Q:Quit`. At 80 and wider it starts with `F1: Settings` and ends with `Ctrl+Q: Quit`. F1, F2, Ctrl+/, and Ctrl+, toggle one Settings sheet (Themes, Window, Help). No long status text.
 - All scrollable surfaces: mouse wheel + keyboard.
 - Path display: strip leading `./` and trailing `/`.
 - Browser launch pins stdio to `/dev/null` so raw-mode TUI stays intact.
